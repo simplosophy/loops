@@ -141,10 +141,13 @@ def format_tool_arguments_inline(tool_name: str, arguments: dict[str, Any]) -> s
     if tool_name == "shell":
         op = str(arguments.get("op") or "run")
         command = arguments.get("command")
+        commands = arguments.get("commands")
         session_id = arguments.get("session_id")
         parts = [f"op={op}"]
         if command:
             parts.append(f"command={preview_text(command, max_chars=120)!r}")
+        elif commands:
+            parts.append(f"commands={preview_text(compact_json(commands, max_chars=180), max_chars=180)!r}")
         if session_id:
             parts.append(f"session_id={session_id}")
         return " ".join(parts)
@@ -159,14 +162,22 @@ def format_tool_arguments_lines(tool_name: str, arguments: dict[str, Any]) -> li
         lines = [f"op: {op}"]
         if command := arguments.get("command"):
             lines.append(f"command: {preview_text(command, max_chars=400)}")
+        elif commands := arguments.get("commands"):
+            lines.append(f"commands: {compact_json(commands, max_chars=500)}")
         if session_id := arguments.get("session_id"):
             lines.append(f"session_id: {session_id}")
+        if cwd := (arguments.get("cwd") or arguments.get("working_directory")):
+            lines.append(f"cwd: {preview_text(cwd, max_chars=240)}")
         if arguments.get("background") is not None:
             lines.append(f"background: {str(bool(arguments.get('background'))).lower()}")
         if arguments.get("timeout_seconds") is not None:
             lines.append(f"timeout_seconds: {arguments.get('timeout_seconds')}")
+        if arguments.get("timeout_ms") is not None:
+            lines.append(f"timeout_ms: {arguments.get('timeout_ms')}")
         if arguments.get("max_output_chars") is not None:
             lines.append(f"max_output_chars: {arguments.get('max_output_chars')}")
+        if arguments.get("max_output_length") is not None:
+            lines.append(f"max_output_length: {arguments.get('max_output_length')}")
         if arguments.get("offset") is not None:
             lines.append(f"offset: {arguments.get('offset')}")
         if arguments.get("limit") is not None:

@@ -256,10 +256,33 @@ class BaseTool:
 支持操作：
 
 - `run`
+- `list`
 - `poll`
 - `log`
 - `write`
 - `kill`
+
+`run` 接受两种输入形态：
+
+- `command`: 单条 shell 命令，保持最小兼容路径。
+- `commands`: 多条 shell 命令，按顺序执行，遇到非零退出码、timeout 或取消立即停止。
+
+为了兼容常见 shell tool 调用形态，`run` 同时接受：
+
+- `timeout_seconds` 或 `timeout_ms`
+- `max_output_chars` 或 `max_output_length`
+- `cwd` / `working_directory`
+- `env`
+
+foreground `run` 内部把每条命令规范化成结构化输出：
+
+- `command`
+- `stdout`
+- `stderr`
+- `status`
+- `outcome`
+
+工具返回给模型的 `output` 仍是可读文本，结构化结果写入 `ToolResult.metadata["outputs"]`。单条成功命令继续返回裸 stdout；多条命令会带 `$ command` 前缀，便于模型区分不同命令的输出。
 
 安全策略由 `AgentPolicy` 控制：
 

@@ -108,6 +108,21 @@ class EchoComponent(Component):
         self.events.append(event.type)
 
 
+async def _noop_emit(event: AgentEvent) -> None:
+    del event
+
+
+def _tool_context(tmp_path: Path, *, policy: AgentPolicy | None = None) -> ToolContext:
+    return ToolContext(
+        agent_id="agent-test",
+        run_id="run-test",
+        workspace=tmp_path,
+        policy=policy or AgentPolicy(),
+        state=None,
+        emit=_noop_emit,
+    )
+
+
 def test_prompt_template_injects_channel_tool_provider_profiles(tmp_path: Path):
     provider = FakeProvider([ProviderResponse(content="ok")])
     channel = TuiChannel()
@@ -140,6 +155,130 @@ def test_prompt_template_injects_channel_tool_provider_profiles(tmp_path: Path):
     assert "tool_names=shell" in system_prompt
     assert "missing=empty" in system_prompt
     assert "interactive=true" in system_prompt
+
+
+def test_shell_tool_accepts_command_sequences_and_records_structured_outputs(tmp_path: Path):
+    import asyncio
+
+    tool = ShellTool()
+    result = asyncio.run(
+        tool.execute(
+            _tool_context(tmp_path),
+            {"op": "run", "commands": ["printf one", "printf two"]},
+        )
+    )
+
+    assert result.is_success
+    assert result.output == "$ printf one\none\n\n$ printf two\ntwo"
+    assert result.metadata["command_count"] == 2
+    assert result.metadata["returncode"] == 0
+    assert [entry["stdout"] for entry in result.metadata["outputs"]] == ["one", "two"]
+
+
+def test_shell_tool_command_sequences_fail_fast(tmp_path: Path):
+    import asyncio
+
+    tool = ShellTool()
+    result = asyncio.run(
+        tool.execute(
+            _tool_context(tmp_path),
+            {
+                "op": "run",
+                "commands": ["printf before", "sh -c 'exit 7'", "printf after"],
+            },
+        )
+    )
+
+    assert not result.is_success
+    assert result.status == "error"
+    assert "exit code: 7" in (result.error or "")
+    assert "after" not in (result.error or "")
+    assert result.metadata["returncode"] == 7
+    assert len(result.metadata["outputs"]) == 2
+
+
+def test_shell_tool_supports_openai_style_aliases_cwd_and_env(tmp_path: Path):
+    import asyncio
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    tool = ShellTool()
+    result = asyncio.run(
+        tool.execute(
+            _tool_context(tmp_path),
+            {
+                "op": "run",
+                "command": "printf \"$LOOP0_TEST\"",
+                "cwd": "work",
+                "env": {"LOOP0_TEST": "ok"},
+                "timeout_ms": 5000,
+                "maxOutputLength": 10,
+            },
+        )
+    )
+
+    assert result.is_success
+    assert result.output == "ok"
+    assert result.metadata["cwd"] == str(workdir)
+    assert result.metadata["timeout_seconds"] == 5
+    assert result.metadata["env_keys"] == ["LOOP0_TEST"]
+
+
+def test_shell_tool_rejects_string_like_commands(tmp_path: Path):
+    import asyncio
+
+    result = asyncio.run(
+        ShellTool().execute(
+            _tool_context(tmp_path),
+            {"op": "run", "commands": "printf bad"},
+        )
+    )
+
+    assert result.status == "invalid_args"
+    assert "commands must be a sequence" in (result.error or "")
+
+
+def test_shell_tool_timeout_returns_structured_timeout(tmp_path: Path):
+    import asyncio
+
+    result = asyncio.run(
+        ShellTool().execute(
+            _tool_context(tmp_path),
+            {"op": "run", "command": "sleep 1", "timeout_ms": 10},
+        )
+    )
+
+    assert result.status == "timeout"
+    assert result.metadata["outputs"][0]["status"] == "timeout"
+    assert "status: timeout" in (result.error or "")
+
+
+def test_shell_tool_lists_and_logs_background_sessions(tmp_path: Path):
+    import asyncio
+
+    async def run_case():
+        tool = ShellTool()
+        ctx = _tool_context(
+            tmp_path,
+            policy=AgentPolicy(shell_require_approval_for_background=False),
+        )
+        started = await tool.execute(
+            ctx,
+            {"op": "run", "command": "printf out; printf err >&2", "background": True},
+        )
+        session_id = json.loads(started.output)["session_id"]
+        await asyncio.sleep(0.05)
+
+        sessions = json.loads((await tool.execute(ctx, {"op": "list"})).output)["sessions"]
+        log_payload = json.loads((await tool.execute(ctx, {"op": "log", "session_id": session_id})).output)
+        return session_id, sessions, log_payload
+
+    session_id, sessions, log_payload = asyncio.run(run_case())
+
+    assert any(session["session_id"] == session_id for session in sessions)
+    assert log_payload["total"] >= 2
+    assert {line["stream"] for line in log_payload["lines"]} == {"stdout", "stderr"}
+    assert all("index" in line and "created_at" in line for line in log_payload["lines"])
 
 
 def test_provider_tool_loop_executes_shell_and_commits_state(tmp_path: Path):
