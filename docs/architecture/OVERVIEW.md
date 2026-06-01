@@ -1,6 +1,8 @@
 # loops Architecture Overview
 
-loops 是一个极小 Agent Runtime SDK。它的核心目标不是提供完整 Agent 产品，而是提供一个稳定、可组合、可扩展的运行时内核。
+loops 的目标架构分为 `loop0`、`loop1`、`loop2` 三层。三层整体边界、状态和扩展点见 [LOOPS_STACK.md](LOOPS_STACK.md)。
+
+本文主要描述当前单 Agent runtime 内核，也就是目标架构中的 `loop0`：一个稳定、可组合、可扩展的运行时内核。
 
 核心只内置一个工具能力：`shell`。skills、MCP、memory、业务 channel、知识库、审批系统等都应通过 component 或外部集成扩展进来。
 
