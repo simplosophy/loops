@@ -27,6 +27,13 @@
 - 补齐 shell tool 的安全策略、审批、background session、结构化日志。
 - 增加 Rust 单元测试和端到端 CLI 测试。
 
+当前状态：
+
+- 已新增 Rust `AgentSpec` / `AgentRuntime`，让 CLI 运行路径通过 runtime 抽象执行。
+- 已新增 Rust `EventSink`、`NullEventSink`、`InMemoryEventSink`。
+- 已把 provider stream text/reasoning delta 转换为 `provider_delta` / `provider_reasoning_delta` 事件。
+- 仍缺：AgentState、Component、ToolRegistry 抽象、完整 shell 策略、tool call streaming delta folding。
+
 ## 阶段 3：替换 Python CLI 和包入口
 
 - 将 `loops-loop0` 切到 Rust binary。

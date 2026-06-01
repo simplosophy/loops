@@ -14,10 +14,12 @@ path = "src/bin/loops-loop0.rs"
 
 [dependencies]
 anyhow = "1"
+async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
+futures-util = "0.3"
 minijinja = { version = "2", features = ["json"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }

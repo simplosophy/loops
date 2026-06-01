@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use async_trait::async_trait;
+use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,6 +22,7 @@ pub struct ToolProfile {
 pub struct ProviderRequest {
     pub messages: Vec<Message>,
     pub tools: Vec<ToolProfile>,
+    pub stream: bool,
     pub parallel_tool_calls: Option<bool>,
 }
 
@@ -29,6 +32,23 @@ pub struct ProviderResponse {
     pub tool_calls: Vec<ToolCall>,
     pub stop_reason: Option<String>,
     pub raw: Value,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProviderStreamEvent {
+    TextDelta(String),
+    ReasoningDelta(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderOutput {
+    pub response: ProviderResponse,
+    pub events: Vec<ProviderStreamEvent>,
+}
+
+#[async_trait]
+pub trait ProviderClient: Send + Sync {
+    async fn complete(&self, request: ProviderRequest) -> Result<ProviderOutput>;
 }
 
 #[derive(Clone)]
@@ -64,7 +84,7 @@ impl OpenAiCompatibleProvider {
             "{}/chat/completions",
             self.config.base_url.trim_end_matches('/')
         );
-        let payload = self.build_payload(request);
+        let payload = self.build_payload(request, false);
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
@@ -100,7 +120,69 @@ impl OpenAiCompatibleProvider {
         response_from_openai(raw)
     }
 
-    fn build_payload(&self, request: ProviderRequest) -> Value {
+    pub async fn stream(&self, request: ProviderRequest) -> Result<ProviderOutput> {
+        let endpoint = format!(
+            "{}/chat/completions",
+            self.config.base_url.trim_end_matches('/')
+        );
+        let payload = self.build_payload(request, true);
+        let response = self
+            .client
+            .post(&endpoint)
+            .headers(self.headers()?)
+            .json(&payload)
+            .send()
+            .await
+            .with_context(|| format!("provider request failed for {endpoint}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .context("failed to read provider response body")?;
+            return Err(anyhow!("provider HTTP {status} from {endpoint}: {body}"));
+        }
+        let mut content_parts = Vec::new();
+        let mut reasoning_parts = Vec::new();
+        let mut raw_chunks = Vec::new();
+        let mut events = Vec::new();
+        let mut buffer = String::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.context("failed to read provider stream chunk")?;
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(index) = buffer.find('\n') {
+                let line = buffer[..index].trim().to_string();
+                buffer = buffer[index + 1..].to_string();
+                if line.is_empty() || line.starts_with(':') || !line.starts_with("data:") {
+                    continue;
+                }
+                let data = line["data:".len()..].trim();
+                if data == "[DONE]" {
+                    continue;
+                }
+                let chunk: Value = serde_json::from_str(data)
+                    .with_context(|| format!("failed to parse provider stream chunk: {data}"))?;
+                collect_stream_chunk(
+                    &chunk,
+                    &mut content_parts,
+                    &mut reasoning_parts,
+                    &mut events,
+                );
+                raw_chunks.push(chunk);
+            }
+        }
+        let content = content_parts.join("");
+        let response = ProviderResponse {
+            content,
+            tool_calls: Vec::new(),
+            stop_reason: None,
+            raw: json!({"chunks": raw_chunks, "reasoning_content": reasoning_parts.join("")}),
+        };
+        Ok(ProviderOutput { response, events })
+    }
+
+    fn build_payload(&self, request: ProviderRequest, stream: bool) -> Value {
         let mut object = serde_json::Map::new();
         object.insert(
             "model".to_string(),
@@ -119,6 +201,9 @@ impl OpenAiCompatibleProvider {
                 object.insert("parallel_tool_calls".to_string(), Value::Bool(parallel));
             }
         }
+        if stream {
+            object.insert("stream".to_string(), Value::Bool(true));
+        }
         if let Some(reasoning_effort) = &self.config.reasoning_effort {
             object.insert(
                 "reasoning_effort".to_string(),
@@ -129,6 +214,38 @@ impl OpenAiCompatibleProvider {
             object.insert(key.clone(), value.clone());
         }
         Value::Object(object)
+    }
+
+    fn headers(&self) -> Result<HeaderMap> {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            HeaderValue::from_str(&format!("Bearer {}", self.config.api_key))
+                .context("invalid authorization header")?,
+        );
+        for (key, value) in &self.config.headers {
+            headers.insert(
+                HeaderName::from_bytes(key.as_bytes())
+                    .with_context(|| format!("invalid header name: {key}"))?,
+                HeaderValue::from_str(value)
+                    .with_context(|| format!("invalid header value for {key}"))?,
+            );
+        }
+        Ok(headers)
+    }
+}
+
+#[async_trait]
+impl ProviderClient for OpenAiCompatibleProvider {
+    async fn complete(&self, request: ProviderRequest) -> Result<ProviderOutput> {
+        if request.stream {
+            return self.stream(request).await;
+        }
+        let response = self.generate(request).await?;
+        Ok(ProviderOutput {
+            response,
+            events: Vec::new(),
+        })
     }
 }
 
@@ -241,4 +358,32 @@ fn parse_tool_call(value: &Value) -> Result<ToolCall> {
         id,
         raw: value.clone(),
     })
+}
+
+fn collect_stream_chunk(
+    chunk: &Value,
+    content_parts: &mut Vec<String>,
+    reasoning_parts: &mut Vec<String>,
+    events: &mut Vec<ProviderStreamEvent>,
+) {
+    let Some(delta) = chunk
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("delta"))
+    else {
+        return;
+    };
+    if let Some(text) = delta.get("content").and_then(Value::as_str) {
+        if !text.is_empty() {
+            content_parts.push(text.to_string());
+            events.push(ProviderStreamEvent::TextDelta(text.to_string()));
+        }
+    }
+    if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
+        if !text.is_empty() {
+            reasoning_parts.push(text.to_string());
+            events.push(ProviderStreamEvent::ReasoningDelta(text.to_string()));
+        }
+    }
 }
