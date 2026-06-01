@@ -310,6 +310,7 @@ AgentEvent -> ChannelOutput
 ```text
 loops/loop0/
   agent.py
+  cli.py
   runtime.py
   io.py
   prompt.py
@@ -327,6 +328,7 @@ loops/loop0/
 各文件职责：
 
 - `agent.py`: public Agent / AgentSpec / factory。
+- `cli.py`: one-shot loop0 runner，把 CLI/config 归一化成 `UserInput + InteractionContext + EventSink`。
 - `runtime.py`: provider/tool 主循环和 run 生命周期。
 - `io.py`: `EventSink`、`NullEventSink`、`InMemoryEventSink`、callback adapter。
 - `prompt.py`: prompt template、render context 和 renderer。
@@ -365,6 +367,13 @@ loops/loop0/
 - 在 loop1 中实现 channel/session/storage。
 - 把输入映射为 `UserInput + InteractionContext`。
 - 把输出映射为 `EventSink` 或消费 `AgentResult.events`。
+
+新增 CLI/config runner：
+
+- 只能作为 one-shot loop0 host，不能引入 session/channel 状态。
+- CLI 参数和配置文件必须归一化到同一个 config model。
+- prompt 等大文本应支持从文件读取，文件路径相对 config 文件目录解析。
+- provider、policy、agent metadata、run、interaction、output 参数都应能由命令行覆盖。
 
 ## 当前优先级
 

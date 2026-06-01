@@ -9,6 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
+loops-loop0 = "loops.loop0.cli:main"
 loops-demo = "examples.start_agent:main"
 
 [build-system]

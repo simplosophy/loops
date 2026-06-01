@@ -225,6 +225,176 @@ def test_top_level_channel_alias_is_removed():
     raise AssertionError("loops.channels should not exist in loop0")
 
 
+def test_loop0_cli_accepts_full_command_line_config(tmp_path: Path):
+    from loops.loop0.cli import parse_run_config
+
+    system_file = tmp_path / "system.md"
+    system_file.write_text("System from file", encoding="utf-8")
+    extra_body = tmp_path / "extra.json"
+    extra_body.write_text('{"temperature": 0.2}', encoding="utf-8")
+
+    config = parse_run_config(
+        [
+            "--system-file",
+            str(system_file),
+            "--user",
+            "{{ input.text }}!",
+            "--provider",
+            "openai-compatible",
+            "--provider-name",
+            "deepseek",
+            "--model",
+            "deepseek-chat",
+            "--api-key-env",
+            "TEST_LOOP0_KEY",
+            "--base-url",
+            "https://api.deepseek.com",
+            "--timeout-seconds",
+            "12",
+            "--disable-verify-ssl",
+            "--header",
+            "X-Test=1",
+            "--reasoning-effort",
+            "low",
+            "--extra-body-file",
+            str(extra_body),
+            "--agent-name",
+            "cli-agent",
+            "--agent-description",
+            "CLI agent",
+            "--workspace",
+            str(tmp_path / "workspace"),
+            "--metadata",
+            "team=loop0",
+            "--no-tools",
+            "--max-turns",
+            "3",
+            "--no-allow-tool-errors",
+            "--parallel-tool-calls",
+            "--max-parallel-tool-calls",
+            "2",
+            "--auto-approve",
+            "--shell-timeout-seconds",
+            "5",
+            "--shell-max-output-chars",
+            "100",
+            "--no-shell-require-approval-for-background",
+            "--shell-external-path-policy",
+            "deny",
+            "--input",
+            "hello",
+            "--thread-id",
+            "thread-cli",
+            "--stream",
+            "--log-level",
+            "INFO",
+            "--source",
+            "terminal",
+            "--session-id",
+            "session-cli",
+            "--actor-id",
+            "actor-cli",
+            "--reply-to",
+            "msg-cli",
+            "--audience",
+            "user",
+            "--interactive",
+            "--locale",
+            "zh-CN",
+            "--interaction-raw",
+            "raw_key=raw_value",
+            "--output",
+            "json",
+            "--show-events",
+            "--events-file",
+            str(tmp_path / "events.jsonl"),
+        ],
+        env={"TEST_LOOP0_KEY": "secret"},
+    )
+
+    assert config.prompt.system_file == str(system_file)
+    assert config.prompt.user == "{{ input.text }}!"
+    assert config.provider.name == "deepseek"
+    assert config.provider.model == "deepseek-chat"
+    assert config.provider.api_key == "secret"
+    assert config.provider.base_url == "https://api.deepseek.com"
+    assert config.provider.timeout_seconds == 12
+    assert config.provider.disable_verify_ssl is True
+    assert config.provider.headers == {"X-Test": "1"}
+    assert config.provider.extra_body == {"temperature": 0.2}
+    assert config.agent.name == "cli-agent"
+    assert config.agent.tools == []
+    assert config.policy.max_turns == 3
+    assert config.policy.allow_tool_errors is False
+    assert config.policy.parallel_tool_calls is True
+    assert config.policy.max_parallel_tool_calls == 2
+    assert config.policy.auto_approve is True
+    assert config.policy.shell_require_approval_for_background is False
+    assert config.policy.shell_external_path_policy == "deny"
+    assert config.run.input == "hello"
+    assert config.run.thread_id == "thread-cli"
+    assert config.run.stream is True
+    assert config.interaction.source == "terminal"
+    assert config.interaction.raw == {"raw_key": "raw_value"}
+    assert config.output.format == "json"
+    assert config.output.show_events is True
+
+
+def test_loop0_cli_runs_from_config_file(tmp_path: Path):
+    import asyncio
+
+    from loops.loop0.cli import parse_run_config, run_loop0
+
+    (tmp_path / "system.md").write_text("source={{ interaction.source }}", encoding="utf-8")
+    config_path = tmp_path / "loop0.toml"
+    config_path.write_text(
+        """
+tools = []
+
+[prompt]
+system_file = "system.md"
+
+[provider]
+model = "fake-model"
+api_key = "dummy"
+
+[agent]
+name = "config-agent"
+workspace = "workspace"
+
+[run]
+input = "hello from config"
+thread_id = "config-thread"
+stream = true
+
+[interaction]
+source = "config-file"
+
+[output]
+format = "text"
+show_events = true
+events_file = "events.jsonl"
+""".strip(),
+        encoding="utf-8",
+    )
+    provider = FakeProvider([ProviderResponse(content="ok")])
+    config = parse_run_config(["--config", str(config_path)])
+    output = StringIO()
+    errors = StringIO()
+
+    result = asyncio.run(run_loop0(config, provider=provider, output_stream=output, error_stream=errors))
+
+    assert result.output == "ok"
+    assert output.getvalue() == "ok\n"
+    assert "provider_started" in errors.getvalue()
+    assert provider.requests[0].stream is True
+    assert provider.requests[0].tools == []
+    assert provider.requests[0].messages[0].content == "source=config-file"
+    assert provider.requests[0].messages[-1].content == "hello from config"
+    assert provider.requests[0].metadata["thread_id"] == "config-thread"
+    assert (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
+
+
 def test_provider_adapter_registry_and_stream_folding():
     import asyncio
 
