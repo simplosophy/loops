@@ -37,7 +37,8 @@
 - 已新增 `run_input(UserInput, EventSink)`，使 Rust runtime 接近 loop0 的核心调用边界。
 - 已新增 Rust `Component` / `Contribution` / `RunContext`，支持组件贡献 prompt blocks/tools 并观察 runtime events。
 - 已补齐 Rust OpenAI-compatible streaming tool call delta folding。
-- 仍缺：完整 shell 策略、background session。
+- 已补齐 Rust shell 参数别名、结构化输出、安全拦截、外部路径策略和 background session 基础操作。
+- 阶段 2 剩余重点：端到端 CLI 覆盖与更细的 shell 审批 host 接口。
 
 ## 阶段 3：替换 Python CLI 和包入口
 

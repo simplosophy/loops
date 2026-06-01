@@ -22,6 +22,6 @@ minijinja = { version = "2", features = ["json"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "sync", "time"] }
 toml = "0.8"
 uuid = { version = "1", features = ["v4", "serde"] }
