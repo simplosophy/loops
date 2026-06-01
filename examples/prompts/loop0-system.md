@@ -5,6 +5,7 @@ Interaction source: {{ interaction.source }}
 Thread: {{ run.thread_id }}
 
 Use available tools only when they help answer the user request. Keep the final answer concise and factual.
+When the request asks about files, directories, repository contents, or command output, use the shell tool before answering. Do not infer filesystem state without tool output.
 
 Available tools:
 {% for tool in tools %}

@@ -6,10 +6,10 @@
   },
   "provider": {
     "type": "openai-compatible",
-    "name": "openai",
-    "model": "gpt-4.1",
-    "api_key_env": "LOOPS_OPENAI_API_KEY",
-    "base_url": "https://api.openai.com/v1",
+    "name": "deepseek-v4-pro",
+    "model": "deepseek-v4-pro",
+    "api_key_env": "LOOPS_DEEPSEEK_API_KEY",
+    "base_url": "https://api.deepseek.com/",
     "timeout_seconds": 60,
     "headers": {},
     "extra_body": {}
@@ -17,7 +17,7 @@
   "agent": {
     "name": "loop0-cli-example",
     "description": "Example loop0 CLI agent",
-    "workspace": ".loops-example-workspace",
+    "workspace": "..",
     "metadata": {
       "example": "json-config"
     }
@@ -34,7 +34,7 @@
     "shell_external_path_policy": "ask"
   },
   "run": {
-    "input": "Inspect the current repository and summarize the top-level files.",
+    "input": "Use shell.run from the configured workspace. First run `pwd` and `find . -maxdepth 1 -mindepth 1 -print | sort`; then summarize the top-level files and directories from the command output.",
     "thread_id": "example",
     "stream": true
   },
@@ -48,6 +48,6 @@
   "output": {
     "format": "text",
     "show_events": false,
-    "events_file": ".loops-example-workspace/events.jsonl"
+    "events_file": "../.loops-example-workspace/events.jsonl"
   }
 }
