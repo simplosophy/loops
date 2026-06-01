@@ -42,6 +42,7 @@ _COMPAT_MODULES = (
     "profiles",
     "prompt",
     "providers",
+    "providers.adapter",
     "providers.base",
     "providers.openai",
     "runtime",

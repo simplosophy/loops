@@ -193,12 +193,19 @@ Available tools:
 
 ### Provider
 
-`Provider` 是模型后端适配层。
+`Provider` 是 runtime-facing 的模型后端 facade。具体 API 协议转换由 `ProviderAdapter` 负责；`Provider` 负责向 runtime 暴露 profile，并把 `ProviderRequest` 转发给 adapter。
 
 接口：
 
 - `generate(request: ProviderRequest) -> ProviderResponse`
 - `stream(request: ProviderRequest) -> AsyncIterator[ProviderEvent]`
+
+Adapter 层核心对象：
+
+- `ProviderModel`: 描述 provider、model、api、base_url、capabilities、compat 和 metadata。
+- `ProviderOptions`: 描述 api_key、headers、timeout、reasoning_effort、extra_body 等运行选项。
+- `ProviderAdapter`: 按协议实现转换，例如 `openai-chat`、后续 `openai-responses`、`anthropic-messages`。
+- `AdapterBackedProvider`: 把 `ProviderModel`、`ProviderOptions` 和 `ProviderAdapter` 组合成 runtime 可调用的 `Provider`。
 
 `ProviderRequest` 关键字段：
 
@@ -208,7 +215,7 @@ Available tools:
 - `parallel_tool_calls`: 是否提示 provider 允许一次返回多个并行 tool call。
 - `metadata`: run/thread 等 runtime 元数据。
 
-`OpenAICompatibleProvider` 会把 `ProviderRequest` 转成 `/chat/completions` payload，并在有 tools 且 `parallel_tool_calls` 不为 `None` 时传递 `parallel_tool_calls`。
+`OpenAICompatibleProvider` 是兼容 wrapper，内部使用 `OpenAIChatAdapter`。它会把 `ProviderRequest` 转成 `/chat/completions` payload，并在有 tools 且 `parallel_tool_calls` 不为 `None` 时传递 `parallel_tool_calls`。
 
 ### Tool
 
@@ -434,10 +441,10 @@ stream = run.channel.profile.output_mode == "stream"
 当 `stream=True`：
 
 - runtime 调用 `provider.stream(request)`
-- provider 产生 `ProviderEvent(type="delta")`
+- provider 产生 `ProviderEvent(type="text_delta")`，旧 `delta` 事件仍兼容
 - runtime 转成 `AgentEvent(type="provider_delta")`
 - `ConsoleChannel` 等 stream channel 立即输出
-- 最终 provider 必须给出 `ProviderEvent(type="response")`，用于工具调用和最终结果
+- 最终 provider 必须给出 `ProviderEvent(type="response_finished")`，旧 `response` 事件仍兼容，用于工具调用和最终结果
 
 当 channel 不是 stream 输出模式时，`provider_delta` 不会发送到 channel。
 
@@ -525,13 +532,21 @@ runtime 使用 `pending_state_messages` 暂存本轮要提交的消息。
 
 ### 增加新 Provider
 
-实现：
+新增协议 adapter 时优先实现：
+
+- `ProviderAdapter.api`
+- `ProviderAdapter.stream(model, request, options)`
+- 可选覆写 `ProviderAdapter.generate(model, request, options)`
+
+如果只需要暴露给 runtime，使用 `AdapterBackedProvider` 组合 `ProviderModel`、`ProviderOptions` 和 adapter。
+
+直接实现 `Provider` 仍然兼容：
 
 - `profile`
 - `generate`
 - 可选 `stream`
 
-Provider 内部负责协议转换，runtime 只理解 `ProviderRequest` 和 `ProviderResponse`。
+Provider/adapter 内部负责协议转换，runtime 只理解 `ProviderRequest`、`ProviderEvent` 和 `ProviderResponse`。
 
 ### 增加新 Tool
 

@@ -10,8 +10,23 @@ from loops import AgentEvent, AgentPolicy, InMemoryEventLogger, PromptTemplate, 
 from loops.loop0.channels import ConsoleChannel, LarkChannel, ScheduledChannel, TuiChannel
 from loops.loop0.components import Component, Contribution
 from loops.loop0.profiles import ComponentProfile, ProviderProfile, ToolProfile
+from loops.loop0.providers.adapter import (
+    AdapterBackedProvider,
+    ProviderAdapter,
+    ProviderModel,
+    ProviderOptions,
+    get_provider_adapter,
+    register_provider_adapter,
+    unregister_provider_adapters,
+)
 from loops.loop0.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse
-from loops.loop0.providers.openai import OpenAICompatibleProvider, _message_to_openai, _response_from_openai
+from loops.loop0.providers.openai import (
+    OPENAI_CHAT_API,
+    OpenAIChatAdapter,
+    OpenAICompatibleProvider,
+    _message_to_openai,
+    _response_from_openai,
+)
 from loops.loop0.tools import BaseTool, ShellTool, ToolContext, ToolResult
 from loops.loop0.types import Message
 
@@ -48,6 +63,32 @@ class FakeStreamingProvider(Provider):
         yield ProviderEvent(type="delta", payload={"text": "hel"})
         yield ProviderEvent(type="delta", payload={"text": "lo"})
         yield ProviderEvent(type="response", payload={"response": ProviderResponse(content="hello")})
+
+
+class TextOnlyAdapter(ProviderAdapter):
+    api = "test-text-only"
+
+    def __init__(self) -> None:
+        self.requests: list[ProviderRequest] = []
+        self.options: list[ProviderOptions] = []
+
+    async def stream(self, model: ProviderModel, request: ProviderRequest, options: ProviderOptions):
+        del model
+        self.requests.append(request)
+        self.options.append(options)
+        yield ProviderEvent(type="text_delta", payload={"text": "hel"})
+        yield ProviderEvent(type="text_delta", payload={"text": "lo"})
+        yield ProviderEvent(type="reasoning_delta", payload={"text": "thinking"})
+
+
+class NewEventStreamingAdapter(ProviderAdapter):
+    api = "test-new-stream-events"
+
+    async def stream(self, model: ProviderModel, request: ProviderRequest, options: ProviderOptions):
+        del model, request, options
+        yield ProviderEvent(type="text_delta", payload={"text": "hel"})
+        yield ProviderEvent(type="text_delta", payload={"text": "lo"})
+        yield ProviderEvent(type="response_finished", payload={"response": ProviderResponse(content="hello")})
 
 
 class EchoTool(BaseTool):
@@ -159,14 +200,49 @@ def test_prompt_template_injects_channel_tool_provider_profiles(tmp_path: Path):
 
 def test_top_level_imports_remain_compatible():
     from loops.channels import ConsoleChannel as CompatConsoleChannel
+    from loops.providers.adapter import AdapterBackedProvider as CompatAdapterBackedProvider
     from loops.providers.openai import OpenAICompatibleProvider as CompatOpenAICompatibleProvider
     from loops.tools import ShellTool as CompatShellTool
     from loops.types import Message as CompatMessage
 
+    assert CompatAdapterBackedProvider is AdapterBackedProvider
     assert CompatConsoleChannel is ConsoleChannel
     assert CompatOpenAICompatibleProvider is OpenAICompatibleProvider
     assert CompatShellTool is ShellTool
     assert CompatMessage is Message
+
+
+def test_provider_adapter_registry_and_stream_folding():
+    import asyncio
+
+    adapter = TextOnlyAdapter()
+    source_id = "test-text-only-source"
+    register_provider_adapter(adapter, source_id=source_id)
+    try:
+        provider = AdapterBackedProvider(
+            provider_model=ProviderModel(
+                provider="test-provider",
+                model="test-model",
+                api=adapter.api,
+                capabilities=frozenset({"streaming"}),
+            ),
+            options=ProviderOptions(api_key="secret", metadata={"purpose": "test"}),
+        )
+        response = asyncio.run(provider.generate(ProviderRequest(messages=[Message(role="user", content="hi")])))
+    finally:
+        unregister_provider_adapters(source_id)
+
+    assert get_provider_adapter(adapter.api) is None
+    assert provider.profile.name == "test-provider"
+    assert provider.profile.model == "test-model"
+    assert "streaming" in provider.profile.capabilities
+    assert adapter.options[0].api_key == "secret"
+    assert response.content == "hello"
+    assert response.message_metadata["reasoning_content"] == "thinking"
+
+
+def test_openai_chat_adapter_is_registered():
+    assert isinstance(get_provider_adapter(OPENAI_CHAT_API), OpenAIChatAdapter)
 
 
 def test_shell_tool_accepts_command_sequences_and_records_structured_outputs(tmp_path: Path):
@@ -536,6 +612,28 @@ def test_tui_channel_uses_true_provider_streaming(tmp_path: Path):
 
     assert result.output == "hello"
     assert provider.requests[0].stream is True
+    deltas = [event.payload["text"] for event in tui.events if event.type == "provider_delta"]
+    assert deltas == ["hel", "lo"]
+
+
+def test_runtime_accepts_new_provider_stream_events(tmp_path: Path):
+    provider = AdapterBackedProvider(
+        provider_model=ProviderModel(
+            provider="new-events",
+            model="new-events-model",
+            api=NewEventStreamingAdapter.api,
+            capabilities=frozenset({"streaming"}),
+        ),
+        adapter=NewEventStreamingAdapter(),
+    )
+    tui = TuiChannel()
+    app = agent("Reply.", provider=provider, channels=[tui], workspace=tmp_path)
+
+    import asyncio
+
+    result = asyncio.run(app.run("hello"))
+
+    assert result.output == "hello"
     deltas = [event.payload["text"] for event in tui.events if event.type == "provider_delta"]
     assert deltas == ["hel", "lo"]
 

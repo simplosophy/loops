@@ -267,7 +267,7 @@ class AgentRuntime:
 
         final_response: ProviderResponse | None = None
         async for event in self.agent.spec.provider.stream(request):
-            if event.type == "delta":
+            if event.type in {"delta", "text_delta"}:
                 text = str(event.payload.get("text") or "")
                 if text:
                     await self._emit(run, "provider_delta", {"text": text})
@@ -275,10 +275,20 @@ class AgentRuntime:
                 text = str(event.payload.get("text") or "")
                 if text:
                     await self._emit(run, "provider_reasoning_delta", {"text": text})
-            elif event.type == "response":
+            elif event.type in {"response", "response_finished"}:
                 response = event.payload.get("response")
                 if isinstance(response, ProviderResponse):
                     final_response = response
+            elif event.type == "provider_error":
+                error = event.payload.get("error")
+                await self._emit(
+                    run,
+                    "provider_error",
+                    {"error": str(error or ""), "payload": dict(event.payload)},
+                )
+                if isinstance(error, BaseException):
+                    raise error
+                raise RuntimeError(str(error or "provider error"))
         if final_response is None:
             return ProviderResponse(content="")
         return final_response

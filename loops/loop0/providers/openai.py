@@ -15,8 +15,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from loops.loop0.profiles import ProviderProfile, ToolProfile
+from loops.loop0.providers.adapter import (
+    ProviderAdapter,
+    ProviderModel,
+    ProviderOptions,
+    register_provider_adapter,
+)
 from loops.loop0.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse, ProviderUsage
 from loops.loop0.types import Message, ToolCall
+
+OPENAI_CHAT_API = "openai-chat"
 
 
 @dataclass
@@ -44,12 +52,72 @@ class OpenAICompatibleProvider(Provider):
         )
 
     async def generate(self, request: ProviderRequest) -> ProviderResponse:
-        payload = self._build_payload(request, stream=False)
-        data = await asyncio.to_thread(self._post_json, payload)
-        return _response_from_openai(data)
+        return await OPENAI_CHAT_ADAPTER.generate(self._provider_model(), request, self._provider_options())
 
     async def stream(self, request: ProviderRequest):
-        payload = self._build_payload(request, stream=True)
+        async for event in OPENAI_CHAT_ADAPTER.stream(self._provider_model(), request, self._provider_options()):
+            yield event
+
+    def _provider_model(self) -> ProviderModel:
+        return ProviderModel(
+            provider=self.name,
+            model=self.model,
+            api=OPENAI_CHAT_API,
+            base_url=self.base_url,
+            capabilities=frozenset({"tool_calling"}),
+            metadata={"disable_verify_ssl": self.disable_verify_ssl},
+        )
+
+    def _provider_options(self) -> ProviderOptions:
+        return ProviderOptions(
+            api_key=self.api_key,
+            timeout_seconds=self.timeout_seconds,
+            disable_verify_ssl=self.disable_verify_ssl,
+            headers=dict(self.headers),
+            reasoning_effort=self.reasoning_effort,
+            extra_body=dict(self.extra_body),
+        )
+
+    def _build_payload(self, request: ProviderRequest, *, stream: bool) -> dict[str, Any]:
+        return OPENAI_CHAT_ADAPTER.build_payload(
+            self._provider_model(),
+            request,
+            self._provider_options(),
+            stream=stream,
+        )
+
+    def _post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return OPENAI_CHAT_ADAPTER._post_json(self._provider_model(), self._provider_options(), payload)
+
+    def _stream_json(self, payload: dict[str, Any], *, on_event) -> ProviderResponse:
+        return OPENAI_CHAT_ADAPTER._stream_json(
+            self._provider_model(),
+            self._provider_options(),
+            payload,
+            on_event=on_event,
+        )
+
+    def _open_request(self, payload: dict[str, Any]):
+        return OPENAI_CHAT_ADAPTER._open_request(self._provider_model(), self._provider_options(), payload)
+
+
+class OpenAIChatAdapter(ProviderAdapter):
+    """Adapter for OpenAI-compatible `/chat/completions` APIs."""
+
+    api = OPENAI_CHAT_API
+
+    async def generate(
+        self,
+        model: ProviderModel,
+        request: ProviderRequest,
+        options: ProviderOptions,
+    ) -> ProviderResponse:
+        payload = self.build_payload(model, request, options, stream=False)
+        data = await asyncio.to_thread(self._post_json, model, options, payload)
+        return _response_from_openai(data)
+
+    async def stream(self, model: ProviderModel, request: ProviderRequest, options: ProviderOptions):
+        payload = self.build_payload(model, request, options, stream=True)
         queue: asyncio.Queue[ProviderEvent | BaseException | None] = asyncio.Queue()
 
         def on_event(event: ProviderEvent) -> None:
@@ -57,10 +125,10 @@ class OpenAICompatibleProvider(Provider):
 
         def worker() -> None:
             try:
-                response = self._stream_json(payload, on_event=on_event)
+                response = self._stream_json(model, options, payload, on_event=on_event)
                 loop.call_soon_threadsafe(
                     queue.put_nowait,
-                    ProviderEvent(type="response", payload={"response": response}),
+                    ProviderEvent(type="response_finished", payload={"response": response}),
                 )
             except BaseException as exc:
                 loop.call_soon_threadsafe(queue.put_nowait, exc)
@@ -78,9 +146,16 @@ class OpenAICompatibleProvider(Provider):
                 raise item
             yield item
 
-    def _build_payload(self, request: ProviderRequest, *, stream: bool) -> dict[str, Any]:
+    def build_payload(
+        self,
+        model: ProviderModel,
+        request: ProviderRequest,
+        options: ProviderOptions,
+        *,
+        stream: bool,
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": model.model,
             "messages": [_message_to_openai(message) for message in request.messages],
             "tools": [_tool_to_openai(tool) for tool in request.tools],
         }
@@ -90,24 +165,31 @@ class OpenAICompatibleProvider(Provider):
             payload["parallel_tool_calls"] = bool(request.parallel_tool_calls)
         if stream:
             payload["stream"] = True
-        if self.reasoning_effort:
-            payload["reasoning_effort"] = self.reasoning_effort
-        if self.extra_body:
-            payload.update(self.extra_body)
+        if options.reasoning_effort:
+            payload["reasoning_effort"] = options.reasoning_effort
+        if options.extra_body:
+            payload.update(options.extra_body)
         return payload
 
-    def _post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
-        with self._open_request(payload) as response:
+    def _post_json(self, model: ProviderModel, options: ProviderOptions, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._open_request(model, options, payload) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    def _stream_json(self, payload: dict[str, Any], *, on_event) -> ProviderResponse:
+    def _stream_json(
+        self,
+        model: ProviderModel,
+        options: ProviderOptions,
+        payload: dict[str, Any],
+        *,
+        on_event,
+    ) -> ProviderResponse:
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
         tool_call_chunks: dict[int, dict[str, Any]] = {}
         finish_reason = ""
         raw_chunks: list[dict[str, Any]] = []
 
-        with self._open_request(payload) as response:
+        with self._open_request(model, options, payload) as response:
             for raw_line in response:
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line or line.startswith(":"):
@@ -128,7 +210,7 @@ class OpenAICompatibleProvider(Provider):
                 text = str(delta.get("content") or "")
                 if text:
                     content_parts.append(text)
-                    on_event(ProviderEvent(type="delta", payload={"text": text}))
+                    on_event(ProviderEvent(type="text_delta", payload={"text": text}))
                 reasoning = str(delta.get("reasoning_content") or "")
                 if reasoning:
                     reasoning_parts.append(reasoning)
@@ -146,22 +228,22 @@ class OpenAICompatibleProvider(Provider):
             raw={"chunks": raw_chunks},
         )
 
-    def _open_request(self, payload: dict[str, Any]):
-        endpoint = self.base_url.rstrip("/") + "/chat/completions"
+    def _open_request(self, model: ProviderModel, options: ProviderOptions, payload: dict[str, Any]):
+        endpoint = model.base_url.rstrip("/") + "/chat/completions"
         body = json.dumps(payload).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-            **self.headers,
+            "Authorization": f"Bearer {options.api_key}",
+            **options.headers,
         }
         request = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
         context = None
-        if self.disable_verify_ssl:
+        if options.disable_verify_ssl:
             context = ssl.create_default_context()
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
         try:
-            return urllib.request.urlopen(request, timeout=self.timeout_seconds, context=context)
+            return urllib.request.urlopen(request, timeout=options.timeout_seconds, context=context)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(
@@ -294,3 +376,7 @@ def _compact_error_body(body: str, *, limit: int = 2000) -> str:
     if len(text) > limit:
         return text[:limit].rstrip() + "... [truncated]"
     return text
+
+
+OPENAI_CHAT_ADAPTER = OpenAIChatAdapter()
+register_provider_adapter(OPENAI_CHAT_ADAPTER)
