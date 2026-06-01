@@ -38,6 +38,7 @@
 - 已新增 Rust `Component` / `Contribution` / `RunContext`，支持组件贡献 prompt blocks/tools 并观察 runtime events。
 - 已补齐 Rust OpenAI-compatible streaming tool call delta folding。
 - 已补齐 Rust shell 参数别名、结构化输出、安全拦截、外部路径策略和 background session 基础操作。
+- 已扩展 Rust `loops-loop0` CLI flags，覆盖 provider、agent、policy、interaction、output 的主要配置面。
 - 阶段 2 剩余重点：端到端 CLI 覆盖与更细的 shell 审批 host 接口。
 
 ## 阶段 3：替换 Python CLI 和包入口
