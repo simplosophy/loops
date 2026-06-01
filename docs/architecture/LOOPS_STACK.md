@@ -49,7 +49,7 @@ UserInput + AgentSpec + AgentState
 
 `loop0` 可以被 CLI、测试、loop1 container 或其他 embedding host 调用，但它不负责这些 host 的 channel 协议。
 
-当前代码中已有 `Channel` protocol，用于表达交互性、streaming 偏好和事件输出。三层架构落地时，应把 TUI、WebUI、IM、Scheduler 等业务 channel 上移到 loop1；loop0 只保留最小流式 IO / event sink / compatibility adapter，避免 runtime 内核依赖具体交互渠道。
+当前代码已移除 loop0 内的 `Channel` protocol。TUI、WebUI、IM、Scheduler 等业务 channel 上移到 loop1；loop0 只保留 `InteractionContext`、显式 `stream` 参数和最小 `EventSink`，避免 runtime 内核依赖具体交互渠道。
 
 ### 负责
 
@@ -250,6 +250,7 @@ loops/
   loop0/
     agent.py
     runtime.py
+    io.py
     prompt.py
     policy.py
     state.py
@@ -287,17 +288,17 @@ loops/
 
 建议按以下顺序落地：
 
-1. 已完成：将当前单 Agent runtime 收敛为 `loops/loop0/`，保持顶层 API 兼容。
-2. 引入 loop1 的协议对象：`ChannelMessage`、`ChannelOutput`、`SessionState`、`Storage`、`LoopContainer`。
-3. 用内存 storage 和 TUI channel 实现最小 loop1，支持单用户多 Agent。
-4. 增加 WebUI/IM channel 和持久化 storage adapter。
-5. 引入 loop2 的 project/runtime 协议，但先只做控制面和 project state，不直接做复杂调度。
-6. 在 loop2 上增加跨用户 task/handoff/shared artifact 协作。
+1. 已完成：将当前单 Agent runtime 收敛为 `loops/loop0/`。
+2. 已完成：移除 loop0 channel 层，改为 `InteractionContext` + `EventSink`。
+3. 引入 loop1 的协议对象：`ChannelMessage`、`ChannelOutput`、`SessionState`、`Storage`、`LoopContainer`。
+4. 用内存 storage 和 TUI channel 实现最小 loop1，支持单用户多 Agent。
+5. 增加 WebUI/IM channel 和持久化 storage adapter。
+6. 引入 loop2 的 project/runtime 协议，但先只做控制面和 project state，不直接做复杂调度。
+7. 在 loop2 上增加跨用户 task/handoff/shared artifact 协作。
 
 ## 待确认问题
 
 - loop1 的 multi-agent 第一版是只做 router，还是要包含 planner/task graph。
-- loop0 的 `Channel` 现有概念是否降级为 compatibility adapter，目标上移到 loop1。
 - `AgentState` 持久化 adapter 是放在 loop0 interface 还是完全由 loop1 storage 包装。
 - loop2 的 project shared memory 是否允许被 loop1 自动注入 prompt，还是必须由用户/策略显式授权。
 - 跨用户 handoff 的最小协议字段和审批流程。

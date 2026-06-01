@@ -36,7 +36,7 @@ class UserInput:
     text: str
     attachments: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
-    channel_context: Any | None = None
+    interaction_context: Any | None = None
 
     @classmethod
     def coerce(cls, value: str | "UserInput") -> "UserInput":

@@ -1,171 +1,115 @@
-# loops Architecture Overview
+# loop0 Architecture Overview
 
-loops 的目标架构分为 `loop0`、`loop1`、`loop2` 三层。三层整体边界、状态和扩展点见 [LOOPS_STACK.md](LOOPS_STACK.md)。
+本文定义 `loops.loop0` 的当前目标架构。`loop0` 是单个 Agent 的运行时内核，只负责一次 Agent run 的执行；`loop1` 才负责 TUI、WebUI、IM、scheduler 等 channel 协议，`loop2` 负责组织级项目协作和云端运行时编排。
 
-本文主要描述当前单 Agent runtime 内核，也就是目标架构中的 `loop0`：一个稳定、可组合、可扩展的运行时内核。
+## 设计边界
 
-核心只内置一个工具能力：`shell`。skills、MCP、memory、业务 channel、知识库、审批系统等都应通过 component 或外部集成扩展进来。
-
-## 设计目标
-
-loops 的第一性原理是把 Agent 拆成四类正交问题：
-
-- 模型如何被调用：`Provider`
-- 能力如何被暴露给模型：`Tool`
-- 用户或系统如何与 Agent 交互：`Channel`
-- 一次输入如何经过 prompt、模型、工具和状态提交形成结果：`Runtime`
-
-核心 runtime 只负责协调这些对象，不承载具体业务能力。
-
-## 非目标
-
-当前核心刻意不做以下事情：
-
-- 不内置 skills、MCP、memory backend、知识库、向量检索等高阶能力。
-- 不把 Lark、定时任务、WebSocket、HTTP API 等业务通道写死进 runtime。
-- 不把 provider 绑定到某一个云厂商或某一个模型协议。
-- 不把复杂权限、审计、审批系统做成核心强依赖。
-- 不默认开启有副作用工具的并行执行。
-
-这些能力都可以在边界明确的组件层扩展。
-
-## 总体结构
+`loop0` 的职责是把一次输入变成一次可观测、可提交状态的 Agent run：
 
 ```text
-User/System
-    |
-    v
-Channel ---- UserInput ----+
-                           |
-                           v
-                      AgentRuntime
-                           |
-        +------------------+------------------+
-        |                  |                  |
-        v                  v                  v
- PromptRenderer       Provider          ToolRegistry
-        |                  |                  |
-        v                  v                  v
- PromptRenderContext  ProviderResponse  ToolResult
-                           |
-                           v
-                      AgentState
-                           |
-                           v
-                      AgentResult
+UserInput + AgentSpec + AgentState
+  -> AgentRuntime
+  -> AgentEvent* + AgentResult
 ```
 
-核心对象关系：
+`loop0` 不拥有用户、channel、session、storage backend、项目空间或组织协作语义。embedding host 可以是 CLI、测试、loop1 container 或其他服务，但 host 只能通过显式输入、事件输出和状态接口嵌入 loop0。
+
+## 核心原则
+
+- 极简：核心只内置一个默认 tool：`shell`。skills、MCP、memory backend、业务系统连接都通过 component、tool、provider 或上层容器扩展。
+- 正交：provider 只负责模型，tool 只负责可调用能力，prompt 只负责上下文组装，runtime 只负责执行循环和事件。
+- 分层：loop0 不能 import 或感知 loop1/loop2。跨层通信通过 `UserInput`、`InteractionContext`、`EventSink`、`AgentEvent` 和 `AgentResult`。
+- Fail Fast：spec 校验、provider/tool 错误、policy 拒绝应快速暴露，不在 runtime 内长时间阻塞。
+- 约定优先：默认 state、workspace、shell tool 和 prompt renderer 可直接使用，高级 host 再按需注入替代实现。
+
+## 运行时模型
 
 ```text
-Agent
-  - spec: AgentSpec
-  - state: AgentState
-  - runtime: AgentRuntime
-  - logger: EventLogger
-
 AgentSpec
-  - prompt: PromptTemplate
-  - provider: Provider
-  - tools: tuple[BaseTool, ...]
-  - channels: tuple[Channel, ...]
-  - components: tuple[Component, ...]
-  - policy: AgentPolicy
-  - metadata: dict
-  - logger: LoggerLike
+  prompt: PromptTemplate
+  provider: Provider
+  tools: tuple[BaseTool, ...]
+  components: tuple[Component, ...]
+  policy: AgentPolicy
+  metadata: dict
+  logger: EventLogger
+
+Agent
+  spec: AgentSpec
+  state: AgentState
+  runtime: AgentRuntime
+
+Run
+  run_id
+  thread_id
+  input: UserInput
+  interaction: InteractionContext
+  event_sink: EventSink
+  stream: bool
+  messages
+  tool_registry
+  contributions
+  events
+  pending_state_messages
 ```
 
-## 领域模型
+`AgentSpec` 是 Agent 的不可变定义。`AgentState` 是长生命周期状态。`Run` 是单次执行态，只在一次 `Agent.run()` 内存在。
 
-### AgentSpec
+## Public API
 
-`AgentSpec` 是 Agent 的不可变定义，描述这个 Agent 有什么 prompt、provider、tools、channels、components、policy 和 metadata。
+```python
+result = await agent0.run(
+    "inspect the workspace",
+    thread_id="default",
+    event_sink=sink,
+    stream=True,
+)
+```
 
-关键属性：
+`Agent.run()` 的核心参数：
 
-- `prompt`: `PromptTemplate`，必须非空。
-- `provider`: 模型适配器，必须存在。
-- `tools`: 初始工具集合。通过 `agent(..., tools=None)` 创建时默认注入 `ShellTool()`。
-- `channels`: 可用交互通道。未指定时 runtime 默认使用 `ConsoleChannel()`。
-- `components`: 扩展单元，运行时按 run 贡献 prompt block、tool 等。
-- `policy`: 控制最大轮数、工具错误、并发工具、shell 安全策略、审批等。
-- `logger`: runtime event sink，可传标准库 logger、callable 或 loops `EventLogger`。
+- `input`: `str | UserInput`，一次运行的用户输入。
+- `thread_id`: 可选 thread 选择器，优先级高于 `InteractionContext.thread_id`。
+- `event_sink`: 可选事件输出端，实现 `async send(AgentEvent)` 或传入 callback。
+- `stream`: 是否请求 provider streaming，并向 `event_sink` 发送 `provider_delta`。
 
-关键行为：
+`Agent.stream()` 是便利 API：它以 `stream=True` 执行一次 run，并回放该 run 的事件。
 
-- `validate()`: 校验 prompt/provider/tool name 唯一性。
-- `fork()`: 基于当前 spec 派生新 spec。
-- `compile()`: 编译成长生命周期 `Agent`。
+## UserInput 与 InteractionContext
 
-### Agent
+`UserInput` 只描述输入内容和输入附带的元信息：
 
-`Agent` 是长生命周期对象。它持有 `AgentSpec`、`AgentState`、workspace 和 `AgentRuntime`。
+```python
+UserInput(
+    text="hello",
+    attachments=[],
+    metadata={},
+    interaction_context=InteractionContext(source="console", session_id="s1"),
+)
+```
 
-关键行为：
+`InteractionContext` 是 loop0 接收的最小交互上下文，不是 channel：
 
-- `run(input, thread_id=None, channel=None)`: 执行一次输入。
-- `stream(input, ...)`: 当前是基于事件列表的便捷接口。
-- `attach(...)`: 在共享 state/workspace 的基础上附加 tool/channel/component。
-- `fork(...)`: 基于 state snapshot 派生新 Agent。
-- `close()`: 触发 component teardown。
+- `source`: 输入来源名称，例如 `direct`、`console`、`web`、`im`、`scheduled`。
+- `session_id`: 上层 session id，可用于默认 thread 选择。
+- `thread_id`: 目标 Agent thread。
+- `actor_id`: 上层用户或系统 actor 标识。
+- `reply_to`: 上层消息 id 或回包目标。
+- `audience`: `user`、`group` 或 `system`。
+- `interactive`: 这次输入是否允许交互式追问或审批。
+- `stream`: 当前 run 是否请求 streaming。
+- `locale`: 语言区域。
+- `raw`: 上层保留的原始协议字段。
 
-### AgentRuntime
+loop0 可以把这些字段注入 prompt，也可以把它们写入事件 payload，但不能根据具体 channel 类型分支。
 
-`AgentRuntime` 是唯一的主循环拥有者，负责：
+## Prompt Context
 
-- setup components
-- 解析 active channel 和 thread id
-- 构造 `Run`
-- 准备 prompt context
-- 调用 provider
-- 执行 tool calls
-- 发送 channel events
-- 记录 logger events
-- 提交 state
-- 返回 `AgentResult`
-
-runtime 不应该直接实现业务能力。业务能力应在 `Provider`、`Tool`、`Channel` 或 `Component` 中实现。
-
-### Run
-
-`Run` 表示一次输入在 runtime 中的执行上下文。
-
-关键属性：
-
-- `run_id`: 一次执行的唯一 id。
-- `thread_id`: 对话线程 id，用于读取和提交 history。
-- `input`: `UserInput`。
-- `channel`: 当前交互通道。
-- `messages`: 本轮 provider 请求消息。
-- `tool_registry`: 本轮可用工具集合。
-- `contributions`: component 贡献结果。
-- `prompt_context`: 渲染 prompt 时使用的结构化上下文。
-- `pending_state_messages`: 本轮结束后要提交进 `AgentState` 的消息。
-- `events`: 本轮产生的结构化事件。
-
-### AgentState
-
-`AgentState` 是 Agent 的长生命周期状态。
-
-当前包含：
-
-- `threads`: 每个 thread 的 history。
-- `memories`: 一个最小内存记录模型。
-- `artifacts`: 运行时产物索引。
-- `component_state`: component 的私有状态空间。
-- `checkpoints`: 预留 checkpoint 存储。
-
-当前实现是内存态。持久化、外部 memory backend、压缩策略应通过 component 或后续 state adapter 扩展。
-
-### PromptTemplate
-
-`PromptTemplate` 包含 `system` 和 `user` 两个 Jinja2 模板。
-
-模板输入是结构化 `PromptRenderContext`，包含：
+Prompt 使用 Jinja2 渲染，模板可以访问稳定的结构化上下文：
 
 - `agent`
 - `provider`
-- `channel`
+- `interaction`
 - `tools`
 - `components`
 - `state`
@@ -177,7 +121,8 @@ runtime 不应该直接实现业务能力。业务能力应在 `Provider`、`Too
 
 ```jinja2
 You are {{ agent.name }}.
-Channel: {{ channel.profile.name }}
+Input source: {{ interaction.source }}
+Streaming: {{ interaction.stream | json }}
 
 Available tools:
 {% for tool in tools %}
@@ -185,53 +130,74 @@ Available tools:
 {% endfor %}
 ```
 
-设计约束：
+prompt 层不应依赖上层 channel 对象。需要上层协议信息时，由 loop1 映射成 `InteractionContext` 或 `UserInput.metadata`。
 
-- 模板引擎使用 Jinja2，不自研变量解析和控制流。
-- prompt 只能从 profile/context 注入信息，不应直接访问 runtime 内部对象。
-- component 只通过 `Contribution.prompt_blocks` 注入额外 prompt 内容。
+## EventSink
 
-### Provider
-
-`Provider` 是 runtime-facing 的模型后端 facade。具体 API 协议转换由 `ProviderAdapter` 负责；`Provider` 负责向 runtime 暴露 profile，并把 `ProviderRequest` 转发给 adapter。
-
-接口：
-
-- `generate(request: ProviderRequest) -> ProviderResponse`
-- `stream(request: ProviderRequest) -> AsyncIterator[ProviderEvent]`
-
-Adapter 层核心对象：
-
-- `ProviderModel`: 描述 provider、model、api、base_url、capabilities、compat 和 metadata。
-- `ProviderOptions`: 描述 api_key、headers、timeout、reasoning_effort、extra_body 等运行选项。
-- `ProviderAdapter`: 按协议实现转换，例如 `openai-chat`、后续 `openai-responses`、`anthropic-messages`。
-- `AdapterBackedProvider`: 把 `ProviderModel`、`ProviderOptions` 和 `ProviderAdapter` 组合成 runtime 可调用的 `Provider`。
-
-`ProviderRequest` 关键字段：
-
-- `messages`: provider-neutral 消息列表。
-- `tools`: `ToolProfile` 列表。
-- `stream`: 当前 channel 是否要求流式输出。
-- `parallel_tool_calls`: 是否提示 provider 允许一次返回多个并行 tool call。
-- `metadata`: run/thread 等 runtime 元数据。
-
-`OpenAICompatibleProvider` 是兼容 wrapper，内部使用 `OpenAIChatAdapter`。它会把 `ProviderRequest` 转成 `/chat/completions` payload，并在有 tools 且 `parallel_tool_calls` 不为 `None` 时传递 `parallel_tool_calls`。
-
-### Tool
-
-`Tool` 是模型可调用能力。
-
-核心协议：
+`EventSink` 是 loop0 的最小输出端口：
 
 ```python
-class BaseTool:
-    profile: ToolProfile
-
-    async def execute(self, ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
+class EventSink(Protocol):
+    async def send(self, event: AgentEvent) -> None:
         ...
 ```
 
-`ToolProfile` 是 prompt 和 provider 暴露工具时的稳定描述，包含：
+内置实现：
+
+- `NullEventSink`: 默认 sink，丢弃事件。
+- `InMemoryEventSink`: 收集事件，适合测试和 embedding。
+- `CallableEventSink`: 包装 sync/async callback。
+
+runtime 对所有事件执行同一条路径：
+
+```text
+emit AgentEvent
+  -> append run.events
+  -> EventLogger.log_event
+  -> EventSink.send
+  -> Component.handle_event
+```
+
+`EventSink` 不做 channel 协议、ack、retry、message id 映射或 UI 格式化。这些都属于 loop1。
+
+## Provider
+
+`Provider` 是模型后端接口：
+
+```python
+async def generate(request: ProviderRequest) -> ProviderResponse
+async def stream(request: ProviderRequest) -> AsyncIterator[ProviderEvent]
+```
+
+`ProviderRequest` 包含：
+
+- `messages`
+- `tools`
+- `stream`
+- `parallel_tool_calls`
+- `metadata`
+
+`ProviderResponse` 包含：
+
+- `content`
+- `tool_calls`
+- `usage`
+- `stop_reason`
+- `message_metadata`
+- `raw`
+
+Provider adapter 层把不同模型 API 统一成 loop0 的 provider 协议：
+
+- `ProviderModel`: provider、model、api、capabilities、limits、metadata。
+- `ProviderOptions`: api_key、base_url、headers、timeout、metadata。
+- `ProviderAdapter`: 具体 API 协议适配器。
+- `AdapterBackedProvider`: loop0 runtime 使用的 provider 包装。
+
+OpenAI-compatible API 由 `OpenAIChatAdapter` 实现，`OpenAICompatibleProvider` 是便利用法。
+
+## Tool
+
+`Tool` 是模型可调用能力。每个 tool 必须提供 `ToolProfile`：
 
 - `name`
 - `description`
@@ -242,394 +208,167 @@ class BaseTool:
 - `requires_approval`
 - `metadata`
 
-`ToolContext` 包含：
+runtime 只通过 `ToolRegistry` 找到 tool 并调用：
 
-- `agent_id`
-- `run_id`
-- `workspace`
-- `policy`
-- `state`
-- `emit`
-- `metadata`
+```python
+await tool.execute(ctx, args)
+```
 
-设计约束：
+`ToolContext` 提供 run_id、workspace、policy、state、metadata 和 `emit` callback。tool 可以发出自定义 `AgentEvent`，但不能直接依赖 channel、session 或 loop1 storage。
 
-- 工具负责自己的参数解释和副作用执行。
-- runtime 只负责调用、事件、错误包装、并发调度和结果回填。
-- tool output 必须通过 `ToolResult` 返回，避免直接写 provider message。
+## Component
 
-### ShellTool
-
-`shell` 是核心唯一内置工具。
-
-支持操作：
-
-- `run`
-- `list`
-- `poll`
-- `log`
-- `write`
-- `kill`
-
-`run` 接受两种输入形态：
-
-- `command`: 单条 shell 命令，保持最小兼容路径。
-- `commands`: 多条 shell 命令，按顺序执行，遇到非零退出码、timeout 或取消立即停止。
-
-为了兼容常见 shell tool 调用形态，`run` 同时接受：
-
-- `timeout_seconds` 或 `timeout_ms`
-- `max_output_chars` 或 `max_output_length`
-- `cwd` / `working_directory`
-- `env`
-
-foreground `run` 内部把每条命令规范化成结构化输出：
-
-- `command`
-- `stdout`
-- `stderr`
-- `status`
-- `outcome`
-
-工具返回给模型的 `output` 仍是可读文本，结构化结果写入 `ToolResult.metadata["outputs"]`。单条成功命令继续返回裸 stdout；多条命令会带 `$ command` 前缀，便于模型区分不同命令的输出。
-
-安全策略由 `AgentPolicy` 控制：
-
-- `shell_timeout_seconds`
-- `shell_max_output_chars`
-- `shell_require_approval_for_background`
-- `shell_external_path_policy`
-- `approval_handler`
-
-默认 shell policy 保守处理外部路径和后台任务。`background=True` 可以启动 shell session，但这不同于 runtime 的 tool call 并行调度。
-
-### Channel
-
-`Channel` 是 Agent 与外部世界交互的 I/O 端口。
-
-接口：
-
-- `receive() -> AsyncIterator[UserInput]`
-- `send(event: AgentEvent) -> None`
-- `default_context() -> ChannelContext`
-
-`ChannelProfile` 描述通道能力：
-
-- `interactive`
-- `duplex`: `half` 或 `full`
-- `output_mode`: `stream`、`message`、`update`、`none`
-- `supports_interrupt`
-- `supports_questions`
-- `supports_approval`
-- `supports_attachments`
-- `delivery`
-- `metadata`
-
-典型通道：
-
-- `ConsoleChannel`: 交互式、半双工、支持 streaming，默认 channel。
-- `TuiChannel`: 基础 TUI profile，目前是 in-memory 行为。
-- `LarkChannel`: 交互式、全双工、不支持 token streaming，适合聚合成消息。
-- `ScheduledChannel`: 非交互式触发通道。
-
-Channel 决定事件如何展示。比如 `ConsoleChannel` 会立即打印 `provider_delta`，并友好打印 tool call 的参数、状态、耗时和输出摘要。
-
-### Component
-
-`Component` 是扩展单元，不替代主循环。
-
-生命周期：
+`Component` 是 loop0 的组合扩展点：
 
 - `setup(agent)`
 - `contribute(run_context) -> Contribution`
 - `handle_event(event)`
 - `teardown()`
 
-`Contribution` 可以贡献：
+`Contribution` 当前可以贡献：
 
 - `prompt_blocks`
 - `tools`
-- `channels`
-- `hooks`
-- `state_adapters`
 - `metadata`
 
-当前 runtime 已使用 `prompt_blocks` 和 `tools`。其他字段是架构预留，后续扩展时应保持向后兼容。
+component 可以观察事件、注入工具、注入 prompt block，但不拥有 runtime 主循环。
 
-适合通过 component 扩展的能力：
+## AgentPolicy
 
-- skills
-- MCP tool discovery
-- memory backend
-- domain tools
-- audit hook
-- channel bridge
-- policy adapter
+`AgentPolicy` 管理单 run 的执行约束：
 
-### Logger
+- `max_turns`
+- `allow_tool_errors`
+- `approval_handler`
+- `parallel_tool_calls`
+- `max_parallel_tool_calls`
+- `metadata`
 
-Logger 是 runtime event 的旁路观察者。
+审批函数属于 policy，但真正的用户交互通道属于上层 host。loop0 只调用 handler 并处理允许/拒绝结果。
 
-支持传入：
+## State
 
-- `logging.Logger`
-- `Callable[[AgentEvent], None]`
-- 实现 `EventLogger.log_event(event)` 的对象
-- `None`
+`AgentState` 维护单 Agent 的状态模型：
 
-内置：
+- threads/history
+- memories
+- artifacts
+- component_state
+- checkpoints
 
-- `NoopEventLogger`
-- `StdlibEventLogger`
-- `InMemoryEventLogger`
-- `get_logger(...)`
+runtime 只在 run 成功结束后提交 pending messages。持久化 backend 不在 loop0 内硬编码；loop1 后续可以通过 state adapter 或 agent factory 注入持久化状态。
 
-Runtime 会在 `_emit_event_object` 中先记录 event，再发送给 channel 和 component。logger 失败不会影响主流程。
+## Streaming
 
-## Runtime 执行流程
-
-一次 `Agent.run(...)` 的执行流程：
+Streaming 由 `Agent.run(stream=True)` 显式请求，而不是由 channel profile 隐式决定。
 
 ```text
-Agent.run(input)
-  -> UserInput.coerce
-  -> AgentRuntime.run
-     -> ensure component setup
-     -> resolve channel
-     -> resolve thread_id
-     -> create Run
-     -> prepare Run
-        -> register spec tools
-        -> collect component contributions
-        -> build PromptRenderContext
-        -> render system/user prompt
-        -> load history
-        -> build provider messages
-     -> emit run_started
-     -> provider/tool loop
-        -> emit provider_started
-        -> Provider.generate or Provider.stream
-        -> emit provider_delta events when streaming
-        -> emit provider_finished
-        -> if no tool calls: finish
-        -> append assistant tool-call message
-        -> execute tool calls
-        -> append tool messages in original tool_call order
-        -> next provider turn
-     -> commit state
-     -> emit run_finished
-     -> return AgentResult
+stream=True
+  -> ProviderRequest.stream=True
+  -> provider.stream(...)
+  -> provider_delta events
+  -> EventSink.send(...)
 ```
 
-失败路径：
+如果 `stream=False`，runtime 调用 `provider.generate(...)`，不会生成 `provider_delta`。上层如果需要把 token 流变成 IM 消息聚合、WebSocket 推送或 TUI 输出，应在 loop1 的 channel adapter 中处理。
+
+## Logging
+
+`EventLogger` 是观测接口，和 `EventSink` 分离：
+
+- logger 面向日志、trace、调试；
+- sink 面向 embedding host 的运行事件消费。
+
+logger 失败不会中断主流程。event sink 失败会快速暴露，因为 sink 是 host 接入 loop0 的显式 IO 边界。
+
+## loop0 不包含 Channel
+
+明确删除 loop0 channel 层：
+
+- 没有 `Channel` protocol。
+- 没有 `ChannelProfile` / `ChannelContext`。
+- 没有 `ConsoleChannel` / `TuiChannel` / `LarkChannel` / `ScheduledChannel`。
+- 没有顶层 `loops.channels` 兼容入口。
+
+原因：
+
+- channel 需要 session、连接状态、消息确认、重试、外部 message id、用户身份和 storage，这些都是 loop1 状态。
+- runtime 只需要知道本次 run 是否 streaming，以及把事件交给谁。
+- prompt 只需要稳定的 `interaction` 视图，不应感知具体 channel 实现。
+
+loop1 后续可以定义：
 
 ```text
-Exception
-  -> emit run_failed
-  -> logger/channel/components see event
-  -> exception is re-raised
+ChannelMessage -> Session -> Agent.run(..., event_sink=...)
+AgentEvent -> ChannelOutput
 ```
 
-## Provider Streaming
+## 目录结构
 
-Streaming 由 channel 决定：
-
-```python
-stream = run.channel.profile.output_mode == "stream"
-```
-
-当 `stream=True`：
-
-- runtime 调用 `provider.stream(request)`
-- provider 产生 `ProviderEvent(type="text_delta")`，旧 `delta` 事件仍兼容
-- runtime 转成 `AgentEvent(type="provider_delta")`
-- `ConsoleChannel` 等 stream channel 立即输出
-- 最终 provider 必须给出 `ProviderEvent(type="response_finished")`，旧 `response` 事件仍兼容，用于工具调用和最终结果
-
-当 channel 不是 stream 输出模式时，`provider_delta` 不会发送到 channel。
-
-## Tool 并发模型
-
-loops 区分两个并发控制：
-
-### Provider hint
-
-`AgentPolicy.parallel_tool_calls` 会写入 `ProviderRequest.parallel_tool_calls`。
-
-OpenAI-compatible provider 会把它序列化成 API payload 的 `parallel_tool_calls` 字段。
-
-含义：告诉模型是否允许在一个 turn 中返回多个 tool call。
-
-### Runtime concurrency
-
-`AgentPolicy.max_parallel_tool_calls` 控制本地 runtime 是否并发执行同一轮的多个 tool call。
-
-- 默认值是 `1`，即串行执行。
-- 设置为大于 `1` 时，用 asyncio task 并发执行。
-- 设置为 `None` 时，不限制并发数量。
-
-并发执行时，事件可能按实际完成顺序产生，但 tool message 会按 provider 返回的原始 `tool_calls` 顺序 append 回 `run.messages`。
-
-这个顺序稳定性很重要。模型下一轮看到的上下文必须和它发出的 tool call 顺序对应。
-
-示例：
-
-```python
-AgentPolicy(
-    parallel_tool_calls=True,
-    max_parallel_tool_calls=4,
-)
-```
-
-设计约束：
-
-- 默认不并发，避免 shell 和其他有副作用工具产生非预期竞态。
-- 后续可以在 `ToolProfile.metadata` 或 policy 中进一步声明 per-tool concurrency safety。
-- 对文件系统、进程、网络等副作用工具，并发应由 host 明确开启。
-
-## Event 模型
-
-`AgentEvent` 是 runtime、channel、component、logger 之间的统一事件。
-
-当前关键事件：
-
-- `run_started`
-- `run_finished`
-- `run_failed`
-- `provider_started`
-- `provider_delta`
-- `provider_reasoning_delta`
-- `provider_finished`
-- `tool_started`
-- `tool_finished`
-
-事件传播顺序：
+当前 loop0 目录：
 
 ```text
-runtime emits event
-  -> append run.events
-  -> logger.log_event(event)
-  -> channel.send(event)
-  -> component.handle_event(event)
+loops/loop0/
+  agent.py
+  runtime.py
+  io.py
+  prompt.py
+  profiles.py
+  policy.py
+  state.py
+  events.py
+  logging.py
+  types.py
+  providers/
+  tools/
+  components/
 ```
 
-其中 channel 可能根据 profile 过滤事件，例如非 stream channel 不接收 `provider_delta`。
+各文件职责：
 
-## State 提交模型
+- `agent.py`: public Agent / AgentSpec / factory。
+- `runtime.py`: provider/tool 主循环和 run 生命周期。
+- `io.py`: `EventSink`、`NullEventSink`、`InMemoryEventSink`、callback adapter。
+- `prompt.py`: prompt template、render context 和 renderer。
+- `profiles.py`: prompt 可注入的稳定 profile/view 对象。
+- `policy.py`: 执行策略和审批请求。
+- `state.py`: 单 Agent 状态。
+- `events.py`: `AgentEvent`。
+- `logging.py`: event logger。
+- `types.py`: provider-neutral message、tool call、user input。
+- `providers/`: provider 协议和 adapter。
+- `tools/`: tool 协议和内置 shell tool。
+- `components/`: component 协议。
 
-runtime 使用 `pending_state_messages` 暂存本轮要提交的消息。
+## 扩展规则
 
-正常完成时提交：
+新增 provider：
 
-- user message
-- assistant final message
+- 实现 `Provider`，或实现 `ProviderAdapter` 后用 `AdapterBackedProvider`。
+- 将 provider 能力写进 `ProviderProfile.capabilities`。
+- 不在 runtime 中写 provider 特判。
 
-工具调用中间消息用于 provider loop，不直接提交到长期 thread history。这样 history 保持用户输入和最终 assistant 输出为主，避免无限膨胀。
+新增 tool：
 
-后续如果需要完整 trace 或 tool transcript，应通过 logger/event store/component 扩展，而不是把所有 runtime 中间消息塞进 thread history。
+- 实现 `BaseTool.execute`。
+- 提供准确的 `ToolProfile` 和 JSON schema。
+- 高风险能力通过 `AgentPolicy.approval_handler` 请求审批。
 
-## 扩展边界
+新增 prompt 能力：
 
-### 增加新 Provider
+- 优先通过 `PromptRenderContext` 中已有 profile/view 暴露。
+- 新字段必须是稳定抽象，不能泄漏上层 channel/session 对象。
 
-新增协议 adapter 时优先实现：
+新增外部输入输出：
 
-- `ProviderAdapter.api`
-- `ProviderAdapter.stream(model, request, options)`
-- 可选覆写 `ProviderAdapter.generate(model, request, options)`
+- 不放进 loop0。
+- 在 loop1 中实现 channel/session/storage。
+- 把输入映射为 `UserInput + InteractionContext`。
+- 把输出映射为 `EventSink` 或消费 `AgentResult.events`。
 
-如果只需要暴露给 runtime，使用 `AdapterBackedProvider` 组合 `ProviderModel`、`ProviderOptions` 和 adapter。
+## 当前优先级
 
-直接实现 `Provider` 仍然兼容：
-
-- `profile`
-- `generate`
-- 可选 `stream`
-
-Provider/adapter 内部负责协议转换，runtime 只理解 `ProviderRequest`、`ProviderEvent` 和 `ProviderResponse`。
-
-### 增加新 Tool
-
-实现：
-
-- `profile: ToolProfile`
-- `execute(ctx, args) -> ToolResult`
-
-工具应把业务输出写入 `ToolResult.output`，把结构化元数据写入 `ToolResult.metadata`。
-
-### 增加新 Channel
-
-实现：
-
-- `profile: ChannelProfile`
-- `receive`
-- `send`
-
-Channel 的 metadata 应描述自身交互特征，而不是让 runtime 用类型判断行为。
-
-### 增加新 Component
-
-实现：
-
-- `setup`
-- `contribute`
-- `handle_event`
-- `teardown`
-
-Component 是 skills、MCP、memory 等扩展能力的默认入口。
-
-## 当前目录映射
-
-```text
-loops/
-  __init__.py       Stable public SDK surface and loop0 compatibility aliases
-  loop0/
-    agent.py        AgentSpec, Agent, agent factory
-    runtime.py      AgentRuntime, Run, AgentResult
-    prompt.py       PromptTemplate, PromptRenderContext, Jinja2 renderer
-    policy.py       AgentPolicy, ApprovalRequest
-    profiles.py     Profile and prompt-injected view objects
-    state.py        AgentState, MemoryRecord, ThreadState
-    events.py       AgentEvent
-    logging.py      EventLogger adapters and formatting helpers
-    providers/      Provider protocol and OpenAI-compatible adapter
-    tools/          Tool protocol and ShellTool
-    channels/       Compatibility channels until loop1 owns channel protocols
-    components/     Component protocol and Contribution
-examples/
-  start_agent.py    DeepSeek/OpenAI-compatible console example
-tests/
-  test_loops_core.py
-```
-
-## 设计决策记录
-
-### 只内置 shell
-
-shell 是最底层、最通用的 runtime capability。其他能力都可以通过 shell 或 component 演化出来，但不应成为核心强依赖。
-
-### Prompt 使用 Jinja2
-
-模板能力交给成熟库，runtime 只负责构建结构化上下文和注册少量 serialization filter。
-
-### Channel 用 profile 描述能力
-
-runtime 不能硬编码 `LarkChannel`、`ConsoleChannel` 等具体类型。它只根据 `ChannelProfile` 判断 streaming、交互性等行为。
-
-### Logger 是旁路，不影响主流程
-
-logger 用于观测、审计和调试，不能因为日志系统故障阻断 agent run。
-
-### Tool 并发默认关闭
-
-并发工具会改变副作用顺序。默认串行符合最小惊讶原则；需要并发时由 host 显式配置。
-
-## 后续演进方向
-
-- per-tool concurrency safety 声明。
-- 更完整的 hook 生命周期。
-- component 贡献 channels/hooks/state adapters 的 runtime 支持。
-- 持久化 AgentState backend。
-- event store 和可重放 trace。
-- channel 级审批、问题询问和 interrupt 协议。
-- provider capability negotiation。
+1. 继续稳定 loop0 的 provider/tool/prompt/state/io 抽象。
+2. 保持 loop0 API 小而明确，避免重新引入 channel/session/storage。
+3. 后续再启动 loop1：定义 `ChannelMessage`、`ChannelOutput`、`SessionState`、`Storage`、`LoopContainer`。
+4. loop2 在 loop1 稳定后再承接项目空间、跨用户 task/handoff/shared artifact。

@@ -2,8 +2,10 @@
 
 from loops.loop0.agent import Agent, AgentSpec, agent
 from loops.loop0.events import AgentEvent
+from loops.loop0.io import CallableEventSink, EventSink, InMemoryEventSink, NullEventSink
 from loops.loop0.logging import EventLogger, InMemoryEventLogger, StdlibEventLogger, get_logger
 from loops.loop0.policy import AgentPolicy, ApprovalRequest
+from loops.loop0.profiles import InteractionContext
 from loops.loop0.prompt import PromptRenderContext, PromptTemplate
 from loops.loop0.runtime import AgentResult
 from loops.loop0.state import AgentState, MemoryRecord
@@ -17,10 +19,15 @@ __all__ = [
     "AgentSpec",
     "AgentState",
     "ApprovalRequest",
+    "CallableEventSink",
     "EventLogger",
+    "EventSink",
     "InMemoryEventLogger",
+    "InMemoryEventSink",
+    "InteractionContext",
     "MemoryRecord",
     "Message",
+    "NullEventSink",
     "PromptRenderContext",
     "PromptTemplate",
     "StdlibEventLogger",

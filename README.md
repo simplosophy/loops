@@ -9,7 +9,7 @@ AgentSpec + AgentState + AgentRuntime
 ```
 
 The core runtime includes one built-in tool, `shell`. Other capabilities such
-as skills, MCP, memory backends, app-specific channels, and knowledge systems
+as skills, MCP, memory backends, app-specific I/O, and knowledge systems
 are intended to be added as components or integrations.
 
 ## Quick Start
@@ -23,8 +23,9 @@ uv run loops-demo
 
 The sample defaults to `base_url=https://api.deepseek.com`,
 `model=deepseek-v4-pro`, `disable_verify_ssl=false`, the default `shell` tool,
-and the built-in `ConsoleChannel`. With no positional message it starts an
-interactive loop and reuses the same thread id; pass a message to run one turn:
+and a small console loop implemented outside loop0. With no positional message
+it starts an interactive loop and reuses the same thread id; pass a message to
+run one turn:
 
 ```bash
 uv run loops-demo "inspect the workspace"
@@ -42,7 +43,6 @@ Use the SDK directly:
 
 ```python
 from loops import AgentPolicy, PromptTemplate, agent, get_logger
-from loops.loop0.channels import TuiChannel
 from loops.loop0.providers import OpenAICompatibleProvider
 
 provider = OpenAICompatibleProvider(
@@ -56,7 +56,7 @@ agent0 = agent(
     PromptTemplate(
         system="""
         You are {{ agent.name }}.
-        Channel: {{ channel.profile.name }}
+        Interaction: {{ interaction.source }}
 
         {% for tool in tools %}
         - {{ tool.name }}: {{ tool.description }}
@@ -64,20 +64,19 @@ agent0 = agent(
         """,
     ),
     provider=provider,
-    channels=[TuiChannel()],
     policy=AgentPolicy(parallel_tool_calls=True, max_parallel_tool_calls=4),
     logger=logger,
     metadata={"name": "agent0"},
 )
 
-result = await agent0.run("List the current directory")
+result = await agent0.run("List the current directory", stream=True)
 print(result.output)
 ```
 
 ## Architecture
 
 See [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md) for the
-domain model, runtime lifecycle, provider/tool/channel boundaries, logging,
+domain model, runtime lifecycle, provider/tool/I/O boundaries, logging,
 tool concurrency, and extension rules.
 
 ## Verification

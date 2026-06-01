@@ -6,8 +6,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loops import AgentEvent, AgentPolicy, InMemoryEventLogger, PromptTemplate, ToolCall, agent
-from loops.loop0.channels import ConsoleChannel, LarkChannel, ScheduledChannel, TuiChannel
+from loops import (
+    AgentEvent,
+    AgentPolicy,
+    InMemoryEventLogger,
+    InMemoryEventSink,
+    InteractionContext,
+    PromptTemplate,
+    ToolCall,
+    agent,
+)
 from loops.loop0.components import Component, Contribution
 from loops.loop0.profiles import ComponentProfile, ProviderProfile, ToolProfile
 from loops.loop0.providers.adapter import (
@@ -28,7 +36,7 @@ from loops.loop0.providers.openai import (
     _response_from_openai,
 )
 from loops.loop0.tools import BaseTool, ShellTool, ToolContext, ToolResult
-from loops.loop0.types import Message
+from loops.loop0.types import Message, UserInput
 
 
 @dataclass
@@ -164,34 +172,33 @@ def _tool_context(tmp_path: Path, *, policy: AgentPolicy | None = None) -> ToolC
     )
 
 
-def test_prompt_template_injects_channel_tool_provider_profiles(tmp_path: Path):
+def test_prompt_template_injects_interaction_tool_provider_profiles(tmp_path: Path):
     provider = FakeProvider([ProviderResponse(content="ok")])
-    channel = TuiChannel()
     app = agent(
         PromptTemplate(
             system=(
                 "provider={{ provider.name }}/{{ provider.model }}\n"
-                "channel={{ channel.profile.name }} streaming={{ channel.profile.output_mode }}\n"
+                "interaction={{ interaction.source }} streaming={{ interaction.stream | json }}\n"
                 "{% for tool in tools %}tool={{ tool.name }} risk={{ tool.risk }} {% endfor %}\n"
                 "tool_names={{ tools | map(attribute='name') | join(',') }}\n"
                 "missing={{ missing.profile.name | default('empty') }}\n"
-                "interactive={{ channel.profile.interactive | json }}"
+                "interactive={{ interaction.interactive | json }}"
             )
         ),
         provider=provider,
         tools=[ShellTool()],
-        channels=[channel],
         workspace=tmp_path,
     )
 
     import asyncio
 
-    result = asyncio.run(app.run("hello"))
+    user_input = UserInput("hello", interaction_context=InteractionContext(source="tui", interactive=True))
+    result = asyncio.run(app.run(user_input, stream=True))
 
     assert result.output == "ok"
     system_prompt = provider.requests[0].messages[0].content
     assert "provider=fake/fake-model" in system_prompt
-    assert "channel=tui streaming=stream" in system_prompt
+    assert "interaction=tui streaming=true" in system_prompt
     assert "tool=shell risk=medium" in system_prompt
     assert "tool_names=shell" in system_prompt
     assert "missing=empty" in system_prompt
@@ -199,17 +206,23 @@ def test_prompt_template_injects_channel_tool_provider_profiles(tmp_path: Path):
 
 
 def test_top_level_imports_remain_compatible():
-    from loops.channels import ConsoleChannel as CompatConsoleChannel
     from loops.providers.adapter import AdapterBackedProvider as CompatAdapterBackedProvider
     from loops.providers.openai import OpenAICompatibleProvider as CompatOpenAICompatibleProvider
     from loops.tools import ShellTool as CompatShellTool
     from loops.types import Message as CompatMessage
 
     assert CompatAdapterBackedProvider is AdapterBackedProvider
-    assert CompatConsoleChannel is ConsoleChannel
     assert CompatOpenAICompatibleProvider is OpenAICompatibleProvider
     assert CompatShellTool is ShellTool
     assert CompatMessage is Message
+
+
+def test_top_level_channel_alias_is_removed():
+    try:
+        __import__("loops.channels")
+    except ModuleNotFoundError:
+        return
+    raise AssertionError("loops.channels should not exist in loop0")
 
 
 def test_provider_adapter_registry_and_stream_folding():
@@ -572,47 +585,76 @@ def test_shell_background_session_requires_and_uses_approval(tmp_path: Path):
     assert payload["session_id"].startswith("sh_")
 
 
-def test_channel_profiles_change_streaming_events(tmp_path: Path):
-    tui_provider = FakeProvider([ProviderResponse(content="stream me")])
-    tui = TuiChannel()
-    tui_agent = agent("Reply.", provider=tui_provider, channels=[tui], workspace=tmp_path / "tui")
+def test_event_sink_receives_streaming_events_when_requested(tmp_path: Path):
+    provider = FakeProvider([ProviderResponse(content="stream me")])
+    sink = InMemoryEventSink()
+    app = agent("Reply.", provider=provider, workspace=tmp_path)
 
     import asyncio
 
-    asyncio.run(tui_agent.run("hello"))
-    assert "provider_delta" in [event.type for event in tui.events]
+    result = asyncio.run(app.run("hello", event_sink=sink, stream=True))
 
-    lark_provider = FakeProvider([ProviderResponse(content="message me")])
-    lark = LarkChannel()
-    lark_agent = agent("Reply.", provider=lark_provider, channels=[lark], workspace=tmp_path / "lark")
-    asyncio.run(lark_agent.run("hello"))
-    assert "provider_delta" not in [event.type for event in lark.events]
-    assert "run_finished" in [event.type for event in lark.events]
+    assert result.output == "stream me"
+    assert provider.requests[0].stream is True
+    assert [event.payload["text"] for event in sink.events if event.type == "provider_delta"] == ["stream me"]
+    assert "run_finished" in [event.type for event in sink.events]
 
-    scheduled_provider = FakeProvider([ProviderResponse(content="scheduled")])
-    scheduled = ScheduledChannel()
-    scheduled_agent = agent(
-        PromptTemplate(system="interactive={{ channel.profile.interactive | json }}"),
-        provider=scheduled_provider,
-        channels=[scheduled],
-        workspace=tmp_path / "scheduled",
+
+def test_non_stream_run_uses_generate_and_does_not_emit_provider_delta(tmp_path: Path):
+    provider = FakeProvider([ProviderResponse(content="message me")])
+    sink = InMemoryEventSink()
+    app = agent("Reply.", provider=provider, workspace=tmp_path)
+
+    import asyncio
+
+    result = asyncio.run(app.run("hello", event_sink=sink))
+
+    assert result.output == "message me"
+    assert provider.requests[0].stream is False
+    assert "provider_delta" not in [event.type for event in sink.events]
+    assert "run_finished" in [event.type for event in sink.events]
+
+
+def test_interaction_context_controls_prompt_state(tmp_path: Path):
+    provider = FakeProvider([ProviderResponse(content="scheduled")])
+    app = agent(
+        PromptTemplate(system="source={{ interaction.source }} interactive={{ interaction.interactive | json }}"),
+        provider=provider,
+        workspace=tmp_path,
     )
-    asyncio.run(scheduled_agent.run("cron"))
-    assert "interactive=false" in scheduled_provider.requests[0].messages[0].content
-
-
-def test_tui_channel_uses_true_provider_streaming(tmp_path: Path):
-    provider = FakeStreamingProvider()
-    tui = TuiChannel()
-    app = agent("Reply.", provider=provider, channels=[tui], workspace=tmp_path)
+    user_input = UserInput("cron", interaction_context=InteractionContext(source="scheduled", interactive=False))
 
     import asyncio
 
-    result = asyncio.run(app.run("hello"))
+    asyncio.run(app.run(user_input))
+
+    assert "source=scheduled interactive=false" in provider.requests[0].messages[0].content
+
+    dict_provider = FakeProvider([ProviderResponse(content="web")])
+    dict_app = agent(
+        PromptTemplate(system="source={{ interaction.source }} interactive={{ interaction.interactive | json }}"),
+        provider=dict_provider,
+        workspace=tmp_path / "dict",
+    )
+    dict_input = UserInput("web", interaction_context={"source": "web", "interactive": True})
+
+    asyncio.run(dict_app.run(dict_input))
+
+    assert "source=web interactive=true" in dict_provider.requests[0].messages[0].content
+
+
+def test_stream_run_uses_true_provider_streaming(tmp_path: Path):
+    provider = FakeStreamingProvider()
+    sink = InMemoryEventSink()
+    app = agent("Reply.", provider=provider, workspace=tmp_path)
+
+    import asyncio
+
+    result = asyncio.run(app.run("hello", event_sink=sink, stream=True))
 
     assert result.output == "hello"
     assert provider.requests[0].stream is True
-    deltas = [event.payload["text"] for event in tui.events if event.type == "provider_delta"]
+    deltas = [event.payload["text"] for event in sink.events if event.type == "provider_delta"]
     assert deltas == ["hel", "lo"]
 
 
@@ -626,103 +668,33 @@ def test_runtime_accepts_new_provider_stream_events(tmp_path: Path):
         ),
         adapter=NewEventStreamingAdapter(),
     )
-    tui = TuiChannel()
-    app = agent("Reply.", provider=provider, channels=[tui], workspace=tmp_path)
+    sink = InMemoryEventSink()
+    app = agent("Reply.", provider=provider, workspace=tmp_path)
 
     import asyncio
 
-    result = asyncio.run(app.run("hello"))
+    result = asyncio.run(app.run("hello", event_sink=sink, stream=True))
 
     assert result.output == "hello"
-    deltas = [event.payload["text"] for event in tui.events if event.type == "provider_delta"]
+    deltas = [event.payload["text"] for event in sink.events if event.type == "provider_delta"]
     assert deltas == ["hel", "lo"]
 
 
-def test_console_channel_streams_to_stdout_and_receives_input():
+def test_callable_event_sink_receives_events(tmp_path: Path):
     import asyncio
 
-    output = StringIO()
-    channel = ConsoleChannel(prompt="> ", input_stream=StringIO("hello\n/quit\n"), output_stream=output)
+    provider = FakeProvider([ProviderResponse(content="ok")])
+    app = agent("Reply.", provider=provider, workspace=tmp_path)
+    seen = []
 
-    async def collect_inputs():
-        return [item async for item in channel.receive()]
+    async def collect(event: AgentEvent) -> None:
+        seen.append(event.type)
 
-    inputs = asyncio.run(collect_inputs())
-    assert [item.text for item in inputs] == ["hello"]
-    assert output.getvalue() == "> > "
+    result = asyncio.run(app.run("hello", event_sink=collect))
 
-    asyncio.run(
-        channel.send(
-            AgentEvent(type="provider_delta", run_id="run_test", payload={"text": "streamed"})
-        )
-    )
-    assert "streamed" in output.getvalue()
-
-
-def test_console_channel_prints_friendly_tool_call_details():
-    import asyncio
-
-    output = StringIO()
-    channel = ConsoleChannel(prompt="", output_stream=output)
-    asyncio.run(
-        channel.send(
-            AgentEvent(
-                type="tool_started",
-                run_id="run_test",
-                payload={
-                    "tool_name": "shell",
-                    "tool_call_id": "call_test",
-                    "arguments": {"op": "run", "command": "printf loops", "timeout_seconds": 5},
-                },
-            )
-        )
-    )
-    asyncio.run(
-        channel.send(
-            AgentEvent(
-                type="tool_finished",
-                run_id="run_test",
-                payload={
-                    "tool_name": "shell",
-                    "tool_call_id": "call_test",
-                    "status": "success",
-                    "duration_ms": 12.4,
-                    "output": "loops",
-                    "metadata": {"returncode": 0},
-                },
-            )
-        )
-    )
-
-    text = output.getvalue()
-    assert "[tool] shell started (call_test)" in text
-    assert "command: printf loops" in text
-    assert "[tool] shell success in 12ms (call_test)" in text
-    assert "returncode: 0" in text
-    assert "loops" in text
-
-
-def test_console_channel_uses_python_line_editor_for_default_stdio(monkeypatch):
-    import asyncio
-    import builtins
-
-    prompts = []
-    values = iter(["你好", "/quit"])
-
-    def fake_input(prompt: str = "") -> str:
-        prompts.append(prompt)
-        return next(values)
-
-    monkeypatch.setattr(builtins, "input", fake_input)
-    channel = ConsoleChannel(prompt="loops> ")
-
-    async def collect_inputs():
-        return [item async for item in channel.receive()]
-
-    inputs = asyncio.run(collect_inputs())
-
-    assert [item.text for item in inputs] == ["你好"]
-    assert prompts == ["loops> ", "loops> "]
+    assert result.output == "ok"
+    assert seen[0] == "run_started"
+    assert "run_finished" in seen
 
 
 def test_start_agent_interactive_loop_reuses_thread(monkeypatch):
@@ -739,13 +711,13 @@ def test_start_agent_interactive_loop_reuses_thread(monkeypatch):
         thread_id="console-test",
     )
     output = StringIO()
-    channel = ConsoleChannel(
-        prompt="loops> ",
-        input_stream=StringIO("hello\nagain\n/quit\n"),
-        output_stream=output,
+    asyncio.run(
+        start_agent.run_demo(
+            args,
+            input_stream=StringIO("hello\nagain\n/quit\n"),
+            output_stream=output,
+        )
     )
-
-    asyncio.run(start_agent.run_demo(args, channel=channel))
 
     assert len(provider.requests) == 2
     assert provider.requests[0].metadata["thread_id"] == "console-test"
@@ -761,18 +733,21 @@ def test_start_agent_interactive_loop_reuses_thread(monkeypatch):
     assert "second" in output.getvalue()
 
 
-def test_agent_without_explicit_channel_defaults_to_console(tmp_path: Path, monkeypatch):
+def test_agent_run_without_event_sink_is_quiet_and_returns_result(tmp_path: Path):
     import asyncio
 
     provider = FakeProvider([ProviderResponse(content="ok")])
     app = agent("Reply.", provider=provider, workspace=tmp_path)
-    output = StringIO()
-    monkeypatch.setattr("loops.loop0.runtime.ConsoleChannel", lambda: ConsoleChannel(prompt="", output_stream=output))
 
     result = asyncio.run(app.run("hello"))
 
     assert result.output == "ok"
-    assert "ok" in output.getvalue()
+    assert [event.type for event in result.events] == [
+        "run_started",
+        "provider_started",
+        "provider_finished",
+        "run_finished",
+    ]
 
 
 def test_component_contributes_prompt_block_tool_and_events(tmp_path: Path):

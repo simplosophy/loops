@@ -12,7 +12,6 @@ from loops.loop0.profiles import ComponentProfile
 class Contribution:
     prompt_blocks: list[str] = field(default_factory=list)
     tools: list[Any] = field(default_factory=list)
-    channels: list[Any] = field(default_factory=list)
     hooks: list[Any] = field(default_factory=list)
     state_adapters: list[Any] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)

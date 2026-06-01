@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from loops.loop0.channels.base import Channel, ConsoleChannel
 from loops.loop0.components.base import Contribution
 from loops.loop0.events import AgentEvent
+from loops.loop0.io import EventSink, EventSinkLike, normalize_event_sink
 from loops.loop0.policy import AgentPolicy
-from loops.loop0.profiles import AgentProfile, ChannelContext, ChannelView, ComponentProfile, PolicyProfile, RunProfile
+from loops.loop0.profiles import AgentProfile, ComponentProfile, InteractionContext, PolicyProfile, RunProfile
 from loops.loop0.prompt import AgentStateView, ComponentPromptView, PromptRenderContext, PromptRenderer
 from loops.loop0.providers.base import ProviderRequest, ProviderResponse
 from loops.loop0.state import AgentState
@@ -45,7 +45,9 @@ class Run:
     agent: Any
     input: UserInput
     thread_id: str
-    channel: Channel
+    interaction: InteractionContext
+    event_sink: EventSink
+    stream: bool = False
     run_id: str = field(default_factory=lambda: f"run_{uuid4().hex[:12]}")
     messages: list[Message] = field(default_factory=list)
     tool_registry: ToolRegistry = field(default_factory=ToolRegistry)
@@ -65,16 +67,31 @@ class AgentRuntime:
         self.agent = agent
         self._renderer = PromptRenderer()
 
-    async def run(self, input: UserInput, *, thread_id: str | None = None, channel: Channel | None = None) -> AgentResult:
+    async def run(
+        self,
+        input: UserInput,
+        *,
+        thread_id: str | None = None,
+        event_sink: EventSinkLike = None,
+        stream: bool = False,
+    ) -> AgentResult:
         await self._ensure_components_setup()
-        active_channel = channel or self._default_channel()
+        interaction = self._resolve_interaction_context(input, thread_id=thread_id, stream=stream)
         resolved_thread_id = (
             thread_id
-            or getattr(input.channel_context, "thread_id", None)
-            or getattr(input.channel_context, "session_id", None)
+            or interaction.thread_id
+            or interaction.session_id
             or "default"
         )
-        run = Run(agent=self.agent, input=input, thread_id=str(resolved_thread_id), channel=active_channel)
+        interaction = replace(interaction, thread_id=str(resolved_thread_id), stream=stream)
+        run = Run(
+            agent=self.agent,
+            input=input,
+            thread_id=str(resolved_thread_id),
+            interaction=interaction,
+            event_sink=normalize_event_sink(event_sink),
+            stream=stream,
+        )
         try:
             await self._prepare(run)
             await self._emit(
@@ -82,7 +99,7 @@ class AgentRuntime:
                 "run_started",
                 {
                     "thread_id": run.thread_id,
-                    "channel": run.channel.profile.name,
+                    "interaction": run.interaction.source,
                     "input_chars": len(run.input.text),
                 },
             )
@@ -97,7 +114,7 @@ class AgentRuntime:
                 "run_failed",
                 {
                     "thread_id": run.thread_id,
-                    "channel": run.channel.profile.name,
+                    "interaction": run.interaction.source,
                     "error": str(exc),
                     "error_type": type(exc).__name__,
                 },
@@ -110,11 +127,6 @@ class AgentRuntime:
         for component in self.agent.spec.components:
             await component.setup(self.agent)
         self.agent._setup_complete = True
-
-    def _default_channel(self) -> Channel:
-        if self.agent.spec.channels:
-            return self.agent.spec.channels[0]
-        return ConsoleChannel()
 
     async def _prepare(self, run: Run) -> None:
         run.tool_registry.extend(list(self.agent.spec.tools))
@@ -129,7 +141,6 @@ class AgentRuntime:
             for component in self.agent.spec.components
         ]
 
-        channel_context = self._resolve_channel_context(run)
         history = self.agent.state.get_history(run.thread_id)
         memories = self.agent.state.recall(run.input.text)
         run.prompt_context = PromptRenderContext(
@@ -139,7 +150,7 @@ class AgentRuntime:
                 metadata=dict(self.agent.spec.metadata),
             ),
             provider=self.agent.spec.provider.profile,
-            channel=ChannelView(profile=run.channel.profile, context=channel_context),
+            interaction=run.interaction,
             tools=run.tool_registry.profiles,
             components=ComponentPromptView(profiles=component_profiles, prompt_blocks=prompt_blocks),
             state=AgentStateView(
@@ -168,20 +179,44 @@ class AgentRuntime:
         ]
         run.pending_state_messages.append(Message(role="user", content=run.input.text, metadata=run.input.metadata))
 
-    def _resolve_channel_context(self, run: Run) -> ChannelContext:
-        if isinstance(run.input.channel_context, ChannelContext):
-            return run.input.channel_context
-        if run.input.channel_context is not None:
-            raw = getattr(run.input.channel_context, "raw", None) or {}
-            return ChannelContext(
-                channel_name=run.channel.profile.name,
-                session_id=getattr(run.input.channel_context, "session_id", None),
-                thread_id=getattr(run.input.channel_context, "thread_id", None),
-                actor_id=getattr(run.input.channel_context, "actor_id", None),
-                reply_to=getattr(run.input.channel_context, "reply_to", None),
+    def _resolve_interaction_context(
+        self,
+        input: UserInput,
+        *,
+        thread_id: str | None,
+        stream: bool,
+    ) -> InteractionContext:
+        context = input.interaction_context
+        if isinstance(context, InteractionContext):
+            return replace(context, thread_id=thread_id or context.thread_id, stream=stream)
+        if isinstance(context, dict):
+            return InteractionContext(
+                source=str(context.get("source") or "external"),
+                session_id=context.get("session_id"),
+                thread_id=thread_id or context.get("thread_id"),
+                actor_id=context.get("actor_id"),
+                reply_to=context.get("reply_to"),
+                audience=context.get("audience", "user"),
+                interactive=bool(context.get("interactive", False)),
+                stream=stream,
+                locale=context.get("locale"),
+                raw=dict(context),
+            )
+        if context is not None:
+            raw = getattr(context, "raw", None) or {}
+            return InteractionContext(
+                source=str(getattr(context, "source", None) or "external"),
+                session_id=getattr(context, "session_id", None),
+                thread_id=thread_id or getattr(context, "thread_id", None),
+                actor_id=getattr(context, "actor_id", None),
+                reply_to=getattr(context, "reply_to", None),
+                audience=getattr(context, "audience", "user"),
+                interactive=bool(getattr(context, "interactive", False)),
+                stream=stream,
+                locale=getattr(context, "locale", None),
                 raw=dict(raw),
             )
-        return run.channel.default_context()
+        return InteractionContext(thread_id=thread_id, stream=stream)
 
     async def _provider_tool_loop(self, run: Run) -> AgentResult:
         final_response: ProviderResponse | None = None
@@ -190,7 +225,7 @@ class AgentRuntime:
             request = ProviderRequest(
                 messages=list(run.messages),
                 tools=run.tool_registry.profiles,
-                stream=run.channel.profile.output_mode == "stream",
+                stream=run.stream,
                 parallel_tool_calls=self.agent.spec.policy.parallel_tool_calls,
                 metadata={"run_id": run.run_id, "thread_id": run.thread_id},
             )
@@ -373,10 +408,7 @@ class AgentRuntime:
     async def _emit_event_object(self, run: Run, event: AgentEvent) -> None:
         run.events.append(event)
         self._log_event(event)
-        if run.channel.profile.output_mode != "none":
-            if event.type == "provider_delta" and run.channel.profile.output_mode != "stream":
-                return
-            await run.channel.send(event)
+        await run.event_sink.send(event)
         for component in self.agent.spec.components:
             await component.handle_event(event)
 

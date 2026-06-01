@@ -35,35 +35,17 @@ class ToolProfile:
 
 
 @dataclass(frozen=True)
-class ChannelProfile:
-    name: str
-    interactive: bool
-    duplex: Literal["half", "full"] = "half"
-    output_mode: Literal["stream", "message", "update", "none"] = "message"
-    supports_interrupt: bool = False
-    supports_questions: bool = False
-    supports_approval: bool = False
-    supports_attachments: frozenset[str] = field(default_factory=frozenset)
-    delivery: Literal["ephemeral", "persistent"] = "persistent"
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ChannelContext:
-    channel_name: str
+class InteractionContext:
+    source: str = "direct"
     session_id: str | None = None
     thread_id: str | None = None
     actor_id: str | None = None
     reply_to: str | None = None
     audience: Literal["user", "group", "system"] = "user"
+    interactive: bool = False
+    stream: bool = False
     locale: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ChannelView:
-    profile: ChannelProfile
-    context: ChannelContext
 
 
 @dataclass(frozen=True)

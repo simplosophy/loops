@@ -1,4 +1,4 @@
-"""Runtime event model used by channels and components."""
+"""Runtime event model used by loop0 observers and components."""
 
 from __future__ import annotations
 

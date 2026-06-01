@@ -94,7 +94,7 @@ def format_event(event: AgentEvent, *, include_payload: bool = False) -> str:
     payload = event.payload
     base = f"{event.type} run_id={event.run_id}"
     if event.type == "run_started":
-        base += f" thread_id={payload.get('thread_id')} channel={payload.get('channel')}"
+        base += f" thread_id={payload.get('thread_id')} interaction={payload.get('interaction')}"
     elif event.type == "run_finished":
         base += f" stop_reason={payload.get('stop_reason')} output_chars={len(str(payload.get('output') or ''))}"
     elif event.type == "run_failed":

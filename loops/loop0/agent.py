@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loops.loop0.channels.base import Channel
 from loops.loop0.components.base import Component
+from loops.loop0.io import EventSinkLike
 from loops.loop0.logging import EventLogger, LoggerLike, normalize_logger
 from loops.loop0.policy import AgentPolicy
 from loops.loop0.prompt import PromptTemplate
@@ -26,7 +26,6 @@ class AgentSpec:
     prompt: PromptTemplate
     provider: Provider
     tools: tuple[BaseTool, ...] = field(default_factory=tuple)
-    channels: tuple[Channel, ...] = field(default_factory=tuple)
     components: tuple[Component, ...] = field(default_factory=tuple)
     policy: AgentPolicy = field(default_factory=AgentPolicy)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -51,7 +50,6 @@ class AgentSpec:
             "prompt": self.prompt,
             "provider": self.provider,
             "tools": self.tools,
-            "channels": self.channels,
             "components": self.components,
             "policy": self.policy,
             "metadata": dict(self.metadata),
@@ -87,18 +85,24 @@ class Agent:
         input: str | UserInput,
         *,
         thread_id: str | None = None,
-        channel: Channel | None = None,
+        event_sink: EventSinkLike = None,
+        stream: bool = False,
     ) -> AgentResult:
-        return await self.runtime.run(UserInput.coerce(input), thread_id=thread_id, channel=channel)
+        return await self.runtime.run(
+            UserInput.coerce(input),
+            thread_id=thread_id,
+            event_sink=event_sink,
+            stream=stream,
+        )
 
     async def stream(
         self,
         input: str | UserInput,
         *,
         thread_id: str | None = None,
-        channel: Channel | None = None,
+        event_sink: EventSinkLike = None,
     ):
-        result = await self.run(input, thread_id=thread_id, channel=channel)
+        result = await self.run(input, thread_id=thread_id, event_sink=event_sink, stream=True)
         for event in result.events:
             yield event
 
@@ -106,12 +110,10 @@ class Agent:
         self,
         *,
         tools: list[BaseTool] | None = None,
-        channels: list[Channel] | None = None,
         components: list[Component] | None = None,
     ) -> "Agent":
         spec = self.spec.fork(
             tools=(*self.spec.tools, *(tools or [])),
-            channels=(*self.spec.channels, *(channels or [])),
             components=(*self.spec.components, *(components or [])),
         )
         return Agent(spec=spec, state=self.state, workspace=self.workspace)
@@ -129,7 +131,6 @@ def agent(
     *,
     provider: Provider,
     tools: list[BaseTool] | None = None,
-    channels: list[Channel] | None = None,
     components: list[Component] | None = None,
     policy: AgentPolicy | None = None,
     metadata: dict[str, Any] | None = None,
@@ -145,7 +146,6 @@ def agent(
         prompt=template,
         provider=provider,
         tools=tuple(resolved_tools),
-        channels=tuple(channels or []),
         components=tuple(components or []),
         policy=policy or AgentPolicy(),
         metadata=dict(metadata or {}),

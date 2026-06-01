@@ -10,8 +10,8 @@ from jinja2 import ChainableUndefined, DictLoader, Environment
 
 from loops.loop0.profiles import (
     AgentProfile,
-    ChannelView,
     ComponentProfile,
+    InteractionContext,
     PolicyProfile,
     ProviderProfile,
     RunProfile,
@@ -53,7 +53,7 @@ class AgentStateView:
 class PromptRenderContext:
     agent: AgentProfile
     provider: ProviderProfile
-    channel: ChannelView
+    interaction: InteractionContext
     tools: list[ToolProfile]
     components: ComponentPromptView
     state: AgentStateView
@@ -65,7 +65,7 @@ class PromptRenderContext:
         return {
             "agent": self.agent,
             "provider": self.provider,
-            "channel": self.channel,
+            "interaction": self.interaction,
             "tools": self.tools,
             "components": self.components,
             "state": self.state,
