@@ -302,6 +302,10 @@ src/loop0/
   state.rs
   tool.rs
   types.rs
+src/loop1/
+  mod.rs
+src/loop2/
+  mod.rs
 ```
 
 各文件职责：
@@ -318,6 +322,8 @@ src/loop0/
 - `state.rs`: 单 Agent 状态。
 - `tool.rs`: tool 协议、registry、context 和 result。
 - `types.rs`: provider-neutral message、tool call、user input。
+- `src/loop1/mod.rs`: 用户 runtime/container 的 channel message、session、container 状态边界。
+- `src/loop2/mod.rs`: 组织/project organizer 的 org、project、runtime、task、handoff、event 状态边界。
 
 ## 扩展规则
 
