@@ -50,42 +50,11 @@ uv run loops-loop0 \
   --stream
 ```
 
-The same run can be fully described by a JSON or TOML config file:
-
-```toml
-# loop0.toml
-tools = ["shell"]
-
-[prompt]
-system_file = "prompts/system.md"
-user = "{{ input.text }}"
-
-[provider]
-type = "openai-compatible"
-name = "openai"
-model = "gpt-4.1"
-api_key_env = "LOOPS_OPENAI_API_KEY"
-base_url = "https://api.openai.com/v1"
-
-[agent]
-name = "agent0"
-workspace = ".loops-workspace"
-
-[run]
-input = "List the current directory"
-thread_id = "default"
-stream = true
-
-[interaction]
-source = "cli"
-
-[output]
-format = "text"
-events_file = "events.jsonl"
-```
+The same run can be fully described by a JSON config file. See
+`examples/loop0.config.json` for a complete sample.
 
 ```bash
-uv run loops-loop0 --config loop0.toml
+uv run loops-loop0 --config examples/loop0.config.json
 ```
 
 Use the SDK directly:

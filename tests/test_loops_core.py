@@ -395,6 +395,23 @@ events_file = "events.jsonl"
     assert (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
 
 
+def test_loop0_cli_json_example_config_is_valid():
+    from loops.loop0.cli import build_loop0_agent, parse_run_config
+
+    config_path = Path("examples/loop0.config.json")
+    config = parse_run_config(["--config", str(config_path)], env={"LOOPS_OPENAI_API_KEY": "secret"})
+    provider = FakeProvider([ProviderResponse(content="ok")])
+    app = build_loop0_agent(config, provider=provider)
+
+    assert config.provider.api_key == "secret"
+    assert config.run.input == "Inspect the current repository and summarize the top-level files."
+    assert config.run.stream is True
+    assert config.agent.tools == ["shell"]
+    assert config.output.events_file == ".loops-example-workspace/events.jsonl"
+    assert app.spec.metadata["name"] == "loop0-cli-example"
+    assert "single loop0 agent runtime" in app.spec.prompt.system
+
+
 def test_provider_adapter_registry_and_stream_folding():
     import asyncio
 

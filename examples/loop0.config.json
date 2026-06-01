@@ -1,0 +1,53 @@
+{
+  "tools": ["shell"],
+  "prompt": {
+    "system_file": "prompts/loop0-system.md",
+    "user": "{{ input.text }}"
+  },
+  "provider": {
+    "type": "openai-compatible",
+    "name": "openai",
+    "model": "gpt-4.1",
+    "api_key_env": "LOOPS_OPENAI_API_KEY",
+    "base_url": "https://api.openai.com/v1",
+    "timeout_seconds": 60,
+    "headers": {},
+    "extra_body": {}
+  },
+  "agent": {
+    "name": "loop0-cli-example",
+    "description": "Example loop0 CLI agent",
+    "workspace": ".loops-example-workspace",
+    "metadata": {
+      "example": "json-config"
+    }
+  },
+  "policy": {
+    "max_turns": 8,
+    "allow_tool_errors": true,
+    "parallel_tool_calls": true,
+    "max_parallel_tool_calls": 4,
+    "auto_approve": false,
+    "shell_timeout_seconds": 60,
+    "shell_max_output_chars": 30000,
+    "shell_require_approval_for_background": true,
+    "shell_external_path_policy": "ask"
+  },
+  "run": {
+    "input": "Inspect the current repository and summarize the top-level files.",
+    "thread_id": "example",
+    "stream": true
+  },
+  "interaction": {
+    "source": "cli",
+    "interactive": false,
+    "raw": {
+      "config": "examples/loop0.config.json"
+    }
+  },
+  "output": {
+    "format": "text",
+    "show_events": false,
+    "events_file": ".loops-example-workspace/events.jsonl"
+  }
+}
