@@ -9,10 +9,10 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from loop0.events import AgentEvent
-from loop0.logging import format_duration_ms, format_tool_arguments_lines, preview_text
-from loop0.profiles import ChannelContext, ChannelProfile
-from loop0.types import UserInput
+from loops.events import AgentEvent
+from loops.logging import format_duration_ms, format_tool_arguments_lines, preview_text
+from loops.profiles import ChannelContext, ChannelProfile
+from loops.types import UserInput
 
 try:
     # Importing readline lets Python's input() use readline/libedit line editing
@@ -72,7 +72,7 @@ class ConsoleChannel(TuiChannel):
     def __init__(
         self,
         *,
-        prompt: str = "loop0> ",
+        prompt: str = "loops> ",
         show_events: bool = False,
         input_stream: Any | None = None,
         output_stream: Any | None = None,

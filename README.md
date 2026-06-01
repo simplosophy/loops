@@ -1,8 +1,8 @@
-# loop0
+# loops
 
 Minimal agent runtime SDK.
 
-loop0 models an agent as:
+loops models an agent as:
 
 ```text
 AgentSpec + AgentState + AgentRuntime
@@ -17,8 +17,8 @@ are intended to be added as components or integrations.
 Run the sample agent with DeepSeek's OpenAI-compatible API:
 
 ```bash
-export LOOP0_DEEPSEEK_API_KEY="..."
-uv run loop0-demo
+export LOOPS_DEEPSEEK_API_KEY="..."
+uv run loops-demo
 ```
 
 The sample defaults to `base_url=https://api.deepseek.com`,
@@ -27,13 +27,13 @@ and the built-in `ConsoleChannel`. With no positional message it starts an
 interactive loop and reuses the same thread id; pass a message to run one turn:
 
 ```bash
-uv run loop0-demo "inspect the workspace"
+uv run loops-demo "inspect the workspace"
 ```
 
 Enable runtime logs for provider/tool/run events:
 
 ```bash
-uv run loop0-demo --log-level INFO
+uv run loops-demo --log-level INFO
 ```
 
 It is implemented in `examples/start_agent.py`.
@@ -41,16 +41,16 @@ It is implemented in `examples/start_agent.py`.
 Use the SDK directly:
 
 ```python
-from loop0 import AgentPolicy, PromptTemplate, agent, get_logger
-from loop0.channels import TuiChannel
-from loop0.providers import OpenAICompatibleProvider
+from loops import AgentPolicy, PromptTemplate, agent, get_logger
+from loops.channels import TuiChannel
+from loops.providers import OpenAICompatibleProvider
 
 provider = OpenAICompatibleProvider(
     model="...",
     api_key="...",
     base_url="https://api.openai.com/v1",
 )
-logger = get_logger("my.loop0.agent", level="INFO")
+logger = get_logger("my.loops.agent", level="INFO")
 
 agent0 = agent(
     PromptTemplate(

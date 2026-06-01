@@ -9,16 +9,16 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from loop0.channels.base import Channel, ConsoleChannel
-from loop0.components.base import Contribution
-from loop0.events import AgentEvent
-from loop0.policy import AgentPolicy
-from loop0.profiles import AgentProfile, ChannelContext, ChannelView, ComponentProfile, PolicyProfile, RunProfile
-from loop0.prompt import AgentStateView, ComponentPromptView, PromptRenderContext, PromptRenderer
-from loop0.providers.base import ProviderRequest, ProviderResponse
-from loop0.state import AgentState
-from loop0.tools.base import ToolContext, ToolRegistry, ToolResult
-from loop0.types import Message, ToolCall, UserInput
+from loops.channels.base import Channel, ConsoleChannel
+from loops.components.base import Contribution
+from loops.events import AgentEvent
+from loops.policy import AgentPolicy
+from loops.profiles import AgentProfile, ChannelContext, ChannelView, ComponentProfile, PolicyProfile, RunProfile
+from loops.prompt import AgentStateView, ComponentPromptView, PromptRenderContext, PromptRenderer
+from loops.providers.base import ProviderRequest, ProviderResponse
+from loops.state import AgentState
+from loops.tools.base import ToolContext, ToolRegistry, ToolResult
+from loops.types import Message, ToolCall, UserInput
 
 
 @dataclass

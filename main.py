@@ -1,5 +1,5 @@
 def main():
-    print("Hello from loop0!")
+    print("Hello from loops!")
 
 
 if __name__ == "__main__":

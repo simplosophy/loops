@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loop0.events import AgentEvent
-from loop0.policy import AgentPolicy, ApprovalRequest
-from loop0.profiles import ToolProfile
+from loops.events import AgentEvent
+from loops.policy import AgentPolicy, ApprovalRequest
+from loops.profiles import ToolProfile
 
 
 @dataclass

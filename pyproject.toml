@@ -1,5 +1,5 @@
 [project]
-name = "loop0"
+name = "loops"
 version = "0.1.0"
 description = "Minimal agent runtime SDK"
 readme = "README.md"
@@ -9,14 +9,14 @@ dependencies = [
 ]
 
 [project.scripts]
-loop0-demo = "examples.start_agent:main"
+loops-demo = "examples.start_agent:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["loop0*", "examples*"]
+include = ["loops*", "examples*"]
 
 [dependency-groups]
 dev = [

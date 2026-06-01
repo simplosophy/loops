@@ -33,7 +33,7 @@ wheels = [
 ]
 
 [[package]]
-name = "loop0"
+name = "loops"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

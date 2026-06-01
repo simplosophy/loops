@@ -1,12 +1,12 @@
-# loop0 Architecture Overview
+# loops Architecture Overview
 
-loop0 是一个极小 Agent Runtime SDK。它的核心目标不是提供完整 Agent 产品，而是提供一个稳定、可组合、可扩展的运行时内核。
+loops 是一个极小 Agent Runtime SDK。它的核心目标不是提供完整 Agent 产品，而是提供一个稳定、可组合、可扩展的运行时内核。
 
 核心只内置一个工具能力：`shell`。skills、MCP、memory、业务 channel、知识库、审批系统等都应通过 component 或外部集成扩展进来。
 
 ## 设计目标
 
-loop0 的第一性原理是把 Agent 拆成四类正交问题：
+loops 的第一性原理是把 Agent 拆成四类正交问题：
 
 - 模型如何被调用：`Provider`
 - 能力如何被暴露给模型：`Tool`
@@ -87,7 +87,7 @@ AgentSpec
 - `channels`: 可用交互通道。未指定时 runtime 默认使用 `ConsoleChannel()`。
 - `components`: 扩展单元，运行时按 run 贡献 prompt block、tool 等。
 - `policy`: 控制最大轮数、工具错误、并发工具、shell 安全策略、审批等。
-- `logger`: runtime event sink，可传标准库 logger、callable 或 loop0 `EventLogger`。
+- `logger`: runtime event sink，可传标准库 logger、callable 或 loops `EventLogger`。
 
 关键行为：
 
@@ -441,7 +441,7 @@ stream = run.channel.profile.output_mode == "stream"
 
 ## Tool 并发模型
 
-loop0 区分两个并发控制：
+loops 区分两个并发控制：
 
 ### Provider hint
 
@@ -564,7 +564,7 @@ Component 是 skills、MCP、memory 等扩展能力的默认入口。
 ## 当前目录映射
 
 ```text
-loop0/
+loops/
   agent.py          AgentSpec, Agent, agent factory
   runtime.py        AgentRuntime, Run, AgentResult
   prompt.py         PromptTemplate, PromptRenderContext, Jinja2 renderer
@@ -580,7 +580,7 @@ loop0/
 examples/
   start_agent.py    DeepSeek/OpenAI-compatible console example
 tests/
-  test_loop0_core.py
+  test_loops_core.py
 ```
 
 ## 设计决策记录

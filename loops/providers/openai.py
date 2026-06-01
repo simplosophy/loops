@@ -1,6 +1,6 @@
 """OpenAI-compatible provider adapter.
 
-This adapter intentionally uses stdlib urllib so loop0 core stays dependency-light.
+This adapter intentionally uses stdlib urllib so loops core stays dependency-light.
 It can talk to OpenAI-compatible `/chat/completions` endpoints.
 """
 
@@ -14,9 +14,9 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
-from loop0.profiles import ProviderProfile, ToolProfile
-from loop0.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse, ProviderUsage
-from loop0.types import Message, ToolCall
+from loops.profiles import ProviderProfile, ToolProfile
+from loops.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse, ProviderUsage
+from loops.types import Message, ToolCall
 
 
 @dataclass

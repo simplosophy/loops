@@ -6,17 +6,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loop0.channels.base import Channel
-from loop0.components.base import Component
-from loop0.logging import EventLogger, LoggerLike, normalize_logger
-from loop0.policy import AgentPolicy
-from loop0.prompt import PromptTemplate
-from loop0.providers.base import Provider
-from loop0.runtime import AgentRuntime, AgentResult
-from loop0.state import AgentState
-from loop0.tools.base import BaseTool
-from loop0.tools.shell import ShellTool
-from loop0.types import UserInput
+from loops.channels.base import Channel
+from loops.components.base import Component
+from loops.logging import EventLogger, LoggerLike, normalize_logger
+from loops.policy import AgentPolicy
+from loops.prompt import PromptTemplate
+from loops.providers.base import Provider
+from loops.runtime import AgentRuntime, AgentResult
+from loops.state import AgentState
+from loops.tools.base import BaseTool
+from loops.tools.shell import ShellTool
+from loops.types import UserInput
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ class Agent:
         spec.validate()
         self.spec = spec
         self.state = state or AgentState()
-        self.workspace = Path(workspace or ".loop0-workspace").expanduser().resolve(strict=False)
+        self.workspace = Path(workspace or ".loops-workspace").expanduser().resolve(strict=False)
         self.logger: EventLogger = normalize_logger(spec.logger)
         self.runtime = AgentRuntime(self)
         self._setup_complete = False

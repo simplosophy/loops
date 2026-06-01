@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loop0 import AgentEvent, AgentPolicy, InMemoryEventLogger, PromptTemplate, ToolCall, agent
-from loop0.channels import ConsoleChannel, LarkChannel, ScheduledChannel, TuiChannel
-from loop0.components import Component, Contribution
-from loop0.profiles import ComponentProfile, ProviderProfile, ToolProfile
-from loop0.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse
-from loop0.providers.openai import OpenAICompatibleProvider, _message_to_openai, _response_from_openai
-from loop0.tools import BaseTool, ShellTool, ToolContext, ToolResult
-from loop0.types import Message
+from loops import AgentEvent, AgentPolicy, InMemoryEventLogger, PromptTemplate, ToolCall, agent
+from loops.channels import ConsoleChannel, LarkChannel, ScheduledChannel, TuiChannel
+from loops.components import Component, Contribution
+from loops.profiles import ComponentProfile, ProviderProfile, ToolProfile
+from loops.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse
+from loops.providers.openai import OpenAICompatibleProvider, _message_to_openai, _response_from_openai
+from loops.tools import BaseTool, ShellTool, ToolContext, ToolResult
+from loops.types import Message
 
 
 @dataclass
@@ -208,9 +208,9 @@ def test_shell_tool_supports_openai_style_aliases_cwd_and_env(tmp_path: Path):
             _tool_context(tmp_path),
             {
                 "op": "run",
-                "command": "printf \"$LOOP0_TEST\"",
+                "command": "printf \"$LOOPS_TEST\"",
                 "cwd": "work",
-                "env": {"LOOP0_TEST": "ok"},
+                "env": {"LOOPS_TEST": "ok"},
                 "timeout_ms": 5000,
                 "maxOutputLength": 10,
             },
@@ -221,7 +221,7 @@ def test_shell_tool_supports_openai_style_aliases_cwd_and_env(tmp_path: Path):
     assert result.output == "ok"
     assert result.metadata["cwd"] == str(workdir)
     assert result.metadata["timeout_seconds"] == 5
-    assert result.metadata["env_keys"] == ["LOOP0_TEST"]
+    assert result.metadata["env_keys"] == ["LOOPS_TEST"]
 
 
 def test_shell_tool_rejects_string_like_commands(tmp_path: Path):
@@ -286,7 +286,7 @@ def test_provider_tool_loop_executes_shell_and_commits_state(tmp_path: Path):
         [
             ProviderResponse(
                 tool_calls=[
-                    ToolCall(name="shell", arguments={"op": "run", "command": "printf loop0"})
+                    ToolCall(name="shell", arguments={"op": "run", "command": "printf loops"})
                 ]
             ),
             ProviderResponse(content="done"),
@@ -296,13 +296,13 @@ def test_provider_tool_loop_executes_shell_and_commits_state(tmp_path: Path):
 
     import asyncio
 
-    result = asyncio.run(app.run("say loop0", thread_id="thread-a"))
+    result = asyncio.run(app.run("say loops", thread_id="thread-a"))
 
     assert result.output == "done"
     assert result.stats.tool_calls == 1
     assert len(provider.requests) == 2
     second_request = provider.requests[1]
-    assert any(message.role == "tool" and message.content == "loop0" for message in second_request.messages)
+    assert any(message.role == "tool" and message.content == "loops" for message in second_request.messages)
     history = app.state.get_history("thread-a")
     assert [message.role for message in history] == ["user", "assistant"]
     assert history[-1].content == "done"
@@ -314,7 +314,7 @@ def test_agent_logger_receives_structured_tool_events(tmp_path: Path):
         [
             ProviderResponse(
                 tool_calls=[
-                    ToolCall(name="shell", arguments={"op": "run", "command": "printf loop0"})
+                    ToolCall(name="shell", arguments={"op": "run", "command": "printf loops"})
                 ]
             ),
             ProviderResponse(content="done"),
@@ -324,19 +324,19 @@ def test_agent_logger_receives_structured_tool_events(tmp_path: Path):
 
     import asyncio
 
-    asyncio.run(app.run("say loop0", thread_id="thread-a"))
+    asyncio.run(app.run("say loops", thread_id="thread-a"))
 
     event_types = [event.type for event in logger.events]
     assert event_types[:2] == ["run_started", "provider_started"]
     assert "tool_started" in event_types
     assert "tool_finished" in event_types
     tool_started = [event for event in logger.events if event.type == "tool_started"][0]
-    assert tool_started.payload["arguments"]["command"] == "printf loop0"
+    assert tool_started.payload["arguments"]["command"] == "printf loops"
     tool_finished = [event for event in logger.events if event.type == "tool_finished"][0]
     assert tool_finished.payload["status"] == "success"
     assert tool_finished.payload["metadata"]["returncode"] == 0
     assert tool_finished.payload["duration_ms"] >= 0
-    assert tool_finished.payload["output"] == "loop0"
+    assert tool_finished.payload["output"] == "loops"
 
 
 def test_parallel_tool_calls_execute_concurrently_and_preserve_message_order(tmp_path: Path):
@@ -562,7 +562,7 @@ def test_console_channel_prints_friendly_tool_call_details():
                 payload={
                     "tool_name": "shell",
                     "tool_call_id": "call_test",
-                    "arguments": {"op": "run", "command": "printf loop0", "timeout_seconds": 5},
+                    "arguments": {"op": "run", "command": "printf loops", "timeout_seconds": 5},
                 },
             )
         )
@@ -577,7 +577,7 @@ def test_console_channel_prints_friendly_tool_call_details():
                     "tool_call_id": "call_test",
                     "status": "success",
                     "duration_ms": 12.4,
-                    "output": "loop0",
+                    "output": "loops",
                     "metadata": {"returncode": 0},
                 },
             )
@@ -586,10 +586,10 @@ def test_console_channel_prints_friendly_tool_call_details():
 
     text = output.getvalue()
     assert "[tool] shell started (call_test)" in text
-    assert "command: printf loop0" in text
+    assert "command: printf loops" in text
     assert "[tool] shell success in 12ms (call_test)" in text
     assert "returncode: 0" in text
-    assert "loop0" in text
+    assert "loops" in text
 
 
 def test_console_channel_uses_python_line_editor_for_default_stdio(monkeypatch):
@@ -604,7 +604,7 @@ def test_console_channel_uses_python_line_editor_for_default_stdio(monkeypatch):
         return next(values)
 
     monkeypatch.setattr(builtins, "input", fake_input)
-    channel = ConsoleChannel(prompt="loop0> ")
+    channel = ConsoleChannel(prompt="loops> ")
 
     async def collect_inputs():
         return [item async for item in channel.receive()]
@@ -612,7 +612,7 @@ def test_console_channel_uses_python_line_editor_for_default_stdio(monkeypatch):
     inputs = asyncio.run(collect_inputs())
 
     assert [item.text for item in inputs] == ["你好"]
-    assert prompts == ["loop0> ", "loop0> "]
+    assert prompts == ["loops> ", "loops> "]
 
 
 def test_start_agent_interactive_loop_reuses_thread(monkeypatch):
@@ -630,7 +630,7 @@ def test_start_agent_interactive_loop_reuses_thread(monkeypatch):
     )
     output = StringIO()
     channel = ConsoleChannel(
-        prompt="loop0> ",
+        prompt="loops> ",
         input_stream=StringIO("hello\nagain\n/quit\n"),
         output_stream=output,
     )
@@ -657,7 +657,7 @@ def test_agent_without_explicit_channel_defaults_to_console(tmp_path: Path, monk
     provider = FakeProvider([ProviderResponse(content="ok")])
     app = agent("Reply.", provider=provider, workspace=tmp_path)
     output = StringIO()
-    monkeypatch.setattr("loop0.runtime.ConsoleChannel", lambda: ConsoleChannel(prompt="", output_stream=output))
+    monkeypatch.setattr("loops.runtime.ConsoleChannel", lambda: ConsoleChannel(prompt="", output_stream=output))
 
     result = asyncio.run(app.run("hello"))
 

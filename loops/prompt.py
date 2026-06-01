@@ -8,7 +8,7 @@ from typing import Any
 
 from jinja2 import ChainableUndefined, DictLoader, Environment
 
-from loop0.profiles import (
+from loops.profiles import (
     AgentProfile,
     ChannelView,
     ComponentProfile,
@@ -17,7 +17,7 @@ from loop0.profiles import (
     RunProfile,
     ToolProfile,
 )
-from loop0.types import UserInput
+from loops.types import UserInput
 
 
 @dataclass(frozen=True)
@@ -26,7 +26,7 @@ class PromptTemplate:
 
     The v1 engine uses Jinja2. Templates receive a structured
     PromptRenderContext and can use normal Jinja expressions, control flow, and
-    filters. loop0 adds a `json` filter for profile/dataclass serialization.
+    filters. loops adds a `json` filter for profile/dataclass serialization.
     """
 
     system: str
@@ -76,7 +76,7 @@ class PromptRenderContext:
 
 
 class PromptRenderer:
-    """Render loop0 prompt templates with Jinja2."""
+    """Render loops prompt templates with Jinja2."""
 
     def __init__(self, *, partials: dict[str, str] | None = None) -> None:
         self._env = Environment(

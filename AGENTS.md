@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Loop0 Agent 是一个用于用于构造复杂Agent的框架。
+Loops Agent 是一个用于用于构造复杂Agent的框架。
 
 ## 强制
 - **KEEP UPDATE**: 如果较大代码变更，及时使用git提交代码，comment中包含变化的详细描述

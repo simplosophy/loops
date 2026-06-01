@@ -1,4 +1,4 @@
-"""Logging adapters and formatting helpers for loop0 runtime events."""
+"""Logging adapters and formatting helpers for loops runtime events."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Protocol, TypeAlias, runtime_checkable
 
-from loop0.events import AgentEvent
+from loops.events import AgentEvent
 
 
 @runtime_checkable
@@ -47,7 +47,7 @@ class CallableEventLogger:
 
 @dataclass
 class StdlibEventLogger:
-    """Adapter from loop0 events to Python's standard logging.Logger."""
+    """Adapter from loops events to Python's standard logging.Logger."""
 
     logger: py_logging.Logger
     include_payload: bool = False
@@ -58,9 +58,9 @@ class StdlibEventLogger:
             _event_level(event),
             message,
             extra={
-                "loop0_event_id": event.event_id,
-                "loop0_event_type": event.type,
-                "loop0_run_id": event.run_id,
+                "loops_event_id": event.event_id,
+                "loops_event_type": event.type,
+                "loops_run_id": event.run_id,
             },
         )
 
@@ -77,7 +77,7 @@ def normalize_logger(logger: LoggerLike) -> EventLogger:
     raise TypeError("logger must be a logging.Logger, EventLogger, callable, or None")
 
 
-def get_logger(name: str = "loop0", *, level: int | str | None = None) -> py_logging.Logger:
+def get_logger(name: str = "loops", *, level: int | str | None = None) -> py_logging.Logger:
     """Return a standard-library logger with a default stream handler."""
 
     logger = py_logging.getLogger(name)
