@@ -35,7 +35,8 @@
 - 已新增 Rust `AgentState`，支持 thread history commit 和 recall 基础模型。
 - 已新增 Rust `ToolRegistry` / `ToolExecutor`，并把 shell 接入 registry。
 - 已新增 `run_input(UserInput, EventSink)`，使 Rust runtime 接近 loop0 的核心调用边界。
-- 仍缺：Component、完整 shell 策略、background session、tool call streaming delta folding。
+- 已新增 Rust `Component` / `Contribution` / `RunContext`，支持组件贡献 prompt blocks/tools 并观察 runtime events。
+- 仍缺：完整 shell 策略、background session、tool call streaming delta folding。
 
 ## 阶段 3：替换 Python CLI 和包入口
 

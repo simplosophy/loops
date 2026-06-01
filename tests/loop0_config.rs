@@ -3,16 +3,20 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use async_trait::async_trait;
+use loops::loop0::component::{Component, ComponentProfile, Contribution, RunContext};
 use loops::loop0::config::Loop0RunConfig;
 use loops::loop0::dotenv::read_dotenv;
 use loops::loop0::io::InMemoryEventSink;
 use loops::loop0::provider::{
     ProviderClient, ProviderOutput, ProviderRequest, ProviderResponse, ProviderStreamEvent,
+    ToolProfile,
 };
 use loops::loop0::runtime::{AgentRuntime, AgentSpec};
 use loops::loop0::state::AgentState;
-use loops::loop0::tool::registry_from_names;
-use loops::loop0::types::{InteractionContext, UserInput};
+use loops::loop0::tool::{
+    ToolContext, ToolExecutor, ToolRegistry, ToolResult, registry_from_names,
+};
+use loops::loop0::types::{AgentEvent, InteractionContext, ToolCall, UserInput};
 use serde_json::json;
 
 #[test]
@@ -65,6 +69,7 @@ async fn runtime_emits_stream_events_through_event_sink() {
         state: AgentState::default(),
         config,
         provider: FakeProvider,
+        components: Vec::new(),
     });
     let mut sink = InMemoryEventSink::default();
 
@@ -108,6 +113,7 @@ async fn runtime_commits_history_between_runs() {
         state: AgentState::default(),
         config,
         provider,
+        components: Vec::new(),
     });
     let mut sink = InMemoryEventSink::default();
 
@@ -149,6 +155,60 @@ async fn runtime_commits_history_between_runs() {
             ("user", "second"),
             ("assistant", "two"),
         ]
+    );
+}
+
+#[tokio::test]
+async fn runtime_applies_component_contributions() {
+    let mut config = Loop0RunConfig::default();
+    config.provider.model = "fake-model".to_string();
+    config.provider.api_key = "secret".to_string();
+    config.agent.tools.clear();
+    config.prompt.system = concat!(
+        "{% for block in components.prompt_blocks %}block={{ block }};{% endfor %}",
+        "{% for tool in tools %}tool={{ tool.name }};{% endfor %}"
+    )
+    .to_string();
+    let provider = RecordingProvider::new(vec![
+        provider_tool_output("echo", json!({"value": "from component tool"})),
+        provider_output("done"),
+    ]);
+    let requests = provider.requests.clone();
+    let component = Arc::new(EchoComponent::default());
+    let runtime = AgentRuntime::new(AgentSpec {
+        tools: ToolRegistry::default(),
+        state: AgentState::default(),
+        config,
+        provider,
+        components: vec![component.clone()],
+    });
+    let mut sink = InMemoryEventSink::default();
+
+    let result = runtime
+        .run_input(user_input("hello", "thread-component"), &mut sink)
+        .await
+        .unwrap();
+
+    assert_eq!(result.output, "done");
+    let requests = requests.lock().unwrap();
+    assert_eq!(
+        requests[0].messages[0].content,
+        "block=component prompt block;tool=echo;"
+    );
+    assert_eq!(requests[0].tools[0].name, "echo");
+    assert!(
+        requests[1]
+            .messages
+            .iter()
+            .any(|message| message.role == "tool" && message.content == "from component tool")
+    );
+    assert!(
+        component
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event_type| event_type == "tool_finished")
     );
 }
 
@@ -196,12 +256,81 @@ impl ProviderClient for RecordingProvider {
     }
 }
 
+#[derive(Default)]
+struct EchoComponent {
+    events: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl Component for EchoComponent {
+    fn profile(&self) -> ComponentProfile {
+        ComponentProfile::new("echo-component")
+    }
+
+    async fn contribute(&self, ctx: &RunContext) -> Result<Contribution> {
+        assert_eq!(ctx.thread_id, "thread-component");
+        Ok(Contribution {
+            prompt_blocks: vec!["component prompt block".to_string()],
+            tools: vec![Arc::new(EchoTool)],
+            ..Contribution::default()
+        })
+    }
+
+    async fn handle_event(&self, event: &AgentEvent) -> Result<()> {
+        self.events.lock().unwrap().push(event.r#type.clone());
+        Ok(())
+    }
+}
+
+struct EchoTool;
+
+#[async_trait]
+impl ToolExecutor for EchoTool {
+    fn profile(&self) -> ToolProfile {
+        ToolProfile {
+            name: "echo".to_string(),
+            description: "Echo a value.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string"}
+                },
+                "required": ["value"]
+            }),
+        }
+    }
+
+    async fn execute(
+        &self,
+        _ctx: &mut ToolContext<'_>,
+        args: &serde_json::Value,
+    ) -> Result<ToolResult> {
+        Ok(ToolResult::success(
+            args.get("value")
+                .and_then(|value| value.as_str())
+                .unwrap_or(""),
+        ))
+    }
+}
+
 fn provider_output(content: &str) -> ProviderOutput {
     ProviderOutput {
         response: ProviderResponse {
             content: content.to_string(),
             tool_calls: Vec::new(),
             stop_reason: Some("stop".to_string()),
+            raw: json!({}),
+        },
+        events: Vec::new(),
+    }
+}
+
+fn provider_tool_output(name: &str, arguments: serde_json::Value) -> ProviderOutput {
+    ProviderOutput {
+        response: ProviderResponse {
+            content: String::new(),
+            tool_calls: vec![ToolCall::new(name, arguments)],
+            stop_reason: Some("tool_calls".to_string()),
             raw: json!({}),
         },
         events: Vec::new(),

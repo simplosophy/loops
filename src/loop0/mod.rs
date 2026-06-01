@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod component;
 pub mod config;
 pub mod dotenv;
 pub mod events;
