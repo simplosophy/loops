@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from loops import AgentEvent, AgentPolicy, InMemoryEventLogger, PromptTemplate, ToolCall, agent
-from loops.channels import ConsoleChannel, LarkChannel, ScheduledChannel, TuiChannel
-from loops.components import Component, Contribution
-from loops.profiles import ComponentProfile, ProviderProfile, ToolProfile
-from loops.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse
-from loops.providers.openai import OpenAICompatibleProvider, _message_to_openai, _response_from_openai
-from loops.tools import BaseTool, ShellTool, ToolContext, ToolResult
-from loops.types import Message
+from loops.loop0.channels import ConsoleChannel, LarkChannel, ScheduledChannel, TuiChannel
+from loops.loop0.components import Component, Contribution
+from loops.loop0.profiles import ComponentProfile, ProviderProfile, ToolProfile
+from loops.loop0.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse
+from loops.loop0.providers.openai import OpenAICompatibleProvider, _message_to_openai, _response_from_openai
+from loops.loop0.tools import BaseTool, ShellTool, ToolContext, ToolResult
+from loops.loop0.types import Message
 
 
 @dataclass
@@ -155,6 +155,18 @@ def test_prompt_template_injects_channel_tool_provider_profiles(tmp_path: Path):
     assert "tool_names=shell" in system_prompt
     assert "missing=empty" in system_prompt
     assert "interactive=true" in system_prompt
+
+
+def test_top_level_imports_remain_compatible():
+    from loops.channels import ConsoleChannel as CompatConsoleChannel
+    from loops.providers.openai import OpenAICompatibleProvider as CompatOpenAICompatibleProvider
+    from loops.tools import ShellTool as CompatShellTool
+    from loops.types import Message as CompatMessage
+
+    assert CompatConsoleChannel is ConsoleChannel
+    assert CompatOpenAICompatibleProvider is OpenAICompatibleProvider
+    assert CompatShellTool is ShellTool
+    assert CompatMessage is Message
 
 
 def test_shell_tool_accepts_command_sequences_and_records_structured_outputs(tmp_path: Path):
@@ -657,7 +669,7 @@ def test_agent_without_explicit_channel_defaults_to_console(tmp_path: Path, monk
     provider = FakeProvider([ProviderResponse(content="ok")])
     app = agent("Reply.", provider=provider, workspace=tmp_path)
     output = StringIO()
-    monkeypatch.setattr("loops.runtime.ConsoleChannel", lambda: ConsoleChannel(prompt="", output_stream=output))
+    monkeypatch.setattr("loops.loop0.runtime.ConsoleChannel", lambda: ConsoleChannel(prompt="", output_stream=output))
 
     result = asyncio.run(app.run("hello"))
 

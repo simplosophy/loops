@@ -6,8 +6,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from loops.profiles import ProviderProfile, ToolProfile
-from loops.types import Message, ToolCall
+from loops.loop0.profiles import ProviderProfile, ToolProfile
+from loops.loop0.types import Message, ToolCall
 
 
 @dataclass(frozen=True)

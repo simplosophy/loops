@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Protocol, TypeAlias, runtime_checkable
 
-from loops.events import AgentEvent
+from loops.loop0.events import AgentEvent
 
 
 @runtime_checkable

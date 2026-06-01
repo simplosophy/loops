@@ -14,9 +14,9 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
-from loops.profiles import ProviderProfile, ToolProfile
-from loops.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse, ProviderUsage
-from loops.types import Message, ToolCall
+from loops.loop0.profiles import ProviderProfile, ToolProfile
+from loops.loop0.providers.base import Provider, ProviderEvent, ProviderRequest, ProviderResponse, ProviderUsage
+from loops.loop0.types import Message, ToolCall
 
 
 @dataclass

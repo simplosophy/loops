@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from loops.types import Message
+from loops.loop0.types import Message
 
 
 @dataclass

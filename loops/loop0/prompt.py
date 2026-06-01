@@ -8,7 +8,7 @@ from typing import Any
 
 from jinja2 import ChainableUndefined, DictLoader, Environment
 
-from loops.profiles import (
+from loops.loop0.profiles import (
     AgentProfile,
     ChannelView,
     ComponentProfile,
@@ -17,7 +17,7 @@ from loops.profiles import (
     RunProfile,
     ToolProfile,
 )
-from loops.types import UserInput
+from loops.loop0.types import UserInput
 
 
 @dataclass(frozen=True)

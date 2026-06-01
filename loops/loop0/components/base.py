@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from loops.profiles import ComponentProfile
+from loops.loop0.profiles import ComponentProfile
 
 
 @dataclass

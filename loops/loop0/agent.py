@@ -6,17 +6,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loops.channels.base import Channel
-from loops.components.base import Component
-from loops.logging import EventLogger, LoggerLike, normalize_logger
-from loops.policy import AgentPolicy
-from loops.prompt import PromptTemplate
-from loops.providers.base import Provider
-from loops.runtime import AgentRuntime, AgentResult
-from loops.state import AgentState
-from loops.tools.base import BaseTool
-from loops.tools.shell import ShellTool
-from loops.types import UserInput
+from loops.loop0.channels.base import Channel
+from loops.loop0.components.base import Component
+from loops.loop0.logging import EventLogger, LoggerLike, normalize_logger
+from loops.loop0.policy import AgentPolicy
+from loops.loop0.prompt import PromptTemplate
+from loops.loop0.providers.base import Provider
+from loops.loop0.runtime import AgentRuntime, AgentResult
+from loops.loop0.state import AgentState
+from loops.loop0.tools.base import BaseTool
+from loops.loop0.tools.shell import ShellTool
+from loops.loop0.types import UserInput
 
 
 @dataclass(frozen=True)

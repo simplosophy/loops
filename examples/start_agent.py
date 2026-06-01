@@ -25,9 +25,9 @@ import os
 import sys
 
 from loops import AgentPolicy, PromptTemplate, agent, get_logger
-from loops.channels import ConsoleChannel
-from loops.providers import OpenAICompatibleProvider
-from loops.types import UserInput
+from loops.loop0.channels import ConsoleChannel
+from loops.loop0.providers import OpenAICompatibleProvider
+from loops.loop0.types import UserInput
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-pro"

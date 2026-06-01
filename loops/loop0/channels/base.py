@@ -9,10 +9,10 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from loops.events import AgentEvent
-from loops.logging import format_duration_ms, format_tool_arguments_lines, preview_text
-from loops.profiles import ChannelContext, ChannelProfile
-from loops.types import UserInput
+from loops.loop0.events import AgentEvent
+from loops.loop0.logging import format_duration_ms, format_tool_arguments_lines, preview_text
+from loops.loop0.profiles import ChannelContext, ChannelProfile
+from loops.loop0.types import UserInput
 
 try:
     # Importing readline lets Python's input() use readline/libedit line editing

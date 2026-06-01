@@ -567,18 +567,20 @@ Component 是 skills、MCP、memory 等扩展能力的默认入口。
 
 ```text
 loops/
-  agent.py          AgentSpec, Agent, agent factory
-  runtime.py        AgentRuntime, Run, AgentResult
-  prompt.py         PromptTemplate, PromptRenderContext, Jinja2 renderer
-  policy.py         AgentPolicy, ApprovalRequest
-  profiles.py       Profile and prompt-injected view objects
-  state.py          AgentState, MemoryRecord, ThreadState
-  events.py         AgentEvent
-  logging.py        EventLogger adapters and formatting helpers
-  providers/        Provider protocol and OpenAI-compatible adapter
-  tools/            Tool protocol and ShellTool
-  channels/         Channel protocol and built-in channels
-  components/       Component protocol and Contribution
+  __init__.py       Stable public SDK surface and loop0 compatibility aliases
+  loop0/
+    agent.py        AgentSpec, Agent, agent factory
+    runtime.py      AgentRuntime, Run, AgentResult
+    prompt.py       PromptTemplate, PromptRenderContext, Jinja2 renderer
+    policy.py       AgentPolicy, ApprovalRequest
+    profiles.py     Profile and prompt-injected view objects
+    state.py        AgentState, MemoryRecord, ThreadState
+    events.py       AgentEvent
+    logging.py      EventLogger adapters and formatting helpers
+    providers/      Provider protocol and OpenAI-compatible adapter
+    tools/          Tool protocol and ShellTool
+    channels/       Compatibility channels until loop1 owns channel protocols
+    components/     Component protocol and Contribution
 examples/
   start_agent.py    DeepSeek/OpenAI-compatible console example
 tests/

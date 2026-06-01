@@ -42,8 +42,8 @@ Use the SDK directly:
 
 ```python
 from loops import AgentPolicy, PromptTemplate, agent, get_logger
-from loops.channels import TuiChannel
-from loops.providers import OpenAICompatibleProvider
+from loops.loop0.channels import TuiChannel
+from loops.loop0.providers import OpenAICompatibleProvider
 
 provider = OpenAICompatibleProvider(
     model="...",

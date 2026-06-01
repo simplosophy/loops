@@ -1,6 +1,6 @@
 # loops Stack Architecture
 
-本文定义 `loops/loop0/loop1/loop2` 三层架构的目标边界、状态所有权和扩展点。当前代码仍以单 Agent runtime 为主；该文档描述后续演进时需要遵守的分层约束。
+本文定义 `loops/loop0/loop1/loop2` 三层架构的目标边界、状态所有权和扩展点。当前代码已经将单 Agent runtime 收敛到 `loops/loop0/`；`loop1` 和 `loop2` 仍是后续演进目标。
 
 ## 总体分层
 
@@ -287,7 +287,7 @@ loops/
 
 建议按以下顺序落地：
 
-1. 将当前单 Agent runtime 收敛为 `loops/loop0/`，保持顶层 API 兼容。
+1. 已完成：将当前单 Agent runtime 收敛为 `loops/loop0/`，保持顶层 API 兼容。
 2. 引入 loop1 的协议对象：`ChannelMessage`、`ChannelOutput`、`SessionState`、`Storage`、`LoopContainer`。
 3. 用内存 storage 和 TUI channel 实现最小 loop1，支持单用户多 Agent。
 4. 增加 WebUI/IM channel 和持久化 storage adapter。

@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from loops.policy import ApprovalRequest
-from loops.profiles import ToolProfile
-from loops.tools.base import BaseTool, ToolContext, ToolResult
+from loops.loop0.policy import ApprovalRequest
+from loops.loop0.profiles import ToolProfile
+from loops.loop0.tools.base import BaseTool, ToolContext, ToolResult
 
 _CONTROL_SPLIT_RE = re.compile(r"\|\||&&|;|\||\n")
 _URI_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
