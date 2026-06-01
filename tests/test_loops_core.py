@@ -395,11 +395,37 @@ events_file = "events.jsonl"
     assert (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
 
 
+def test_loop0_cli_loads_env_file_for_provider_key(tmp_path: Path):
+    from loops.loop0.cli import parse_run_config
+
+    config_path = tmp_path / "loop0.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "provider": {
+                    "model": "fake-model",
+                    "api_key_env": "TEST_LOOP0_API_KEY",
+                },
+                "run": {"input": "hello"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text("TEST_LOOP0_API_KEY='from-dotenv'\n", encoding="utf-8")
+
+    config = parse_run_config(["--config", str(config_path)], env={})
+
+    assert config.provider.api_key == "from-dotenv"
+
+
 def test_loop0_cli_json_example_config_is_valid():
     from loops.loop0.cli import build_loop0_agent, parse_run_config
 
     config_path = Path("examples/loop0.config.json")
-    config = parse_run_config(["--config", str(config_path)], env={"LOOPS_OPENAI_API_KEY": "secret"})
+    config = parse_run_config(
+        ["--config", str(config_path)],
+        env={"LOOPS_OPENAI_API_KEY": "secret", "LOOPS_DEEPSEEK_API_KEY": "secret"},
+    )
     provider = FakeProvider([ProviderResponse(content="ok")])
     app = build_loop0_agent(config, provider=provider)
 

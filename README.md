@@ -54,8 +54,14 @@ The same run can be fully described by a JSON config file. See
 `examples/loop0.config.json` for a complete sample.
 
 ```bash
+cp .env.example .env
+# Fill in LOOPS_OPENAI_API_KEY or the provider-specific key used by the config.
 uv run loops-loop0 --config examples/loop0.config.json
 ```
+
+`loops-loop0` loads `.env` automatically when present. Explicit shell
+environment variables still take precedence; use `--env-file path/to/env` for a
+different dotenv file.
 
 Use the SDK directly:
 

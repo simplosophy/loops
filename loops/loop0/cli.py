@@ -115,6 +115,7 @@ class Loop0RunConfig:
     run: RunConfig = field(default_factory=RunConfig)
     interaction: InteractionConfig = field(default_factory=InteractionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    env_file: str | None = None
     base_dir: Path = field(default_factory=Path.cwd)
 
 
@@ -142,6 +143,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one loop0 Agent turn.")
     parser.add_argument("message", nargs="*", help="Input message. Omit when using --input, --input-file, or config.")
     parser.add_argument("--config", help="JSON or TOML config file. CLI flags override config values.")
+    parser.add_argument("--env-file", help="Dotenv-style file to load. Default: .env when present.")
 
     prompt = parser.add_argument_group("prompt")
     prompt.add_argument("--system", help="System prompt text.")
@@ -222,7 +224,7 @@ def parse_run_config(
     config_data, base_dir = _load_config(args.config)
     config = _config_from_mapping(config_data, base_dir=base_dir)
     _apply_cli_args(config, args)
-    _apply_env(config, env or os.environ)
+    _apply_env(config, _load_env(config, base_env=env or os.environ))
     return config
 
 
@@ -404,11 +406,14 @@ def _config_from_mapping(data: Mapping[str, Any], *, base_dir: Path) -> Loop0Run
             show_events=bool(output.get("show_events", False)),
             events_file=_optional_str(output.get("events_file")),
         ),
+        env_file=_optional_str(data.get("env_file")),
         base_dir=base_dir,
     )
 
 
 def _apply_cli_args(config: Loop0RunConfig, args: argparse.Namespace) -> None:
+    if args.env_file is not None:
+        config.env_file = _cli_path(args.env_file)
     if args.system is not None:
         config.prompt.system = args.system
         config.prompt.system_file = None
@@ -493,6 +498,49 @@ def _apply_cli_args(config: Loop0RunConfig, args: argparse.Namespace) -> None:
 def _apply_env(config: Loop0RunConfig, env: Mapping[str, str]) -> None:
     if not config.provider.api_key:
         config.provider.api_key = env.get(config.provider.api_key_env, "")
+
+
+def _load_env(config: Loop0RunConfig, *, base_env: Mapping[str, str]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for path in _env_paths(config):
+        if path.exists():
+            values.update(_read_dotenv(path))
+    values.update({str(key): str(value) for key, value in base_env.items()})
+    return values
+
+
+def _env_paths(config: Loop0RunConfig) -> list[Path]:
+    if config.env_file:
+        return [_resolve_path(config.env_file, base_dir=config.base_dir)]
+    paths = [Path.cwd() / ".env"]
+    config_env = config.base_dir / ".env"
+    if config_env != paths[0]:
+        paths.append(config_env)
+    return paths
+
+
+def _read_dotenv(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            raise ValueError(f"Invalid env line in {path}:{line_number}: expected KEY=VALUE")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise ValueError(f"Invalid env line in {path}:{line_number}: empty key")
+        values[key] = _strip_env_value(value.strip())
+    return values
+
+
+def _strip_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
 
 
 def _build_policy(config: PolicyConfig) -> AgentPolicy:

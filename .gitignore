@@ -20,6 +20,7 @@ venv/
 env/
 .env
 .env.*
+!.env.example
 
 # loops local runtime artifacts
 .loops-workspace/
