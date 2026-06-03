@@ -79,25 +79,11 @@ impl ToolRegistry {
     where
         T: ToolExecutor + 'static,
     {
-        self.register_arc(Arc::new(tool))
-    }
-
-    pub fn register_arc(&mut self, tool: Arc<dyn ToolExecutor>) -> Result<()> {
         let profile = tool.profile();
         if self.tools.contains_key(&profile.name) {
             anyhow::bail!("tool '{}' is already registered", profile.name);
         }
-        self.tools.insert(profile.name, tool);
-        Ok(())
-    }
-
-    pub fn extend_arc<I>(&mut self, tools: I) -> Result<()>
-    where
-        I: IntoIterator<Item = Arc<dyn ToolExecutor>>,
-    {
-        for tool in tools {
-            self.register_arc(tool)?;
-        }
+        self.tools.insert(profile.name, Arc::new(tool));
         Ok(())
     }
 
