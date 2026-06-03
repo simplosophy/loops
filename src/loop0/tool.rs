@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::loop0::config::PolicyConfig;
 use crate::loop0::provider::ToolProfile;
-use crate::loop0::shell::{ShellProcessManager, execute_shell_tool, shell_tool_profile};
+use crate::loop0::shell::{execute_shell_tool, shell_tool_profile};
 use crate::loop0::types::{AgentEvent, ToolCall};
 
 #[derive(Debug, Clone)]
@@ -29,37 +29,12 @@ impl ToolResult {
         }
     }
 
-    pub fn success_with_metadata(
-        output: impl Into<String>,
-        metadata: BTreeMap<String, Value>,
-    ) -> Self {
-        Self {
-            output: output.into(),
-            error: None,
-            status: "success".to_string(),
-            metadata,
-        }
-    }
-
     pub fn failure(error: impl Into<String>, status: impl Into<String>) -> Self {
         Self {
             output: String::new(),
             error: Some(error.into()),
             status: status.into(),
             metadata: BTreeMap::new(),
-        }
-    }
-
-    pub fn failure_with_metadata(
-        error: impl Into<String>,
-        status: impl Into<String>,
-        metadata: BTreeMap<String, Value>,
-    ) -> Self {
-        Self {
-            output: String::new(),
-            error: Some(error.into()),
-            status: status.into(),
-            metadata,
         }
     }
 
@@ -156,17 +131,15 @@ pub fn registry_from_names(names: &[String]) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::default();
     for name in names {
         match name.as_str() {
-            "shell" => registry.register(ShellTool::default())?,
+            "shell" => registry.register(ShellTool)?,
             other => anyhow::bail!("unsupported tool: {other}"),
         }
     }
     Ok(registry)
 }
 
-#[derive(Clone, Default)]
-pub struct ShellTool {
-    manager: ShellProcessManager,
-}
+#[derive(Clone)]
+pub struct ShellTool;
 
 #[async_trait]
 impl ToolExecutor for ShellTool {
@@ -181,6 +154,7 @@ impl ToolExecutor for ShellTool {
             id: "tool".to_string(),
             raw: Value::Null,
         };
-        execute_shell_tool(&tool_call, &ctx.workspace, ctx.policy, &self.manager).await
+        let output = execute_shell_tool(&tool_call, &ctx.workspace, ctx.policy).await?;
+        Ok(ToolResult::success(output))
     }
 }
