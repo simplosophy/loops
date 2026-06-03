@@ -61,12 +61,6 @@
 - 根据架构文档迁移 session/channel/storage/project organizer 抽象。
 - 添加跨层协议测试，确保 `loop2 -> loop1 -> loop0` 单向依赖成立。
 
-当前状态：
-
-- 已新增 Rust `src/loop1` 模块，定义 `ChannelMessage`、`ChannelOutput`、`SessionState`、`LoopContainerState` 和 `Channel` 边界。
-- 已新增 Rust `src/loop2` 模块，定义 `OrgState`、`ProjectSpaceState`、`RuntimeRef`、`ProjectTask`、`HandoffRequest` 和 `ProjectEvent`。
-- 当前实现是协议/状态边界，不包含具体 channel、storage backend 或 cloud scheduler。
-
 ## 完成标准
 
 - 仓库主实现为 Rust，Python runtime 源码不再是执行路径。

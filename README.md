@@ -8,14 +8,9 @@ loops models an agent as:
 AgentSpec + AgentState + AgentRuntime
 ```
 
-The Rust crate is split into three layers:
-
-- `loop0`: single Agent runtime, provider/tool loop, prompt rendering, state,
-  events, and the built-in `shell` tool.
-- `loop1`: user runtime/container protocol boundary for channel messages,
-  sessions, routing, and user-scoped state.
-- `loop2`: org/project organizer protocol boundary for projects, tasks,
-  handoff, runtime inventory, and audit/project events.
+The core runtime includes one built-in tool, `shell`. Other capabilities such
+as skills, MCP, memory backends, app-specific I/O, and knowledge systems
+are intended to be added as components or integrations.
 
 ## Quick Start
 
