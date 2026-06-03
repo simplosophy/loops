@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::Path;
-use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow};
 use minijinja::{Environment, context};
@@ -13,41 +12,21 @@ use crate::loop0::io::{EventSink, InMemoryEventSink};
 use crate::loop0::provider::{
     OpenAiCompatibleProvider, ProviderClient, ProviderRequest, ProviderStreamEvent, ToolProfile,
 };
-use crate::loop0::state::AgentState;
-use crate::loop0::tool::{ToolContext, ToolRegistry, registry_from_names};
-use crate::loop0::types::{
-    AgentEvent, AgentResult, InteractionContext, Message, RuntimeStats, UserInput,
-};
+use crate::loop0::shell::{execute_shell_tool, shell_tool_profile};
+use crate::loop0::types::{AgentEvent, AgentResult, Message, RuntimeStats};
 
 pub struct AgentSpec<P> {
     pub config: Loop0RunConfig,
     pub provider: P,
-    pub state: AgentState,
-    pub tools: ToolRegistry,
 }
 
 pub struct AgentRuntime<P> {
-    config: Loop0RunConfig,
-    provider: P,
-    state: Mutex<AgentState>,
-    tools: ToolRegistry,
+    spec: AgentSpec<P>,
 }
 
 impl<P> AgentRuntime<P> {
     pub fn new(spec: AgentSpec<P>) -> Self {
-        Self {
-            config: spec.config,
-            provider: spec.provider,
-            state: Mutex::new(spec.state),
-            tools: spec.tools,
-        }
-    }
-
-    pub fn state_snapshot(&self) -> AgentState {
-        self.state
-            .lock()
-            .expect("agent state mutex poisoned")
-            .clone()
+        Self { spec }
     }
 }
 
@@ -56,54 +35,17 @@ where
     P: ProviderClient,
 {
     pub async fn run(&self, sink: &mut dyn EventSink) -> Result<AgentResult> {
-        let input = self.input_from_config()?;
-        self.run_input(input, sink).await
-    }
-
-    pub async fn run_input(
-        &self,
-        input: UserInput,
-        sink: &mut dyn EventSink,
-    ) -> Result<AgentResult> {
-        let config = &self.config;
+        let config = &self.spec.config;
         let workspace = config.workspace_path();
         fs::create_dir_all(&workspace)
             .with_context(|| format!("failed to create workspace {}", workspace.display()))?;
-        let input_text = input.text;
-        let interaction = input.interaction_context;
-        let thread_id = interaction
-            .thread_id
-            .clone()
-            .or_else(|| interaction.session_id.clone())
-            .unwrap_or_else(|| config.run.thread_id.clone());
-        let history = self
-            .state
-            .lock()
-            .expect("agent state mutex poisoned")
-            .get_history(&thread_id, None);
-        let tool_profiles = self.tools.profiles();
-        let system_prompt = render_prompt(
-            &config.load_prompt_system()?,
-            config,
-            &input_text,
-            &interaction,
-            &history,
-            &tool_profiles,
-            &workspace,
-        )?;
-        let user_prompt = render_prompt(
-            &config.load_prompt_user()?,
-            config,
-            &input_text,
-            &interaction,
-            &history,
-            &tool_profiles,
-            &workspace,
-        )?;
+        let input = config.load_input()?;
+        let system_prompt =
+            render_prompt(&config.load_prompt_system()?, config, &input, &workspace)?;
+        let user_prompt = render_prompt(&config.load_prompt_user()?, config, &input, &workspace)?;
         let run_id = format!("run_{}", Uuid::new_v4().simple());
         let mut stats = RuntimeStats::default();
         let mut events = Vec::new();
-        let mut pending_state_messages = vec![Message::new("user", input_text.clone())];
         emit(
             &mut events,
             sink,
@@ -111,15 +53,17 @@ where
                 "run_started",
                 &run_id,
                 json!({
-                    "thread_id": thread_id,
-                    "interaction": interaction.source,
-                    "input_chars": input_text.chars().count(),
+                    "thread_id": config.run.thread_id,
+                    "interaction": config.interaction.source,
+                    "input_chars": input.chars().count(),
                 }),
             ),
         )?;
-        let mut messages = vec![Message::new("system", system_prompt)];
-        messages.extend(history);
-        messages.push(Message::new("user", user_prompt));
+        let mut messages = vec![
+            Message::new("system", system_prompt),
+            Message::new("user", user_prompt),
+        ];
+        let tools = build_tools(&config.agent.tools)?;
         for turn in 1..=config.policy.max_turns {
             stats.turns += 1;
             emit(
@@ -133,15 +77,16 @@ where
                         "provider": config.provider.name,
                         "model": config.provider.model,
                         "stream": config.run.stream,
-                        "tool_count": tool_profiles.len(),
+                        "tool_count": tools.len(),
                     }),
                 ),
             )?;
             let output = self
+                .spec
                 .provider
                 .complete(ProviderRequest {
                     messages: messages.clone(),
-                    tools: tool_profiles.clone(),
+                    tools: tools.clone(),
                     stream: config.run.stream,
                     parallel_tool_calls: config.policy.parallel_tool_calls,
                 })
@@ -176,16 +121,14 @@ where
                 ),
             )?;
             if response.tool_calls.is_empty() {
-                pending_state_messages.push(Message::new("assistant", response.content.clone()));
                 let result = AgentResult {
                     output: response.content,
                     run_id,
-                    thread_id: thread_id.clone(),
+                    thread_id: config.run.thread_id.clone(),
                     stop_reason: "completed".to_string(),
                     stats,
                     events,
                 };
-                self.commit_messages(&thread_id, pending_state_messages);
                 write_events(config, &result.events)?;
                 return Ok(result);
             }
@@ -206,26 +149,14 @@ where
                         }),
                     ),
                 )?;
-                let mut ctx = ToolContext {
-                    agent_id: self
-                        .state
-                        .lock()
-                        .expect("agent state mutex poisoned")
-                        .agent_id
-                        .clone(),
-                    run_id: run_id.clone(),
-                    workspace: workspace.clone(),
-                    policy: &config.policy,
-                    metadata: [("thread_id".to_string(), json!(thread_id.clone()))]
-                        .into_iter()
-                        .collect(),
-                    emitted_events: Vec::new(),
+                let content = match tool_call.name.as_str() {
+                    "shell" => execute_shell_tool(&tool_call, &workspace, &config.policy).await?,
+                    other => json!({
+                        "status": "not_found",
+                        "error": format!("unknown tool: {other}")
+                    })
+                    .to_string(),
                 };
-                let tool_result = self
-                    .tools
-                    .execute(&tool_call.name, &mut ctx, &tool_call.arguments)
-                    .await?;
-                let content = tool_result.message_content();
                 emit(
                     &mut events,
                     sink,
@@ -235,61 +166,23 @@ where
                         json!({
                             "tool_name": tool_call.name,
                             "tool_call_id": tool_call.id,
-                            "status": tool_result.status,
-                            "output": tool_result.output,
-                            "error": tool_result.error,
-                            "metadata": tool_result.metadata,
                             "content_chars": content.chars().count(),
                         }),
                     ),
                 )?;
                 messages.push(Message::tool(content, tool_call.id));
-                for event in ctx.emitted_events {
-                    emit(&mut events, sink, event)?;
-                }
-                if !tool_result.is_success() && !config.policy.allow_tool_errors {
-                    return Err(anyhow!("tool execution failed"));
-                }
             }
         }
         let result = AgentResult {
             output: String::new(),
             run_id,
-            thread_id: thread_id.clone(),
+            thread_id: config.run.thread_id.clone(),
             stop_reason: "turn_limit_reached".to_string(),
             stats,
             events,
         };
-        self.commit_messages(&thread_id, pending_state_messages);
         write_events(config, &result.events)?;
         Ok(result)
-    }
-
-    fn input_from_config(&self) -> Result<UserInput> {
-        let config = &self.config;
-        let text = config.load_input()?;
-        Ok(UserInput::new(
-            text,
-            InteractionContext {
-                source: config.interaction.source.clone(),
-                session_id: config.interaction.session_id.clone(),
-                thread_id: Some(config.run.thread_id.clone()),
-                actor_id: config.interaction.actor_id.clone(),
-                reply_to: config.interaction.reply_to.clone(),
-                audience: config.interaction.audience.clone(),
-                interactive: config.interaction.interactive,
-                stream: config.run.stream,
-                locale: config.interaction.locale.clone(),
-                raw: config.interaction.raw.clone(),
-            },
-        ))
-    }
-
-    fn commit_messages(&self, thread_id: &str, messages: Vec<Message>) {
-        let mut state = self.state.lock().expect("agent state mutex poisoned");
-        for message in messages {
-            state.append_message(thread_id, message);
-        }
     }
 }
 
@@ -298,8 +191,6 @@ pub async fn run_loop0(config: &Loop0RunConfig) -> Result<AgentResult> {
     let runtime = AgentRuntime::new(AgentSpec {
         config: config.clone(),
         provider,
-        state: AgentState::default(),
-        tools: registry_from_names(&config.agent.tools)?,
     });
     let mut sink = InMemoryEventSink::default();
     runtime.run(&mut sink).await
@@ -323,6 +214,16 @@ pub fn write_events(config: &Loop0RunConfig, events: &[AgentEvent]) -> Result<()
         .with_context(|| format!("failed to write events file {}", path.display()))
 }
 
+fn build_tools(names: &[String]) -> Result<Vec<ToolProfile>> {
+    names
+        .iter()
+        .map(|name| match name.as_str() {
+            "shell" => Ok(shell_tool_profile()),
+            other => Err(anyhow!("unsupported tool: {other}")),
+        })
+        .collect()
+}
+
 fn emit(events: &mut Vec<AgentEvent>, sink: &mut dyn EventSink, event: AgentEvent) -> Result<()> {
     sink.send(&event)?;
     events.push(event);
@@ -333,9 +234,6 @@ fn render_prompt(
     template: &str,
     config: &Loop0RunConfig,
     input_text: &str,
-    interaction: &InteractionContext,
-    history: &[Message],
-    tools: &[ToolProfile],
     workspace: &Path,
 ) -> Result<String> {
     let env = Environment::new();
@@ -354,16 +252,16 @@ fn render_prompt(
                 "base_url": config.provider.base_url,
             }),
             interaction => json!({
-                "source": interaction.source,
-                "session_id": interaction.session_id,
-                "thread_id": interaction.thread_id,
-                "actor_id": interaction.actor_id,
-                "reply_to": interaction.reply_to,
-                "audience": interaction.audience,
-                "interactive": interaction.interactive,
-                "stream": interaction.stream,
-                "locale": interaction.locale,
-                "raw": interaction.raw,
+                "source": config.interaction.source,
+                "session_id": config.interaction.session_id,
+                "thread_id": config.run.thread_id,
+                "actor_id": config.interaction.actor_id,
+                "reply_to": config.interaction.reply_to,
+                "audience": config.interaction.audience,
+                "interactive": config.interaction.interactive,
+                "stream": config.run.stream,
+                "locale": config.interaction.locale,
+                "raw": config.interaction.raw,
             }),
             input => json!({
                 "text": input_text,
@@ -371,10 +269,7 @@ fn render_prompt(
             run => json!({
                 "thread_id": config.run.thread_id,
             }),
-            state => json!({
-                "history": history,
-            }),
-            tools => tools,
+            tools => build_tools(&config.agent.tools)?,
         },
     )
     .context("failed to render prompt")

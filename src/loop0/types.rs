@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -12,17 +11,6 @@ pub struct ToolCall {
     pub id: String,
     #[serde(default)]
     pub raw: Value,
-}
-
-impl ToolCall {
-    pub fn new(name: impl Into<String>, arguments: Value) -> Self {
-        Self {
-            name: name.into(),
-            arguments,
-            id: format!("call_{}", Uuid::new_v4().simple()),
-            raw: Value::Null,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,17 +48,6 @@ impl Message {
             tool_call_id: Some(tool_call_id.into()),
             tool_calls: Vec::new(),
             metadata: BTreeMap::new(),
-        }
-    }
-}
-
-impl UserInput {
-    pub fn new(text: impl Into<String>, interaction_context: InteractionContext) -> Self {
-        Self {
-            text: text.into(),
-            attachments: Vec::new(),
-            metadata: BTreeMap::new(),
-            interaction_context,
         }
     }
 }
