@@ -48,13 +48,6 @@
 - 明确保留或移除 `uv`/Python packaging；最终以 Cargo 为主。
 - 清理 `.py` runtime 源码、Python tests、egg-info 和 uv lock。
 
-当前状态：
-
-- 已移除 Python package/runtime、Python CLI/demo、Python tests、`pyproject.toml` 和 `uv.lock`。
-- README 已切换为 Cargo/Rust 使用路径，验证命令改为 `cargo fmt` / `cargo test`。
-- 架构文档的当前实现目录已从 Python `loops/loop0/*.py` 更新为 Rust `src/loop0/*.rs`。
-- `loops-loop0` 当前作为 Cargo binary 运行；后续如需发布独立命令，应通过 `cargo install --path .` 或发行构建产物提供。
-
 ## 阶段 4：loop1 / loop2 Rust 化
 
 - 在 Rust 中建立 `loop1` 和 `loop2` crate/module 边界。
@@ -65,5 +58,5 @@
 
 - 仓库主实现为 Rust，Python runtime 源码不再是执行路径。
 - `cargo test` 覆盖 loop0 核心 runtime、provider、tool、CLI config。
-- `cargo run --bin loops-loop0 -- --config examples/loop0.config.json` 走 Rust binary。
+- `loops-loop0 --config examples/loop0.config.json` 走 Rust binary。
 - 架构文档、README、样例和 notes 与 Rust 实现一致。

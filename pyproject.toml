@@ -1,0 +1,25 @@
+[project]
+name = "loops"
+version = "0.1.0"
+description = "Minimal agent runtime SDK"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "jinja2>=3.1",
+]
+
+[project.scripts]
+loops-loop0 = "loops.loop0.cli:main"
+loops-demo = "examples.start_agent:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["loops*", "examples*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]

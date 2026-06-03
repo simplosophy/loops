@@ -232,7 +232,7 @@ loop2: ProjectEvent / RuntimeEvent / AuditEvent
 ChannelMessage
   -> loop1 SessionManager
   -> loop1 Router
-  -> loop0 AgentRuntime::run_input
+  -> loop0 Agent.run
   -> loop0 AgentEvent stream
   -> loop1 EventBus
   -> ChannelOutput
@@ -246,45 +246,43 @@ ChannelMessage
 目标代码布局倾向如下：
 
 ```text
-src/
+loops/
   loop0/
-    cli.rs
-    component.rs
-    config.rs
-    dotenv.rs
-    events.rs
-    io.rs
-    provider.rs
-    runtime.rs
-    shell.rs
-    state.rs
-    tool.rs
-    types.rs
+    agent.py
+    runtime.py
+    io.py
+    prompt.py
+    policy.py
+    state.py
+    events.py
+    providers/
+    tools/
+    components/
 
   loop1/
-    container.rs
-    session.rs
-    channel.rs
-    router.rs
-    storage.rs
-    event_bus.rs
-    approvals.rs
-    credentials.rs
+    container.py
+    session.py
+    channel.py
+    router.py
+    storage.py
+    event_bus.py
+    approvals.py
+    credentials.py
     channels/
     storage_backends/
 
   loop2/
-    org.rs
-    project.rs
-    scheduler.rs
-    collaboration.rs
-    policy.rs
-    audit.rs
-    shared_storage.rs
-    control_plane.rs
+    org.py
+    project.py
+    scheduler.py
+    collaboration.py
+    policy.py
+    audit.py
+    shared_storage.py
+    control_plane.py
 ```
 
-顶层 Rust crate `loops` 通过 `src/lib.rs` re-export 稳定公共 API；binary 入口放在 `src/bin/`。
+顶层 `loops/__init__.py` 可以继续 re-export 稳定公共 API，以便包内部迁移不破坏用户导入路径。
 
 ## 演进顺序
 
