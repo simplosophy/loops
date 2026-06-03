@@ -144,8 +144,6 @@ impl OpenAiCompatibleProvider {
         }
         let mut content_parts = Vec::new();
         let mut reasoning_parts = Vec::new();
-        let mut tool_call_chunks = BTreeMap::new();
-        let mut stop_reason = None;
         let mut raw_chunks = Vec::new();
         let mut events = Vec::new();
         let mut buffer = String::new();
@@ -169,8 +167,6 @@ impl OpenAiCompatibleProvider {
                     &chunk,
                     &mut content_parts,
                     &mut reasoning_parts,
-                    &mut tool_call_chunks,
-                    &mut stop_reason,
                     &mut events,
                 );
                 raw_chunks.push(chunk);
@@ -179,8 +175,8 @@ impl OpenAiCompatibleProvider {
         let content = content_parts.join("");
         let response = ProviderResponse {
             content,
-            tool_calls: tool_calls_from_stream_chunks(&tool_call_chunks),
-            stop_reason,
+            tool_calls: Vec::new(),
+            stop_reason: None,
             raw: json!({"chunks": raw_chunks, "reasoning_content": reasoning_parts.join("")}),
         };
         Ok(ProviderOutput { response, events })
@@ -351,7 +347,11 @@ fn parse_tool_call(value: &Value) -> Result<ToolCall> {
         .get("arguments")
         .and_then(Value::as_str)
         .unwrap_or("{}");
-    let arguments = parse_tool_arguments(arguments_text);
+    let arguments = serde_json::from_str(arguments_text).unwrap_or_else(|_| {
+        let mut fallback = BTreeMap::new();
+        fallback.insert("raw".to_string(), Value::String(arguments_text.to_string()));
+        serde_json::to_value(fallback).unwrap_or(Value::Null)
+    });
     Ok(ToolCall {
         name,
         arguments,
@@ -360,35 +360,18 @@ fn parse_tool_call(value: &Value) -> Result<ToolCall> {
     })
 }
 
-#[derive(Debug, Default)]
-struct StreamToolCallChunk {
-    id: String,
-    name: String,
-    arguments: String,
-    raw_deltas: Vec<Value>,
-}
-
 fn collect_stream_chunk(
     chunk: &Value,
     content_parts: &mut Vec<String>,
     reasoning_parts: &mut Vec<String>,
-    tool_call_chunks: &mut BTreeMap<usize, StreamToolCallChunk>,
-    stop_reason: &mut Option<String>,
     events: &mut Vec<ProviderStreamEvent>,
 ) {
-    let Some(choice) = chunk
+    let Some(delta) = chunk
         .get("choices")
         .and_then(Value::as_array)
         .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("delta"))
     else {
-        return;
-    };
-    if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
-        if !reason.is_empty() {
-            *stop_reason = Some(reason.to_string());
-        }
-    }
-    let Some(delta) = choice.get("delta") else {
         return;
     };
     if let Some(text) = delta.get("content").and_then(Value::as_str) {
@@ -402,133 +385,5 @@ fn collect_stream_chunk(
             reasoning_parts.push(text.to_string());
             events.push(ProviderStreamEvent::ReasoningDelta(text.to_string()));
         }
-    }
-    if let Some(tool_call_deltas) = delta.get("tool_calls").and_then(Value::as_array) {
-        merge_tool_call_deltas(tool_call_chunks, tool_call_deltas);
-    }
-}
-
-fn merge_tool_call_deltas(target: &mut BTreeMap<usize, StreamToolCallChunk>, deltas: &[Value]) {
-    for delta in deltas {
-        let index = delta.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
-        let current = target.entry(index).or_default();
-        if let Some(id) = delta.get("id").and_then(Value::as_str) {
-            if !id.is_empty() {
-                current.id = id.to_string();
-            }
-        }
-        if let Some(function) = delta.get("function") {
-            if let Some(name) = function.get("name").and_then(Value::as_str) {
-                if !name.is_empty() {
-                    current.name = name.to_string();
-                }
-            }
-            if let Some(arguments) = function.get("arguments").and_then(Value::as_str) {
-                current.arguments.push_str(arguments);
-            }
-        }
-        current.raw_deltas.push(delta.clone());
-    }
-}
-
-fn tool_calls_from_stream_chunks(chunks: &BTreeMap<usize, StreamToolCallChunk>) -> Vec<ToolCall> {
-    chunks
-        .iter()
-        .map(|(index, chunk)| ToolCall {
-            name: chunk.name.clone(),
-            arguments: parse_tool_arguments(&chunk.arguments),
-            id: if chunk.id.is_empty() {
-                format!("call_{index}")
-            } else {
-                chunk.id.clone()
-            },
-            raw: json!({
-                "index": index,
-                "id": chunk.id,
-                "function": {
-                    "name": chunk.name,
-                    "arguments": chunk.arguments,
-                },
-                "deltas": chunk.raw_deltas,
-            }),
-        })
-        .collect()
-}
-
-fn parse_tool_arguments(arguments_text: &str) -> Value {
-    serde_json::from_str(arguments_text).unwrap_or_else(|_| {
-        let mut fallback = BTreeMap::new();
-        fallback.insert("raw".to_string(), Value::String(arguments_text.to_string()));
-        serde_json::to_value(fallback).unwrap_or(Value::Null)
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn folds_streaming_tool_call_deltas() {
-        let chunks = vec![
-            json!({
-                "choices": [{
-                    "delta": {
-                        "content": "working",
-                        "tool_calls": [{
-                            "index": 0,
-                            "id": "call_echo",
-                            "type": "function",
-                            "function": {"name": "echo", "arguments": ""}
-                        }]
-                    }
-                }]
-            }),
-            json!({
-                "choices": [{
-                    "delta": {
-                        "tool_calls": [{
-                            "index": 0,
-                            "function": {"arguments": "{\"value\""}
-                        }]
-                    }
-                }]
-            }),
-            json!({
-                "choices": [{
-                    "delta": {
-                        "tool_calls": [{
-                            "index": 0,
-                            "function": {"arguments": ":\"hello\"}"}
-                        }]
-                    },
-                    "finish_reason": "tool_calls"
-                }]
-            }),
-        ];
-        let mut content_parts = Vec::new();
-        let mut reasoning_parts = Vec::new();
-        let mut tool_call_chunks = BTreeMap::new();
-        let mut stop_reason = None;
-        let mut events = Vec::new();
-
-        for chunk in &chunks {
-            collect_stream_chunk(
-                chunk,
-                &mut content_parts,
-                &mut reasoning_parts,
-                &mut tool_call_chunks,
-                &mut stop_reason,
-                &mut events,
-            );
-        }
-
-        let tool_calls = tool_calls_from_stream_chunks(&tool_call_chunks);
-        assert_eq!(content_parts.join(""), "working");
-        assert_eq!(stop_reason.as_deref(), Some("tool_calls"));
-        assert_eq!(tool_calls.len(), 1);
-        assert_eq!(tool_calls[0].id, "call_echo");
-        assert_eq!(tool_calls[0].name, "echo");
-        assert_eq!(tool_calls[0].arguments["value"], "hello");
-        assert!(matches!(events[0], ProviderStreamEvent::TextDelta(_)));
     }
 }
