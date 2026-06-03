@@ -430,14 +430,11 @@ def test_loop0_cli_json_example_config_is_valid():
     app = build_loop0_agent(config, provider=provider)
 
     assert config.provider.api_key == "secret"
-    assert "Use shell.run from the configured workspace" in config.run.input
-    assert "find . -maxdepth 1" in config.run.input
+    assert config.run.input == "Inspect the current repository and summarize the top-level files."
     assert config.run.stream is True
     assert config.agent.tools == ["shell"]
-    assert config.agent.workspace == ".."
-    assert config.output.events_file == "../.loops-example-workspace/events.jsonl"
+    assert config.output.events_file == ".loops-example-workspace/events.jsonl"
     assert app.spec.metadata["name"] == "loop0-cli-example"
-    assert app.workspace == Path.cwd()
     assert "single loop0 agent runtime" in app.spec.prompt.system
 
 

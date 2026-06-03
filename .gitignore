@@ -25,7 +25,6 @@ env/
 # loops local runtime artifacts
 .loops-workspace/
 .loops-demo-workspace/
-.loops-example-workspace/
 
 # legacy loop0 runtime artifacts
 .loop0-workspace/
