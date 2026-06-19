@@ -34,12 +34,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Resolve site URL and base path
+        id: vars
+        run: |
+          # Convention: if docs/site/public/CNAME exists, the site is served from
+          # a custom domain at the root, so base must be "/" and SITE_URL the domain.
+          # Otherwise fall back to the github.io subpath (<owner>.github.io/<repo>/).
+          if [ -f docs/site/public/CNAME ]; then
+            domain=$(tr -d '[:space:]' < docs/site/public/CNAME)
+            echo "base=/" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://${domain}" >> "$GITHUB_OUTPUT"
+            echo "Deploying for custom domain: ${domain}"
+          else
+            echo "base=/${{ github.event.repository.name }}/" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://${{ github.repository_owner }}.github.io" >> "$GITHUB_OUTPUT"
+            echo "Deploying for github.io subpath."
+          fi
+
       - name: Build site
-        # GitHub Pages 部署在 https://<user>.github.io/<repo>/ 子路径下。
-        # base 必须匹配仓库名，否则静态资源 404。
         env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+          BASE_PATH: ${{ steps.vars.outputs.base }}
+          SITE_URL: ${{ steps.vars.outputs.site_url }}
         run: npm run build
+
+      - name: Verify site
+        env:
+          BASE_PATH: ${{ steps.vars.outputs.base }}
+          SITE_URL: ${{ steps.vars.outputs.site_url }}
+        run: npm run verify:site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
