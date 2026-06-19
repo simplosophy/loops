@@ -1,0 +1,153 @@
+/**
+ * Loops Protocol Stack — 自定义主题
+ * 移植自 docs/intro.html 的设计 token：深色主题 + L0/L1/L2 三色体系
+ *
+ * 颜色语义:
+ *   --l0 橙  执行层 CAP
+ *   --l1 蓝  agent 间 AAP
+ *   --l2 紫  人机协作 HACP (品牌主色)
+ *   --cross 绿  横切正交
+ *   --proto 青  协议连接件
+ */
+
+/* ============ 设计 Token ============ */
+:root {
+  /* Loops 三层色 */
+  --l0: #f97316;
+  --l1: #3b82f6;
+  --l2: #8b5cf6;
+  --cross: #10b981;
+  --proto: #06b6d4;
+
+  /* 品牌主色用 L2 紫 (HACP 是 loops 的核心贡献) */
+  --vp-c-brand-1: #8b5cf6;
+  --vp-c-brand-2: #a78bfa;
+  --vp-c-brand-3: #c4b5fd;
+  --vp-c-brand-soft: rgba(139, 92, 246, 0.14);
+
+  /* 渐变 (Hero 标题用) */
+  --loops-grad: linear-gradient(100deg, #f97316, #3b82f6, #8b5cf6);
+}
+
+/* ============ 深色模式 (默认偏好) ============ */
+.dark {
+  --vp-c-brand-1: #a78bfa;
+  --vp-c-brand-2: #c4b5fd;
+  --vp-c-brand-3: #ddd6fe;
+  --vp-c-brand-soft: rgba(167, 139, 250, 0.16);
+}
+
+/* 让深色为默认 (延续 intro.html 风格) */
+html {
+  color-scheme: dark;
+}
+
+/* ============ 首页 Hero 渐变标题 ============ */
+.vp-doc h1 .grad,
+.VPHero .name .grad,
+.home-hero-name .grad {
+  background: var(--loops-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ============ 侧边栏：三层色点标记 ============ */
+/* 通过 link 路径匹配给侧边栏项加颜色点 */
+.vp-sidebar .VPLink:has([href*="/specs/hacp"])::before,
+.vp-sidebar .link[href*="/specs/hacp"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--l2);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.vp-sidebar .link[href*="/specs/aap"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--l1);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.vp-sidebar .link[href*="/specs/cap"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--l0);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ============ 首页Hero底部容器:栈全景图居中 ============ */
+.home-stack-art {
+  display: flex;
+  justify-content: center;
+  margin: 2rem auto;
+  max-width: 720px;
+}
+
+/* ============ 三层入口卡片 (首页 features 之外的自定义) ============ */
+.layer-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 2rem 0;
+}
+
+.layer-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  padding: 20px;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.layer-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--vp-c-brand-1);
+}
+
+.layer-card h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-card .badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #0a0a0f;
+}
+
+.layer-card.l0 { border-left: 3px solid var(--l0); }
+.layer-card.l0 .badge { background: var(--l0); }
+.layer-card.l1 { border-left: 3px solid var(--l1); }
+.layer-card.l1 .badge { background: var(--l1); }
+.layer-card.l2 { border-left: 3px solid var(--l2); }
+.layer-card.l2 .badge { background: var(--l2); }
+
+.layer-card p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .layer-cards { grid-template-columns: 1fr; }
+}
+
+/* ============ 协议代码块美化 (覆盖语法高亮背景,呼应深色) ============ */
+.vp-doc div[class*='language-'] {
+  border-radius: 8px;
+}

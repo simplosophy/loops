@@ -35,3 +35,8 @@ env/
 .DS_Store
 .idea/
 .vscode/
+
+# Node / VitePress
+node_modules/
+docs/site/.vitepress/dist/
+docs/site/.vitepress/cache/
