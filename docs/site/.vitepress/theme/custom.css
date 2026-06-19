@@ -1,153 +1,327 @@
-/**
- * Loops Protocol Stack — 自定义主题
- * 移植自 docs/intro.html 的设计 token：深色主题 + L0/L1/L2 三色体系
- *
- * 颜色语义:
- *   --l0 橙  执行层 CAP
- *   --l1 蓝  agent 间 AAP
- *   --l2 紫  人机协作 HACP (品牌主色)
- *   --cross 绿  横切正交
- *   --proto 青  协议连接件
- */
-
-/* ============ 设计 Token ============ */
 :root {
-  /* Loops 三层色 */
   --l0: #f97316;
   --l1: #3b82f6;
   --l2: #8b5cf6;
-  --cross: #10b981;
-  --proto: #06b6d4;
+  --ok: #10b981;
+  --link: #06b6d4;
+  --ink: #f4f4f5;
+  --muted: #a1a1aa;
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-strong: rgba(255, 255, 255, 0.075);
+  --line: rgba(255, 255, 255, 0.13);
+  --loops-grad: linear-gradient(100deg, #f97316, #3b82f6 54%, #8b5cf6);
 
-  /* 品牌主色用 L2 紫 (HACP 是 loops 的核心贡献) */
   --vp-c-brand-1: #8b5cf6;
-  --vp-c-brand-2: #a78bfa;
-  --vp-c-brand-3: #c4b5fd;
-  --vp-c-brand-soft: rgba(139, 92, 246, 0.14);
-
-  /* 渐变 (Hero 标题用) */
-  --loops-grad: linear-gradient(100deg, #f97316, #3b82f6, #8b5cf6);
+  --vp-c-brand-2: #7c3aed;
+  --vp-c-brand-3: #6d28d9;
+  --vp-c-brand-soft: rgba(139, 92, 246, 0.16);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: var(--loops-grad);
+  --vp-home-hero-image-background-image: none;
+  --vp-home-hero-image-filter: none;
 }
 
-/* ============ 深色模式 (默认偏好) ============ */
 .dark {
+  --vp-c-bg: #101014;
+  --vp-c-bg-alt: #15151b;
+  --vp-c-bg-soft: #1b1b23;
   --vp-c-brand-1: #a78bfa;
-  --vp-c-brand-2: #c4b5fd;
-  --vp-c-brand-3: #ddd6fe;
+  --vp-c-brand-2: #8b5cf6;
+  --vp-c-brand-3: #7c3aed;
   --vp-c-brand-soft: rgba(167, 139, 250, 0.16);
 }
 
-/* 让深色为默认 (延续 intro.html 风格) */
 html {
   color-scheme: dark;
 }
 
-/* ============ 首页 Hero 渐变标题 ============ */
-.vp-doc h1 .grad,
-.VPHero .name .grad,
-.home-hero-name .grad {
-  background: var(--loops-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+body {
+  letter-spacing: 0;
 }
 
-/* ============ 侧边栏：三层色点标记 ============ */
-/* 通过 link 路径匹配给侧边栏项加颜色点 */
-.vp-sidebar .VPLink:has([href*="/specs/hacp"])::before,
-.vp-sidebar .link[href*="/specs/hacp"]::before {
-  content: "";
-  display: inline-block;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--l2);
-  margin-right: 8px;
-  vertical-align: middle;
+.VPNavBarTitle .title {
+  font-weight: 720;
 }
 
-.vp-sidebar .link[href*="/specs/aap"]::before {
-  content: "";
-  display: inline-block;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--l1);
-  margin-right: 8px;
-  vertical-align: middle;
+.VPHero .text,
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  letter-spacing: 0;
 }
 
-.vp-sidebar .link[href*="/specs/cap"]::before {
-  content: "";
-  display: inline-block;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--l0);
-  margin-right: 8px;
-  vertical-align: middle;
+.VPHero .tagline {
+  max-width: 760px;
 }
 
-/* ============ 首页Hero底部容器:栈全景图居中 ============ */
-.home-stack-art {
-  display: flex;
-  justify-content: center;
-  margin: 2rem auto;
-  max-width: 720px;
+.VPHero .image-src {
+  width: 196px;
+  height: 196px;
 }
 
-/* ============ 三层入口卡片 (首页 features 之外的自定义) ============ */
+.vp-doc table {
+  font-size: 14px;
+}
+
+.vp-doc th {
+  font-weight: 700;
+}
+
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.protocol-brief,
+.stack-diagram,
+.layer-cards,
+.protocol-grid,
+.adoption-strip {
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.protocol-brief {
+  padding-top: 36px;
+  padding-bottom: 24px;
+}
+
+.protocol-brief .eyebrow {
+  margin: 0 0 12px;
+  color: var(--link);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.protocol-brief h2,
+.adoption-strip h2,
+.protocol-grid h2 {
+  margin: 0 0 14px;
+  color: var(--vp-c-text-1);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.16;
+}
+
+.protocol-brief p,
+.adoption-strip p {
+  max-width: 760px;
+  color: var(--vp-c-text-2);
+  font-size: 17px;
+  line-height: 1.72;
+}
+
+.stack-diagram {
+  padding-top: 10px;
+  padding-bottom: 28px;
+}
+
+.stack-diagram .stack-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111116;
+}
+
+.actor {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: rgba(255, 255, 255, 0.18);
+}
+
+.actor-label {
+  fill: var(--muted);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.layer {
+  stroke-width: 1.5;
+}
+
+.l2-fill {
+  fill: rgba(139, 92, 246, 0.11);
+  stroke: rgba(139, 92, 246, 0.62);
+}
+
+.l1-fill {
+  fill: rgba(59, 130, 246, 0.105);
+  stroke: rgba(59, 130, 246, 0.62);
+}
+
+.l0-fill {
+  fill: rgba(249, 115, 22, 0.105);
+  stroke: rgba(249, 115, 22, 0.62);
+}
+
+.l2-solid { fill: var(--l2); }
+.l1-solid { fill: var(--l1); }
+.l0-solid { fill: var(--l0); }
+
+.layer-kicker {
+  fill: var(--ink);
+  font-size: 15px;
+  font-weight: 760;
+  font-family: var(--vp-font-family-mono);
+}
+
+.layer-title {
+  fill: var(--ink);
+  font-size: 20px;
+  font-weight: 760;
+}
+
+.layer-copy,
+.layer-tag {
+  fill: var(--muted);
+  font-size: 14px;
+}
+
+.contract-line {
+  stroke: var(--link);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 6;
+  opacity: 0.72;
+}
+
+.contract-label {
+  fill: var(--link);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .layer-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin: 2rem 0;
+  padding-top: 18px;
+  padding-bottom: 34px;
 }
 
 .layer-card {
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 12px;
-  padding: 20px;
-  transition: transform 0.15s, border-color 0.15s;
+  display: block;
+  min-height: 190px;
+  padding: 22px;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
 
 .layer-card:hover {
+  background: var(--panel-strong);
+  text-decoration: none;
   transform: translateY(-2px);
-  border-color: var(--vp-c-brand-1);
 }
 
-.layer-card h3 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.layer-card.l2 { border-top: 3px solid var(--l2); }
+.layer-card.l1 { border-top: 3px solid var(--l1); }
+.layer-card.l0 { border-top: 3px solid var(--l0); }
 
 .layer-card .badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: #0a0a0f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 24px;
+  margin-bottom: 18px;
+  border-radius: 6px;
+  color: #111116;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.layer-card.l0 { border-left: 3px solid var(--l0); }
-.layer-card.l0 .badge { background: var(--l0); }
-.layer-card.l1 { border-left: 3px solid var(--l1); }
-.layer-card.l1 .badge { background: var(--l1); }
-.layer-card.l2 { border-left: 3px solid var(--l2); }
 .layer-card.l2 .badge { background: var(--l2); }
+.layer-card.l1 .badge { background: var(--l1); }
+.layer-card.l0 .badge { background: var(--l0); }
+
+.layer-card h3 {
+  margin: 0 0 10px;
+  color: var(--vp-c-text-1);
+  font-size: 24px;
+  line-height: 1.15;
+}
 
 .layer-card p {
-  margin: 6px 0 0;
-  font-size: 13px;
+  margin: 0;
   color: var(--vp-c-text-2);
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.58;
 }
 
-@media (max-width: 720px) {
-  .layer-cards { grid-template-columns: 1fr; }
+.protocol-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding-top: 22px;
+  padding-bottom: 28px;
 }
 
-/* ============ 协议代码块美化 (覆盖语法高亮背景,呼应深色) ============ */
-.vp-doc div[class*='language-'] {
+.protocol-grid article {
+  padding: 24px;
+  border: 1px solid var(--line);
   border-radius: 8px;
+  background: var(--panel);
+}
+
+.protocol-grid ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.protocol-grid li {
+  margin: 10px 0;
+  color: var(--vp-c-text-2);
+  line-height: 1.55;
+}
+
+.adoption-strip {
+  padding-top: 36px;
+  padding-bottom: 68px;
+  border-top: 1px solid var(--line);
+}
+
+.adoption-strip a {
+  font-weight: 700;
+}
+
+@media (max-width: 820px) {
+  .VPHero .image-src {
+    width: 132px;
+    height: 132px;
+  }
+
+  .protocol-brief,
+  .stack-diagram,
+  .layer-cards,
+  .protocol-grid,
+  .adoption-strip {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .layer-cards,
+  .protocol-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .layer-card {
+    min-height: auto;
+  }
+
+  .stack-diagram {
+    overflow-x: auto;
+  }
+
+  .stack-diagram .stack-art {
+    min-width: 760px;
+  }
 }

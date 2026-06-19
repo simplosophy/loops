@@ -1,86 +1,130 @@
-# 实现者阅读路线
+# Implementation Guide
 
-> 按你的角色选入口。三份 spec 形态不同，读之前必须分清——否则会误读 Loops 的设计意图。
+Use this guide to choose the right entry point. The Loops documents have
+different shapes because the layers have different roles.
 
-## 三种文档形态（重要）
+| Document | Type | Meaning |
+| --- | --- | --- |
+| [HACP](./specs/hacp) | Full protocol specification | Loops defines this layer: schemas, state machine, operations, errors, and conformance. |
+| [AAP](./specs/aap) | Conformance profile | Loops profiles the minimum L1 surface that existing agent protocols must expose. |
+| [CAP](./specs/cap) | Conformance profile | Loops profiles the minimum L0 surface that MCP servers and Skills runtimes already approximate. |
+| [Contracts](./specs/contracts) | Cross-layer reference | Loops defines how the layers join without leaking internal state. |
 
-本站的三份 spec **形态不同**：
+## Path 1: Build a Human-Agent Collaboration Platform
 
-| spec | 文档类型 | 含义 |
-|------|---------|------|
-| [HACP](./specs/hacp) | **完整协议规范** | Loops 新建的协议。全套自研：schema、状态机、错误码、一致性。实现者照着写代码即可。 |
-| [AAP](./specs/aap) | **一致性剖面** | Loops 复用 A2A/ACP。本文档定义"L1 层必须暴露的最小接口契约"，任何满足它的现有实现都能接入，**不重新发明协议**。 |
-| [CAP](./specs/cap) | **一致性剖面** | Loops 复用 MCP/Skills。同上。 |
+Read [HACP](./specs/hacp) first.
 
-**为什么这样区分？** 因为 Loops 的核心哲学是**"只定义层规范，不重造协议"**。MCP/Skills/A2A 已经是优秀的砖，Loops 给它们一张坐标系和接缝规范，而不是重新烧一遍砖。如果把 AAP/CAP 也写成全套协议规范，就违背了这个哲学。
+You are building this path if your system needs to represent accountable work:
+assignments, human decision gates, artifact review, project ledger state, and
+audit replay.
 
----
+Implementation checklist:
 
-## 路线一：我想实现一个 HACP 服务（人机协作平台）
+- Implement all seven HACP objects: Task, Checkpoint, Ownership, Review,
+  Artifact, Ledger, and Audit.
+- Implement the 21 required HACP operations.
+- Enforce the Task state machine and operation preconditions.
+- Persist immutable specs, artifact versions, reviews, ledger entries, and audit
+  events.
+- Bridge downward to AAP for delegation, blocking, resuming, and handoff.
 
-→ 读 [HACP](./specs/hacp) 全文。这是新建协议，需要完整实现 21 个操作和 7 个一等对象。
+Expected work: large. HACP is a complete protocol surface.
 
-**重点章节**：
-- §3 对象 Schema —— 7 个一等对象的字段定义
-- §3.3 TaskState 状态机 —— 合法转移表
-- §4 协议操作 —— 21 个操作的语义和前置条件
-- §5 层间契约 —— 与 AAP 的衔接点
+## Path 2: Make an Agent Runtime Loops-Compatible
 
-**预期工作量**：大。这是一个完整协议，需要实现状态机、持久化、审计。
+Read [AAP](./specs/aap), then [Inter-layer Contracts](./specs/contracts).
 
----
+You are building this path if you already have an agent runtime, A2A runtime,
+ACP broker, agent mesh, or multi-agent orchestrator and want it to sit under
+HACP.
 
-## 路线二：我有一个 MCP server / Skills，想接入 Loops 栈
+Implementation checklist:
 
-→ 读 [CAP](./specs/cap)。
+- Expose `discover`, `delegate`, `block`, `resume`, and `handoff`.
+- Return a run handle immediately from `delegate`.
+- Attach `correlation_id` to every run and event.
+- Set `Run.correlation_id = HACP TaskID`.
+- Treat `block` as authoritative: an agent run must not resume itself while
+  blocked by a HACP checkpoint.
+- Preserve correlation during handoff.
 
-**重点章节**：
-- §4 参考实现映射 —— 你会发现大概率已经满足 CAP 剖面
-- §2.2 CapabilityRef —— 上层引用你的能力的唯一方式
-- §3 最小接口契约 —— list / describe / invoke 三个接口
+Expected work: small to medium. Most of the work is correlation, state, and
+event discipline.
 
-**预期工作量**：极小。任何 MCP server 直接满足 CAP 的 Tool 粒度剖面，几乎零改造。
+## Path 3: Publish a Capability Source
 
----
+Read [CAP](./specs/cap).
 
-## 路线三：我有一个 A2A runtime，想接入 Loops 栈
+You are building this path if you provide tools, MCP servers, Skills, packaged
+automation, retrieval functions, or other agent-callable capabilities.
 
-→ 读 [AAP](./specs/aap)。
+Implementation checklist:
 
-**重点章节**：
-- §4 A2A → AAP 映射 —— 对应关系
-- §5.1 AAP ↔ HACP —— 关键契约层（务必读）
-- §3.3 阻塞与恢复 —— 为对接 HACP Checkpoint 设计
+- Provide `capability.list`, `capability.describe`, and `capability.invoke`.
+- Give every capability a globally unique `(capability_id, version)`.
+- Publish an input schema for every capability.
+- Return a structured `InvokeResult`.
+- Use CAP error semantics for invalid input, missing capabilities, permission
+  failures, execution failures, and timeouts.
 
-**预期工作量**：小。关键是给 Run 加上 `correlation_id` 字段以贯穿 TaskID，并实现 block/resume 接口。
+Expected work: minimal for MCP servers and Skills runtimes; moderate for plain
+function-calling registries that lack discovery.
 
----
+## Path 4: Assemble a Complete Loops Stack
 
-## 路线四：我想搭一个完整的 Loops 栈
+Read in dependency order:
 
-→ 三份都读，按 **CAP → AAP → HACP** 的依赖顺序（自底向上）。
+1. [CAP](./specs/cap)
+2. [AAP](./specs/aap)
+3. [HACP](./specs/hacp)
+4. [Inter-layer Contracts](./specs/contracts)
+5. [Conformance](./conformance)
 
-三份的层间契约是缝合点：
+Build bottom-up:
 
-| 缝合点 | 定义位置 | 铁律 |
-|--------|---------|------|
-| CapabilityRef | [CAP §2.2](./specs/cap#_2-2-capabilityref-跨层引用对象) | 上层只用 `(id, version)`，禁止感知 transport |
-| TaskID 贯穿 | [AAP §5.1](./specs/aap#_5-1-aap-hacp-l1-l2-关键契约) | HACP TaskID **必须** = AAP Run.correlation_id，全栈到底 |
-| Checkpoint→Block | HACP §5.1 / AAP §3.3 | checkpoint.raise **必须**触发 agent.block |
-| Ownership→Handoff | HACP §3.5 / AAP §3.4 | ownership.transfer **必须**联动 agent.handoff |
+- Start with one or more CAP providers.
+- Add an AAP runtime that can discover and delegate to agents that use those
+  providers.
+- Add HACP on top to represent human-owned work, checkpoints, review, ledger,
+  and audit.
+- Verify that the cross-layer contracts hold in the full flow.
 
-速查版见 [层间契约速查](./specs/contracts)。
+## Path 5: Evaluate an Existing Product
 
-**预期工作量**：最大。但可以选择：L0 直接用现成 MCP server，L1 直接用 A2A runtime，只需自研 HACP——这恰恰是 Loops 分层的价值。
+Use the [Conformance](./conformance) page as an audit checklist.
 
----
+Ask four questions:
 
-## 一致性验证
+1. Does the product expose versioned capabilities through a CAP-compatible
+   manifest and invocation result?
+2. Does the product expose agent delegation through AAP-compatible runs and
+   correlated events?
+3. Does the product represent human-agent work through HACP tasks, checkpoints,
+   reviews, artifacts, ledger entries, and audit events?
+4. Can a single task identity survive every handoff from HACP through AAP to the
+   executing runtime?
 
-实现后，对照各 spec 的"一致性级别"章节自检：
+If any answer is no, the product may still be useful, but it should not claim
+full Loops Protocol Stack conformance.
 
-- [CAP §6](./specs/cap#_6-一致性级别) —— 5 条硬指标
-- [AAP §6](./specs/aap#_6-一致性级别) —— 5 条硬指标
-- [HACP §8](./specs/hacp#_8-一致性级别-conformance) —— 7 条硬指标
+## Recommended First Flow
 
-所有 spec 当前为 **0.1.0-draft**，开放议题见各 spec §7，待参考实现后收敛。
+For a reference implementation, start with a single task:
+
+```text
+Human creates Task
+  -> HACP task.assign
+  -> AAP delegate with Run.correlation_id = TaskID
+  -> Agent reaches a decision point
+  -> HACP checkpoint.raise
+  -> AAP block
+  -> Human resolves the checkpoint
+  -> AAP resume
+  -> Agent commits Artifact
+  -> Human submits Review
+  -> Task reaches completed
+  -> Audit replay reconstructs the flow
+```
+
+If this flow works without losing correlation or mutating immutable records, the
+implementation has the core Loops shape.

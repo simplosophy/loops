@@ -1,0 +1,45 @@
+<svg width="960" height="520" viewBox="0 0 960 520" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc">
+  <title id="stack-title">Loops Protocol Stack</title>
+  <desc id="stack-desc">A three-layer protocol stack with HACP above AAP above CAP and explicit inter-layer contracts.</desc>
+  <style>
+    .bg { fill: #111116; }
+    .actor { fill: rgba(255,255,255,.04); stroke: rgba(255,255,255,.18); }
+    .actor-label { fill: #a1a1aa; font: 650 16px system-ui, sans-serif; }
+    .l2-fill { fill: rgba(139,92,246,.11); stroke: rgba(139,92,246,.62); }
+    .l1-fill { fill: rgba(59,130,246,.105); stroke: rgba(59,130,246,.62); }
+    .l0-fill { fill: rgba(249,115,22,.105); stroke: rgba(249,115,22,.62); }
+    .l2-solid { fill: #8b5cf6; }
+    .l1-solid { fill: #3b82f6; }
+    .l0-solid { fill: #f97316; }
+    .layer-kicker { fill: #f4f4f5; font: 760 15px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .layer-title { fill: #f4f4f5; font: 760 20px system-ui, sans-serif; }
+    .layer-copy, .layer-tag { fill: #a1a1aa; font: 14px system-ui, sans-serif; }
+    .contract-line { stroke: #06b6d4; stroke-width: 1.5; stroke-dasharray: 8 6; opacity: .72; }
+    .contract-label { fill: #06b6d4; font: 650 13px system-ui, sans-serif; }
+  </style>
+  <rect class="bg" x="0" y="0" width="960" height="520" rx="8"/>
+  <rect x="80" y="36" width="800" height="58" rx="29" class="actor"/>
+  <text x="480" y="72" text-anchor="middle" class="actor-label">Human principals · reviewers · approvers · owners</text>
+  <rect x="120" y="126" width="720" height="96" rx="16" class="l2-fill"/>
+  <rect x="120" y="126" width="6" height="96" rx="3" class="l2-solid"/>
+  <text x="158" y="164" class="layer-kicker">L2</text>
+  <text x="214" y="164" class="layer-title">HACP · Human-Agent Collaboration Protocol</text>
+  <text x="214" y="194" class="layer-copy">Task · Checkpoint · Ownership · Review · Artifact · Ledger · Audit</text>
+  <text x="812" y="164" text-anchor="end" class="layer-tag">Defined by Loops</text>
+  <line x1="170" y1="250" x2="790" y2="250" class="contract-line"/>
+  <text x="480" y="274" text-anchor="middle" class="contract-label">TaskID correlation · Checkpoint-to-Block · Ownership-to-Handoff</text>
+  <rect x="120" y="302" width="720" height="82" rx="16" class="l1-fill"/>
+  <rect x="120" y="302" width="6" height="82" rx="3" class="l1-solid"/>
+  <text x="158" y="337" class="layer-kicker">L1</text>
+  <text x="214" y="337" class="layer-title">AAP · Agent-Agent Protocol Profile</text>
+  <text x="214" y="365" class="layer-copy">discover · delegate · block · resume · handoff</text>
+  <text x="812" y="337" text-anchor="end" class="layer-tag">Profiles A2A / ACP / AGNTCY</text>
+  <line x1="170" y1="410" x2="790" y2="410" class="contract-line"/>
+  <text x="480" y="434" text-anchor="middle" class="contract-label">CapabilityRef only · no transport leakage across layers</text>
+  <rect x="120" y="456" width="720" height="82" rx="16" class="l0-fill"/>
+  <rect x="120" y="456" width="6" height="82" rx="3" class="l0-solid"/>
+  <text x="158" y="491" class="layer-kicker">L0</text>
+  <text x="214" y="491" class="layer-title">CAP · Capability Protocol Profile</text>
+  <text x="214" y="519" class="layer-copy">Tool · Skill · manifest · invoke result · capability errors</text>
+  <text x="812" y="491" text-anchor="end" class="layer-tag">Profiles MCP / Skills</text>
+</svg>

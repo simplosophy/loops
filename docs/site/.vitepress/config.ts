@@ -1,128 +1,130 @@
 import { defineConfig } from 'vitepress'
 
-// Loops Protocol Stack — VitePress configuration
-// 风格延续 docs/intro.html：深色主题 + L0/L1/L2 三色 token
-
-// 部署路径：本地 dev 用 /；GitHub Pages 部署在 /<repo>/ 子路径下。
-// 通过环境变量 BASE_PATH 覆盖（CI 里设为 /loop0/ 等仓库名）。
 const base = process.env.BASE_PATH || '/'
 
 export default defineConfig({
   base,
+  lang: 'en-US',
   title: 'Loops Protocol Stack',
-  description: 'AI 协作的 OSI 模型 — 三层协议、每层只解一个维度、层间靠显式契约咬合',
-
-  // 干净 URL，无 .html 后缀
+  description:
+    'A three-layer protocol stack for human-agent collaboration, agent delegation, and capability invocation.',
   cleanUrls: true,
-
-  // 站点根目录（相对于 docs/site/）
   srcDir: './',
+  ignoreDeadLinks: false,
 
-  // 原 spec 里的相对链接指向仓库内非站点文件（../plans/ ../architecture/），
-  // 从 VitePress 视角是断链。忽略这类死链——它们在源 spec 里是正确的。
-  ignoreDeadLinks: true,
+  head: [
+    ['meta', { name: 'theme-color', content: '#101014' }],
+    [
+      'meta',
+      {
+        name: 'keywords',
+        content:
+          'Loops Protocol Stack,HACP,AAP,CAP,human-agent collaboration,agent protocol,capability protocol',
+      },
+    ],
+    ['meta', { property: 'og:title', content: 'Loops Protocol Stack' }],
+    [
+      'meta',
+      {
+        property: 'og:description',
+        content:
+          'The coordination layer for AI systems: HACP for human-agent work, AAP for agent delegation, and CAP for capabilities.',
+      },
+    ],
+    ['meta', { property: 'og:type', content: 'website' }],
+  ],
 
-  // 内置本地搜索
   search: {
     provider: 'local',
     options: {
       translations: {
-        button: { buttonText: '搜索', buttonAriaLabel: '搜索' },
+        button: { buttonText: 'Search', buttonAriaLabel: 'Search' },
         modal: {
-          noResultsText: '无法找到结果',
-          resetButtonTitle: '清除查询',
-          footer: { selectText: '选择', navigateText: '切换', closeText: '关闭' }
-        }
-      }
-    }
+          noResultsText: 'No results found',
+          resetButtonTitle: 'Reset search',
+          footer: {
+            selectText: 'to select',
+            navigateText: 'to navigate',
+            closeText: 'to close',
+          },
+        },
+      },
+    },
   },
 
   themeConfig: {
-    // 默认深色
-    darkModeSwitchLabel: '主题',
-    sidebarMenuLabel: '菜单',
-    returnToTopLabel: '回到顶部',
-
-    // 站点 logo / 标题
     siteTitle: 'Loops',
+    logo: {
+      light: '/logo.svg',
+      dark: '/logo.svg',
+    },
 
     nav: [
-      { text: '指南', items: [
-        { text: '为什么是协议栈', link: '/overview' },
-        { text: '实现者阅读路线', link: '/reading-routes' },
-      ]},
-      { text: '协议规范', items: [
-        { text: 'L2 · HACP', link: '/specs/hacp' },
-        { text: 'L1 · AAP', link: '/specs/aap' },
-        { text: 'L0 · CAP', link: '/specs/cap' },
-      ]},
-      { text: '参考', items: [
-        { text: '层间契约速查', link: '/specs/contracts' },
-      ]},
+      { text: 'Overview', link: '/overview' },
+      {
+        text: 'Implement',
+        items: [
+          { text: 'Implementation Guide', link: '/reading-routes' },
+          { text: 'Conformance', link: '/conformance' },
+          { text: 'Inter-layer Contracts', link: '/specs/contracts' },
+        ],
+      },
+      {
+        text: 'Specifications',
+        items: [
+          { text: 'HACP · Human-Agent Collaboration', link: '/specs/hacp' },
+          { text: 'AAP · Agent-Agent Profile', link: '/specs/aap' },
+          { text: 'CAP · Capability Profile', link: '/specs/cap' },
+        ],
+      },
     ],
 
     sidebar: {
       '/': [
         {
-          text: '指南',
+          text: 'Start Here',
           collapsed: false,
           items: [
-            { text: '为什么是协议栈', link: '/overview' },
-            { text: '实现者阅读路线', link: '/reading-routes' },
-          ]
+            { text: 'Overview', link: '/overview' },
+            { text: 'Implementation Guide', link: '/reading-routes' },
+            { text: 'Conformance', link: '/conformance' },
+          ],
         },
         {
-          text: '协议规范（按层）',
+          text: 'Specifications',
           collapsed: false,
           items: [
-            {
-              text: 'L2 · HACP — 人机协作',
-              link: '/specs/hacp',
-              // 侧边栏标记用主题色（HACP=紫）
-            },
-            {
-              text: 'L1 · AAP — agent 间',
-              link: '/specs/aap',
-            },
-            {
-              text: 'L0 · CAP — 能力',
-              link: '/specs/cap',
-            },
-          ]
+            { text: 'L2 · HACP', link: '/specs/hacp' },
+            { text: 'L1 · AAP', link: '/specs/aap' },
+            { text: 'L0 · CAP', link: '/specs/cap' },
+            { text: 'Inter-layer Contracts', link: '/specs/contracts' },
+          ],
         },
-        {
-          text: '参考',
-          collapsed: false,
-          items: [
-            { text: '层间契约速查', link: '/specs/contracts' },
-          ]
-        },
-      ]
+      ],
     },
 
-    socialLinks: [
-      // 预留：github 等
-    ],
-
     footer: {
-      message: 'Loops Protocol Stack · loop0 owns execution / loop1 owns interaction / loop2 owns coordination'
+      message: 'Loops Protocol Stack · loop0 owns execution · loop1 owns interaction · loop2 owns coordination',
+      copyright: 'Draft protocol documentation. Version 0.1.0-draft.',
     },
 
     outline: {
       level: [2, 3],
-      label: '本页目录'
+      label: 'On this page',
     },
 
     docFooter: {
-      prev: '上一页',
-      next: '下一页'
+      prev: 'Previous',
+      next: 'Next',
     },
 
+    darkModeSwitchLabel: 'Appearance',
+    sidebarMenuLabel: 'Menu',
+    returnToTopLabel: 'Return to top',
     lastUpdated: {
-      text: '最后更新'
-    }
+      text: 'Last updated',
+    },
   },
 
-  // 标记为对外发布的草稿
   lastUpdated: true,
 })

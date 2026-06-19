@@ -1,87 +1,149 @@
-# 层间契约速查
+# Inter-layer Contracts
 
-> 这是整个栈的缝合点——实现者最容易出错的地方。
-> 三份 spec 在这些契约上必须保持一致。
+This page is the quick reference for the contracts that join the Loops layers.
+Most interoperability bugs happen here.
 
-## 四个跨层契约
+## Contract Summary
 
-| 契约 | 跨层对象 | 定义位置 | 铁律 |
-|------|---------|---------|------|
-| **CapabilityRef** | 能力引用 | [CAP §2.2](./cap#_2-2-capabilityref-跨层引用对象) / [HACP §5.3] | 上层只用 `(id, version)`，**禁止**感知 transport（stdio/SSE/HTTP） |
-| **TaskID 贯穿** | Task↔Run | [AAP §5.1](./aap#_5-1-aap-hacp-l1-l2-关键契约) | HACP TaskID **必须** = AAP Run.correlation_id，全栈到底 |
-| **Checkpoint→Block** | 决策点→阻塞 | [HACP §5.1] / [AAP §3.3](./aap#_3-3-阻塞与恢复-block-resume) | checkpoint.raise **必须**触发 agent.block，resolve **必须**触发 resume |
-| **Ownership→Handoff** | 所有权→交接 | [HACP §3.5] / [AAP §3.4](./aap#_3-4-交接-handoff) | ownership.transfer **必须**联动 agent.handoff，correlation 保持 |
+| Contract | Cross-layer object | Layers | Rule |
+| --- | --- | --- | --- |
+| `CapabilityRef` | Capability reference | L0 -> L1 -> L2 | Upper layers reference capabilities only by `(capability_id, version)`. |
+| TaskID correlation | Task and Run identity | L2 -> L1 | `HACP Task.id` **MUST** equal `AAP Run.correlation_id`. |
+| Checkpoint-to-Block | Checkpoint and Run state | L2 <-> L1 | `checkpoint.raise` **MUST** block the corresponding run; `checkpoint.resolve` **MUST** resume it. |
+| Ownership-to-Handoff | Ownership transfer and Run handoff | L2 <-> L1 | `ownership.transfer` **MUST** preserve correlation through AAP handoff. |
 
-## 契约一：CapabilityRef
+## Contract 1: CapabilityRef
 
-上层（AAP / HACP）引用能力时，**只**用 CapabilityRef，**绝不**感知底层 transport（MCP stdio/SSE、Skills runtime）。
+`CapabilityRef` is the only legal way for upper layers to refer to a capability.
 
 ```yaml
 CapabilityRef:
-  capability_id: string        # 如 "cap:web-search"
-  version: string              # 如 "v2"
+  capability_id: string
+  version: string
 ```
 
-- L0 (CAP) 是 CapabilityRef 的出生层
-- L1 (AAP) 通过它调用能力，转发给底层
-- L2 (HACP) 通过 `Constraints.must_use_capabilities` 引用，**不直接调 CAP**
+Required behavior:
 
-## 契约二：TaskID 贯穿（关键）
+- CAP creates and owns the capability identity.
+- AAP calls capabilities by reference.
+- HACP uses references in task constraints such as `must_use_capabilities`.
+- AAP and HACP **MUST NOT** know whether the capability is reached through MCP
+  stdio, MCP SSE, HTTP, a local function, or a Skills runtime.
 
-这是 Loops 栈最关键的层间缝合点。HACP 的 Task 生命周期依赖 AAP 的 Run：
+Non-conforming behavior:
 
-| HACP 操作 | AAP 联动 | correlation 约束 |
-|----------|---------|-----------------|
-| `task.assign` | `agent.delegate` | TaskID **必须** = Run.correlation_id |
-| `checkpoint.raise` | `agent.block` | CheckpointID **必须** 传入 |
-| `checkpoint.resolve` | `agent.resume` | resolution **必须** 透传 |
-| `ownership.delegate` | `agent.delegate`（子 agent） | parent_run 可追 |
-| `ownership.transfer` (handoff) | `agent.handoff` | correlation_id 保持 |
+```yaml
+must_use_capabilities:
+  - transport: "stdio"
+    command: "node server.js"
+```
 
-**铁律**：TaskID **必须**全栈贯穿到最底层 Run。任何丢失 correlation 的实现都不符合 AAP。
+Conforming behavior:
 
-## 契约三：Checkpoint → Block
+```yaml
+must_use_capabilities:
+  - capability_id: "cap:code-review"
+    version: "2.1.0"
+```
 
-HACP 的上行把关机制，通过 AAP 的 block/resume 接口落地：
+## Contract 2: TaskID Correlation
+
+TaskID correlation is the most important full-stack invariant.
+
+When HACP assigns a task to an agent, the resulting AAP run **MUST** carry the
+same identity:
+
+```yaml
+Task:
+  id: "task_01J0K7..."
+
+Run:
+  run_id: "run_01J0K8..."
+  correlation_id: "task_01J0K7..."
+```
+
+Required behavior:
+
+- `task.assign` calls `agent.delegate`.
+- `DelegateRequest.task_id` becomes `Run.correlation_id`.
+- Every AAP event includes the same `correlation_id`.
+- Child delegations and handoffs preserve the original correlation unless a new
+  HACP task is explicitly created.
+
+This invariant lets audit replay reconstruct the complete lifecycle of a human
+task across agent runs, subdelegations, checkpoints, and artifact commits.
+
+## Contract 3: Checkpoint-to-Block
+
+HACP checkpoints are human decision points. AAP block/resume is how those
+decision points affect the executing agent run.
 
 ```text
-agent 执行中 → 发现关键决策点
-  → HACP: checkpoint.raise  (Task → blocked)
-  → AAP:  agent.block        (Run → blocked)
-  ↓
-人决策 (approve/reject/choose/...)
-  → HACP: checkpoint.resolve (Task → in_progress)
-  → AAP:  agent.resume       (Run → running)
+Agent reaches a decision point
+  -> HACP checkpoint.raise
+  -> Task state becomes blocked
+  -> AAP agent.block(run_id, checkpoint_id)
+  -> Human resolves the checkpoint
+  -> HACP checkpoint.resolve
+  -> AAP agent.resume(run_id, resolution)
 ```
 
-- `block` **必须**带 checkpoint_id，关联到 HACP 的 Checkpoint
-- blocked 期间 agent **必须不**自行恢复，**必须**等待 `resume`
+Required behavior:
 
-## 契约四：Ownership → Handoff
+- `checkpoint.raise` **MUST** identify the affected task and corresponding run.
+- `agent.block` **MUST** carry `checkpoint_id`.
+- A blocked run **MUST NOT** resume itself.
+- `checkpoint.resolve` **MUST** pass the human resolution to `agent.resume`.
+- Resolution and resume **SHOULD** be auditable as one logical transition.
 
-HACP 的所有权转移在 AAP 层的体现：
+## Contract 4: Ownership-to-Handoff
 
-- HACP `ownership.transfer`（assignee 换人/换 agent）
-- 联动 AAP `agent.handoff`
-- handoff **必须**保留原 correlation_id（同一 Task 不变）
-- 旧 Run 失效，新 Run 产出，correlation 全程贯穿
+HACP ownership expresses who is responsible for a task. AAP handoff expresses how
+an agent run transfers execution to another agent.
 
----
+Required behavior:
 
-## 跨层通信规则
+- `ownership.transfer` changes the HACP assignee and appends an ownership chain
+  record.
+- When the new assignee is another agent, the implementation **MUST** call AAP
+  `agent.handoff`.
+- The new run **MUST** keep the original `correlation_id`.
+- The old run **SHOULD** remain visible as read-only history.
 
-所有层间通信 **必须** 通过上述契约对象，**禁止**直接读写邻层内部状态。
+Example:
 
-- **L2 → L1**：通过 TaskID（贯穿）、Checkpoint 事件
-- **L1 → L0**：通过 CapabilityRef
-- **L2 → channel (loop1)**：HACP 只产出事件，channel 负责送达（IM 推送、Web 更新等）——通知机制不在 HACP 范围
+```yaml
+OwnershipTransfer:
+  from: "agent_reviewer"
+  to: "agent_security"
+  via: "handoff"
 
-## 依赖方向
+NewRun:
+  agent_id: "agent_security"
+  correlation_id: "task_01J0K7..."
+```
+
+## Dependency Direction
+
+The only allowed dependency direction is downward:
 
 ```text
-L2 (HACP) ──→ L1 (AAP) ──→ L0 (CAP)
-   可调下层        可调下层
-   不可被下层感知   不可被下层感知
+HACP (L2) -> AAP (L1) -> CAP (L0)
 ```
 
-**反向禁止**：L0 永远不知道 L1/L2 存在；L1 永远不知道 L2 存在。这是"换一层不动另外两层"的物理保证。
+The reverse direction is forbidden:
+
+- CAP **MUST NOT** import or depend on AAP or HACP.
+- AAP **MUST NOT** import or depend on HACP business semantics.
+- HACP **MUST NOT** call concrete tools or skills directly.
+
+## Event Responsibilities
+
+| Layer | Emits | Consumed by |
+| --- | --- | --- |
+| CAP | Capability invocation results and capability errors | AAP runtime |
+| AAP | Run events with `correlation_id` | HACP bridge and host platform |
+| HACP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
+
+HACP produces events, but it does not define how those events are rendered in
+chat, web, mobile, or CLI channels. Delivery belongs to the host platform.
