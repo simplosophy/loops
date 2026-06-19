@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -41,10 +41,12 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
-        # Use npm install (not npm ci). npm ci intermittently crashes with
-        # "Exit handler never called!" on the GitHub-hosted runners with this
-        # lockfile; npm install is more tolerant and produces an equivalent tree.
-        run: npm install --no-audit --no-fund
+        # npm intermittently crashes with "Exit handler never called!" on the
+        # hosted runners; retry once, then assert the vitepress binary exists
+        # so a silent npm failure fails the job instead of the build step.
+        run: |
+          npm install --no-audit --no-fund || npm install --no-audit --no-fund
+          test -x node_modules/.bin/vitepress || { echo "vitepress binary missing after install"; exit 1; }
 
       - name: Resolve site URL and base path
         id: vars
