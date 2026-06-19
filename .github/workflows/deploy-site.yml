@@ -28,25 +28,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Pin to Node 20 LTS. Node 22/24 ship npm 11, which intermittently
-          # crashes on the hosted runners. The setup-node `cache: npm` option
-          # also triggers an npm "Exit handler never called!" crash with this
-          # lockfile, so we cache node_modules manually instead.
           node-version: '20'
-
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          cache: npm
 
       - name: Install dependencies
-        # npm intermittently crashes with "Exit handler never called!" on the
-        # hosted runners; retry once, then assert the vitepress binary exists
-        # so a silent npm failure fails the job instead of the build step.
-        run: |
-          npm install --no-audit --no-fund || npm install --no-audit --no-fund
-          test -x node_modules/.bin/vitepress || { echo "vitepress binary missing after install"; exit 1; }
+        env:
+          # Pin the public registry so a locally-generated lockfile that points
+          # at an internal mirror (e.g. bnpm.byted.org) cannot break CI.
+          npm_config_registry: https://registry.npmjs.org
+        run: npm ci
 
       - name: Resolve site URL and base path
         id: vars
