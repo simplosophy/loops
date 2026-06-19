@@ -3,7 +3,12 @@ import { defineConfig } from 'vitepress'
 // Loops Protocol Stack — VitePress configuration
 // 风格延续 docs/intro.html：深色主题 + L0/L1/L2 三色 token
 
+// 部署路径：本地 dev 用 /；GitHub Pages 部署在 /<repo>/ 子路径下。
+// 通过环境变量 BASE_PATH 覆盖（CI 里设为 /loop0/ 等仓库名）。
+const base = process.env.BASE_PATH || '/'
+
 export default defineConfig({
+  base,
   title: 'Loops Protocol Stack',
   description: 'AI 协作的 OSI 模型 — 三层协议、每层只解一个维度、层间靠显式契约咬合',
 

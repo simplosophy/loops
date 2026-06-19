@@ -8,31 +8,31 @@ hero:
   actions:
     - theme: brand
       text: 为什么是协议栈
-      link: /overview
+      link: ./overview
     - theme: alt
       text: 阅读路线
-      link: /reading-routes
+      link: ./reading-routes
 
 features:
   - icon: 🧱
     title: 不重新发明砖
     details: 已有协议（MCP、Skills、A2A、ACP）各自优秀。Loops 给它们一张坐标系和接缝规范，而不是重烧一遍砖。
-    link: /specs/cap
+    link: ./specs/cap
     linkText: L0 · CAP
   - icon: 🧩
     title: 填补生态空白
     details: agent↔人 在项目/组织级如何协作，至今无人定义。HACP 就是来补这一格的 — Loops 的核心贡献。
-    link: /specs/hacp
+    link: ./specs/hacp
     linkText: L2 · HACP
   - icon: 🔌
     title: 显式契约咬合
     details: 三层之间不靠约定，靠契约对象：CapabilityRef、TaskID 贯穿、Checkpoint→Block、Ownership→Handoff。
-    link: /specs/contracts
+    link: ./specs/contracts
     linkText: 层间契约速查
   - icon: ⬇️
     title: 依赖只能向下
     details: L2→L1→L0。低层永远不知道高层存在。换一层不动另外两层 — 这才是该有的解耦。
-    link: /overview
+    link: ./overview
     linkText: 设计原则
 ---
 
@@ -88,15 +88,15 @@ features:
 ## 三层协议
 
 <div class="layer-cards">
-  <a class="layer-card l2" href="/specs/hacp">
+  <a class="layer-card l2" href="./specs/hacp">
     <h3><span class="badge">L2</span> HACP · 人机协作</h3>
     <p>定义人↔agent 如何围绕 Task 协作。Task / Checkpoint / Ownership / Review / Artifact / Ledger / Audit 七个一等对象。Loops 新建，填补生态空白。</p>
   </a>
-  <a class="layer-card l1" href="/specs/aap">
+  <a class="layer-card l1" href="./specs/aap">
     <h3><span class="badge">L1</span> AAP · agent 间</h3>
     <p>定义 agent↔agent 如何发现、委派、交接。discover / delegate / handoff。复用 A2A / ACP，定义最小接口契约。</p>
   </a>
-  <a class="layer-card l0" href="/specs/cap">
+  <a class="layer-card l0" href="./specs/cap">
     <h3><span class="badge">L0</span> CAP · 能力</h3>
     <p>定义 agent 如何调用外部能力。Tool (单函数) + Skill (打包能力)。复用 MCP / Skills，零改造即可接入。</p>
   </a>
@@ -107,4 +107,4 @@ features:
 > loops 协议栈不和 MCP / A2A 竞争，而是给它们一张坐标系。
 > **我们把已有协议分层归位，并补上了缺失的人机协作层。**
 
-[开始阅读 →](/overview){.vp-raw}
+[开始阅读 →](./overview){.vp-raw}
