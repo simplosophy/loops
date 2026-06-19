@@ -28,7 +28,8 @@ hero:
 </section>
 
 <section class="stack-diagram" aria-label="Loops three-layer protocol stack">
-  <img class="stack-art" src="./assets/stack.svg" alt="Loops Protocol Stack diagram: HACP above AAP above CAP with explicit inter-layer contracts.">
+  <img class="stack-art" src="./assets/stack.svg" alt="Loops Protocol Stack diagram: HACP above AAP above CAP, joined by explicit inter-layer contracts.">
+  <p class="stack-caption">Three layers, four contracts. HACP is newly defined by Loops; AAP and CAP profile protocols that already exist.</p>
 </section>
 
 <section class="route-cards" aria-label="Primary reading routes">

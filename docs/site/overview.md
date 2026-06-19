@@ -29,6 +29,10 @@ single runtime abstraction cannot carry all three rhythms without coupling them.
 
 Loops treats coordination as a protocol stack:
 
+<img src="./assets/stack.svg" alt="Loops Protocol Stack: HACP above AAP above CAP, joined by explicit inter-layer contracts." style="display:block;width:100%;max-width:880px;height:auto;margin:8px auto 16px;border:1px solid var(--vp-c-divider);border-radius:8px;">
+
+The ASCII view below traces the operations that flow down through the stack:
+
 ```text
 Human principal
   │

@@ -1,45 +1,91 @@
-<svg width="960" height="520" viewBox="0 0 960 520" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc">
-  <title id="stack-title">Loops Protocol Stack</title>
-  <desc id="stack-desc">A three-layer protocol stack with HACP above AAP above CAP and explicit inter-layer contracts.</desc>
+<svg width="960" height="510" viewBox="0 0 960 510" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="st-title st-desc">
+  <title id="st-title">Loops Protocol Stack</title>
+  <desc id="st-desc">A three-layer protocol stack. HACP (L2) owns human-agent collaboration, AAP (L1) profiles agent delegation, CAP (L0) profiles capability invocation. Explicit inter-layer contracts join the layers as seams.</desc>
+  <defs>
+    <clipPath id="stack-clip">
+      <rect x="60" y="82" width="840" height="310" rx="14"/>
+    </clipPath>
+    <marker id="st-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="rgba(255,255,255,0.34)"/>
+    </marker>
+  </defs>
   <style>
-    .bg { fill: #111116; }
-    .actor { fill: rgba(255,255,255,.04); stroke: rgba(255,255,255,.18); }
-    .actor-label { fill: #a1a1aa; font: 650 16px system-ui, sans-serif; }
-    .l2-fill { fill: rgba(139,92,246,.11); stroke: rgba(139,92,246,.62); }
-    .l1-fill { fill: rgba(59,130,246,.105); stroke: rgba(59,130,246,.62); }
-    .l0-fill { fill: rgba(249,115,22,.105); stroke: rgba(249,115,22,.62); }
-    .l2-solid { fill: #8b5cf6; }
-    .l1-solid { fill: #3b82f6; }
-    .l0-solid { fill: #f97316; }
-    .layer-kicker { fill: #f4f4f5; font: 760 15px ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .layer-title { fill: #f4f4f5; font: 760 20px system-ui, sans-serif; }
-    .layer-copy, .layer-tag { fill: #a1a1aa; font: 14px system-ui, sans-serif; }
-    .contract-line { stroke: #06b6d4; stroke-width: 1.5; stroke-dasharray: 8 6; opacity: .72; }
-    .contract-label { fill: #06b6d4; font: 650 13px system-ui, sans-serif; }
+    .st-bg { fill: #111116; }
+    .st-actor { fill: rgba(255,255,255,0.05); stroke: rgba(255,255,255,0.22); stroke-width: 1; }
+    .st-actor-t { fill: #e4e4e7; font: 600 14px system-ui, -apple-system, sans-serif; }
+    .st-arrow { stroke: rgba(255,255,255,0.3); stroke-width: 1.5; fill: none; }
+    .st-code { fill: #f4f4f5; font: 800 13px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.5px; }
+    .st-name { fill: #f4f4f5; font: 700 19px system-ui, -apple-system, sans-serif; }
+    .st-role { fill: #a1a1aa; font: 400 13px system-ui, -apple-system, sans-serif; }
+    .st-objs { fill: #a1a1aa; font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .st-tag-d { fill: #c4b5fd; font: 600 11px system-ui, -apple-system, sans-serif; }
+    .st-tag-p { fill: #93c5fd; font: 600 11px system-ui, -apple-system, sans-serif; }
+    .st-ccap { fill: #52525b; font: 600 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 1px; }
+    .st-ctext { fill: #67e8f9; font: 600 12px system-ui, -apple-system, sans-serif; }
+    .st-leg { fill: #71717a; font: 400 11px system-ui, -apple-system, sans-serif; }
   </style>
-  <rect class="bg" x="0" y="0" width="960" height="520" rx="8"/>
-  <rect x="80" y="36" width="800" height="58" rx="29" class="actor"/>
-  <text x="480" y="72" text-anchor="middle" class="actor-label">Human principals · reviewers · approvers · owners</text>
-  <rect x="120" y="126" width="720" height="96" rx="16" class="l2-fill"/>
-  <rect x="120" y="126" width="6" height="96" rx="3" class="l2-solid"/>
-  <text x="158" y="164" class="layer-kicker">L2</text>
-  <text x="214" y="164" class="layer-title">HACP · Human-Agent Collaboration Protocol</text>
-  <text x="214" y="194" class="layer-copy">Task · Checkpoint · Ownership · Review · Artifact · Ledger · Audit</text>
-  <text x="812" y="164" text-anchor="end" class="layer-tag">Defined by Loops</text>
-  <line x1="170" y1="250" x2="790" y2="250" class="contract-line"/>
-  <text x="480" y="274" text-anchor="middle" class="contract-label">TaskID correlation · Checkpoint-to-Block · Ownership-to-Handoff</text>
-  <rect x="120" y="302" width="720" height="82" rx="16" class="l1-fill"/>
-  <rect x="120" y="302" width="6" height="82" rx="3" class="l1-solid"/>
-  <text x="158" y="337" class="layer-kicker">L1</text>
-  <text x="214" y="337" class="layer-title">AAP · Agent-Agent Protocol Profile</text>
-  <text x="214" y="365" class="layer-copy">discover · delegate · block · resume · handoff</text>
-  <text x="812" y="337" text-anchor="end" class="layer-tag">Profiles A2A / ACP / AGNTCY</text>
-  <line x1="170" y1="410" x2="790" y2="410" class="contract-line"/>
-  <text x="480" y="434" text-anchor="middle" class="contract-label">CapabilityRef only · no transport leakage across layers</text>
-  <rect x="120" y="456" width="720" height="82" rx="16" class="l0-fill"/>
-  <rect x="120" y="456" width="6" height="82" rx="3" class="l0-solid"/>
-  <text x="158" y="491" class="layer-kicker">L0</text>
-  <text x="214" y="491" class="layer-title">CAP · Capability Protocol Profile</text>
-  <text x="214" y="519" class="layer-copy">Tool · Skill · manifest · invoke result · capability errors</text>
-  <text x="812" y="491" text-anchor="end" class="layer-tag">Profiles MCP / Skills</text>
+
+  <rect class="st-bg" x="0" y="0" width="960" height="510" rx="10"/>
+
+  <!-- Human principal -->
+  <rect class="st-actor" x="370" y="18" width="220" height="32" rx="16"/>
+  <text class="st-actor-t" x="480" y="34" text-anchor="middle" dominant-baseline="central">Human principal</text>
+  <line class="st-arrow" x1="480" y1="52" x2="480" y2="78" marker-end="url(#st-arrow)"/>
+
+  <!-- Stacked column: layers + contract seams, clipped to one rounded shape -->
+  <g clip-path="url(#stack-clip)">
+    <rect x="60" y="82"  width="840" height="82" fill="rgba(139,92,246,0.10)"/>
+    <rect x="60" y="164" width="840" height="40" fill="rgba(6,182,212,0.085)"/>
+    <rect x="60" y="204" width="840" height="74" fill="rgba(59,130,246,0.09)"/>
+    <rect x="60" y="278" width="840" height="40" fill="rgba(6,182,212,0.085)"/>
+    <rect x="60" y="318" width="840" height="74" fill="rgba(249,115,22,0.09)"/>
+    <rect x="60" y="82"  width="6" height="82" fill="#8b5cf6"/>
+    <rect x="60" y="204" width="6" height="74" fill="#3b82f6"/>
+    <rect x="60" y="318" width="6" height="74" fill="#f97316"/>
+  </g>
+  <rect x="60" y="82" width="840" height="310" rx="14" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+
+  <!-- contract seam dividers -->
+  <line x1="66" y1="164" x2="894" y2="164" stroke="rgba(6,182,212,0.42)" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="66" y1="204" x2="894" y2="204" stroke="rgba(6,182,212,0.42)" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="66" y1="278" x2="894" y2="278" stroke="rgba(6,182,212,0.42)" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="66" y1="318" x2="894" y2="318" stroke="rgba(6,182,212,0.42)" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- L2 -->
+  <text class="st-code" x="84" y="106" dominant-baseline="central">L2</text>
+  <text class="st-name" x="110" y="106" dominant-baseline="central">HACP · Human-Agent Collaboration Protocol</text>
+  <text class="st-tag-d" x="884" y="106" text-anchor="end" dominant-baseline="central">◆ Defined by Loops</text>
+  <text class="st-role" x="110" y="128" dominant-baseline="central">Owns accountable work delegated to autonomous agents</text>
+  <text class="st-objs" x="110" y="150" dominant-baseline="central">Task · Checkpoint · Ownership · Review · Artifact · Ledger · Audit</text>
+
+  <!-- contract seam 1 -->
+  <text class="st-ccap" x="480" y="178" text-anchor="middle" dominant-baseline="central">INTER-LAYER CONTRACTS</text>
+  <text class="st-ctext" x="480" y="194" text-anchor="middle" dominant-baseline="central">TaskID correlation  ·  Checkpoint ↔ Block  ·  Ownership ↔ Handoff</text>
+
+  <!-- L1 -->
+  <text class="st-code" x="84" y="228" dominant-baseline="central">L1</text>
+  <text class="st-name" x="110" y="228" dominant-baseline="central">AAP · Agent-Agent Protocol Profile</text>
+  <text class="st-tag-p" x="884" y="228" text-anchor="end" dominant-baseline="central">◇ Profiles A2A · ACP · AGNTCY</text>
+  <text class="st-objs" x="110" y="258" dominant-baseline="central">discover · delegate · block · resume · handoff</text>
+
+  <!-- contract seam 2 -->
+  <text class="st-ccap" x="480" y="292" text-anchor="middle" dominant-baseline="central">INTER-LAYER CONTRACT</text>
+  <text class="st-ctext" x="480" y="308" text-anchor="middle" dominant-baseline="central">CapabilityRef only  ·  no transport leakage across layers</text>
+
+  <!-- L0 -->
+  <text class="st-code" x="84" y="342" dominant-baseline="central">L0</text>
+  <text class="st-name" x="110" y="342" dominant-baseline="central">CAP · Capability Protocol Profile</text>
+  <text class="st-tag-p" x="884" y="342" text-anchor="end" dominant-baseline="central">◇ Profiles MCP · Skills</text>
+  <text class="st-objs" x="110" y="372" dominant-baseline="central">capability.list · capability.describe · capability.invoke</text>
+
+  <!-- arrow + Tool/Skill -->
+  <line class="st-arrow" x1="480" y1="394" x2="480" y2="422" marker-end="url(#st-arrow)"/>
+  <rect class="st-actor" x="350" y="424" width="260" height="32" rx="16"/>
+  <text class="st-actor-t" x="480" y="440" text-anchor="middle" dominant-baseline="central">Tool / Skill implementation</text>
+
+  <!-- legend -->
+  <line x1="306" y1="484" x2="334" y2="484" stroke="#8b5cf6" stroke-width="2.5"/>
+  <text class="st-leg" x="342" y="484" dominant-baseline="central">Defined by Loops (HACP)</text>
+  <line x1="498" y1="484" x2="526" y2="484" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="4 3"/>
+  <text class="st-leg" x="534" y="484" dominant-baseline="central">Profiles existing protocols (AAP · CAP)</text>
 </svg>
