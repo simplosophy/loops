@@ -1,5 +1,35 @@
 # loops Stack Architecture
 
+> **2026-06-19 重新定位**：loops 已从"三层软件架构"升级为"三层协议栈规范"。
+> 既有 `loop0/loop1/loop2` 软件分层仍然有效，现在被理解为**协议栈各层的参考实现**。
+> 完整协议栈设计见 [`docs/plans/2026-06-19-loops-protocol-stack.md`](../plans/2026-06-19-loops-protocol-stack.md)。
+
+## loops 协议栈（AI 协作的 OSI 模型）
+
+loops 的核心贡献是把已有 AI 协作协议（MCP、Skills、A2A）分层归位，定义层间契约，并填补生态缺失的人机协作协议：
+
+```text
+  ┌───────────────────────────────────────────────────────────┐
+  │  L2  HACP   Human-Agent Collaboration Protocol            │  loops 新建 ★
+  │      Task · Checkpoint · Ownership · Review               │  填补生态空白
+  │      Artifact · Ledger · Audit                            │
+  ├───────────────────────────────────────────────────────────┤
+  │  层间契约：Task→AAP delegate / Checkpoint→AAP block        │
+  ├───────────────────────────────────────────────────────────┤
+  │  L1  AAP    Agent-Agent Protocol                          │  复用 A2A ★
+  │      delegate · handoff · discovery                       │  /ACP/AGNTCY
+  ├───────────────────────────────────────────────────────────┤
+  │  层间契约：CapabilityRef (id+version, 不感知 transport)    │
+  ├───────────────────────────────────────────────────────────┤
+  │  L0  CAP    Capability Protocol                           │  复用 MCP ★
+  │      Tool (单函数) · Skill (打包能力)                      │  + Skills 协议
+  └───────────────────────────────────────────────────────────┘
+
+  横切：依赖只能向下 L2→L1→L0；跨层只走契约对象；状态归属分层所有
+```
+
+## 既有软件分层（现为协议栈的参考实现）
+
 本文定义 `loops/loop0/loop1/loop2` 三层架构的目标边界、状态所有权和扩展点。当前代码已经将单 Agent runtime 收敛到 `loops/loop0/`；`loop1` 和 `loop2` 仍是后续演进目标。
 
 ## 总体分层
