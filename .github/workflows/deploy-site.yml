@@ -29,12 +29,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # Pin to Node 20 LTS. Node 22/24 ship npm 11, which intermittently
-          # crashes 'npm ci' with "Exit handler never called!" on the hosted runners.
+          # crashes on the hosted runners. The setup-node `cache: npm` option
+          # also triggers an npm "Exit handler never called!" crash with this
+          # lockfile, so we cache node_modules manually instead.
           node-version: '20'
-          cache: npm
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
-        run: npm ci
+        # Use npm install (not npm ci). npm ci intermittently crashes with
+        # "Exit handler never called!" on the GitHub-hosted runners with this
+        # lockfile; npm install is more tolerant and produces an equivalent tree.
+        run: npm install --no-audit --no-fund
 
       - name: Resolve site URL and base path
         id: vars
