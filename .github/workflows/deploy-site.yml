@@ -28,7 +28,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          # Pin to Node 20 LTS. Node 22/24 ship npm 11, which intermittently
+          # crashes 'npm ci' with "Exit handler never called!" on the hosted runners.
+          node-version: '20'
           cache: npm
 
       - name: Install dependencies
