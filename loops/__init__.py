@@ -2,6 +2,14 @@
 
 The current implementation lives in :mod:`loops.loop0`. Top-level imports are
 kept as a compatibility layer while loop1 and loop2 are introduced.
+
+Layer packages:
+    loops.loop0  — agent runtime kernel (owns execution)
+    loops.loop2  — HACP reference implementation (owns human-agent collaboration)
+
+loop2 is imported explicitly as ``from loops.loop2 import ...`` rather than
+re-exported at the top level, to keep the loop0 runtime API as the default
+surface and the HACP protocol layer opt-in.
 """
 
 from __future__ import annotations
