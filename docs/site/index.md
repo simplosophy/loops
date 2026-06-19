@@ -13,8 +13,8 @@ hero:
       text: Read the Overview
       link: /overview
     - theme: alt
-      text: Start Implementing
-      link: /reading-routes
+      text: View the Protocol Map
+      link: /protocol-map
 ---
 
 <section class="protocol-brief">
@@ -29,6 +29,25 @@ hero:
 
 <section class="stack-diagram" aria-label="Loops three-layer protocol stack">
   <img class="stack-art" src="./assets/stack.svg" alt="Loops Protocol Stack diagram: HACP above AAP above CAP with explicit inter-layer contracts.">
+</section>
+
+<section class="route-cards" aria-label="Primary reading routes">
+  <a class="route-card" href="./overview">
+    <strong>Understand the model</strong>
+    <span>Read the protocol positioning, design principles, and layer responsibilities.</span>
+  </a>
+  <a class="route-card" href="./protocol-map">
+    <strong>Map the stack</strong>
+    <span>See ownership, operations, identity, and contract boundaries in one place.</span>
+  </a>
+  <a class="route-card" href="./reading-routes">
+    <strong>Start implementing</strong>
+    <span>Choose the right path for capability providers, agent runtimes, or platforms.</span>
+  </a>
+  <a class="route-card" href="./conformance">
+    <strong>Check compatibility</strong>
+    <span>Validate CAP, AAP, HACP, and full-stack conformance claims.</span>
+  </a>
 </section>
 
 <section class="layer-cards" aria-label="Protocol layers">
@@ -78,5 +97,5 @@ hero:
     profile. Platforms that need accountable human-agent collaboration can implement
     HACP directly and bridge downward through the explicit contracts.
   </p>
-  <p><a href="./conformance">View conformance requirements</a></p>
+  <p><a href="./protocol-map">Use the protocol map</a> or <a href="./conformance">view conformance requirements</a>.</p>
 </section>

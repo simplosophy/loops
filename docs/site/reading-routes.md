@@ -8,6 +8,7 @@ different shapes because the layers have different roles.
 | [HACP](./specs/hacp) | Full protocol specification | Loops defines this layer: schemas, state machine, operations, errors, and conformance. |
 | [AAP](./specs/aap) | Conformance profile | Loops profiles the minimum L1 surface that existing agent protocols must expose. |
 | [CAP](./specs/cap) | Conformance profile | Loops profiles the minimum L0 surface that MCP servers and Skills runtimes already approximate. |
+| [Protocol Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and contract map for the full stack. |
 | [Contracts](./specs/contracts) | Cross-layer reference | Loops defines how the layers join without leaking internal state. |
 
 ## Path 1: Build a Human-Agent Collaboration Platform
@@ -77,8 +78,9 @@ Read in dependency order:
 1. [CAP](./specs/cap)
 2. [AAP](./specs/aap)
 3. [HACP](./specs/hacp)
-4. [Inter-layer Contracts](./specs/contracts)
-5. [Conformance](./conformance)
+4. [Protocol Map](./protocol-map)
+5. [Inter-layer Contracts](./specs/contracts)
+6. [Conformance](./conformance)
 
 Build bottom-up:
 

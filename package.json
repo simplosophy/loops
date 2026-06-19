@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "vitepress dev docs/site",
     "build": "vitepress build docs/site",
-    "preview": "vitepress preview docs/site"
+    "preview": "vitepress preview docs/site",
+    "verify:site": "node docs/site/scripts/verify-site.mjs",
+    "inspect:site": "node docs/site/scripts/inspect-site.mjs",
+    "screenshot:site": "node docs/site/scripts/screenshot-site.mjs"
   },
   "devDependencies": {
     "vitepress": "^1.5.0"

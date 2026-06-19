@@ -1,6 +1,20 @@
 import { defineConfig } from 'vitepress'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const base = process.env.BASE_PATH || '/'
+const normalizedBase = base.endsWith('/') ? base : `${base}/`
+const siteUrl = (process.env.SITE_URL || 'https://loops-protocol.dev').replace(/\/$/, '')
+const siteBaseUrl = new URL(normalizedBase, `${siteUrl}/`)
+
+function absoluteSiteUrl(path = '') {
+  return new URL(path.replace(/^\//, ''), siteBaseUrl).toString()
+}
+
+function pagePath(page: string) {
+  const route = page.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')
+  return route.replace(/^\//, '')
+}
 
 export default defineConfig({
   base,
@@ -22,17 +36,43 @@ export default defineConfig({
           'Loops Protocol Stack,HACP,AAP,CAP,human-agent collaboration,agent protocol,capability protocol',
       },
     ],
-    ['meta', { property: 'og:title', content: 'Loops Protocol Stack' }],
-    [
-      'meta',
-      {
-        property: 'og:description',
-        content:
-          'The coordination layer for AI systems: HACP for human-agent work, AAP for agent delegation, and CAP for capabilities.',
-      },
-    ],
-    ['meta', { property: 'og:type', content: 'website' }],
   ],
+
+  sitemap: {
+    hostname: absoluteSiteUrl(),
+  },
+
+  transformHead({ page, title, description }) {
+    const canonical = absoluteSiteUrl(pagePath(page))
+    const image = absoluteSiteUrl('og.svg')
+
+    return [
+      ['link', { rel: 'canonical', href: canonical }],
+      ['meta', { property: 'og:title', content: title }],
+      ['meta', { property: 'og:description', content: description }],
+      ['meta', { property: 'og:type', content: 'website' }],
+      ['meta', { property: 'og:url', content: canonical }],
+      ['meta', { property: 'og:image', content: image }],
+      ['meta', { property: 'og:image:type', content: 'image/svg+xml' }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+      ['meta', { name: 'twitter:title', content: title }],
+      ['meta', { name: 'twitter:description', content: description }],
+      ['meta', { name: 'twitter:image', content: image }],
+    ]
+  },
+
+  buildEnd(siteConfig) {
+    writeFileSync(
+      join(siteConfig.outDir, 'robots.txt'),
+      `User-agent: *\nAllow: ${normalizedBase}\nSitemap: ${absoluteSiteUrl('sitemap.xml')}\n`,
+    )
+  },
+
+  transformHtml(code) {
+    return code
+      .replace(/rel="preload stylesheet"/g, 'rel="stylesheet"')
+      .replace(/(<link rel="stylesheet" href="[^"]+") as="style"/g, '$1')
+  },
 
   search: {
     provider: 'local',
@@ -61,6 +101,7 @@ export default defineConfig({
 
     nav: [
       { text: 'Overview', link: '/overview' },
+      { text: 'Protocol Map', link: '/protocol-map' },
       {
         text: 'Implement',
         items: [
@@ -86,6 +127,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Overview', link: '/overview' },
+            { text: 'Protocol Map', link: '/protocol-map' },
             { text: 'Implementation Guide', link: '/reading-routes' },
             { text: 'Conformance', link: '/conformance' },
           ],
@@ -118,7 +160,11 @@ export default defineConfig({
       next: 'Next',
     },
 
-    darkModeSwitchLabel: 'Appearance',
+    darkModeSwitchLabel: false,
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/simplosophy/loop0' },
+    ],
+
     sidebarMenuLabel: 'Menu',
     returnToTopLabel: 'Return to top',
     lastUpdated: {
@@ -127,4 +173,6 @@ export default defineConfig({
   },
 
   lastUpdated: true,
+
+  appearance: false,
 })
