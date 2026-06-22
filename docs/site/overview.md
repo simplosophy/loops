@@ -1,9 +1,29 @@
 # Overview
 
-Human Loop Protocol (HLP) is the focus of this project. It defines the protocol
-surface for accountable human-agent work: a human principal delegates a bounded
-task to an autonomous agent, the agent raises decision checkpoints, humans
-review artifacts, and the full lifecycle remains replayable.
+<section class="overview-hero">
+  <p class="eyebrow">Human Loop Protocol</p>
+  <h2>HLP defines accountability around autonomous agent work.</h2>
+  <p>
+    A human principal delegates a bounded task to an agent, the agent raises
+    decision checkpoints, humans review artifacts, and the full lifecycle
+    remains replayable.
+  </p>
+</section>
+
+<section class="overview-summary" aria-label="HLP overview summary">
+  <div>
+    <strong>Protocol owner</strong>
+    <span>HLP owns tasks, checkpoints, ownership, reviews, artifacts, ledgers, and audit events.</span>
+  </div>
+  <div>
+    <strong>Integration model</strong>
+    <span>Existing L1/L0 ecosystems keep agent execution, delegation, and capability invocation.</span>
+  </div>
+  <div>
+    <strong>Core invariant</strong>
+    <span>Task identity, human decisions, and artifact provenance survive every runtime boundary.</span>
+  </div>
+</section>
 
 HLP sits above existing agent and capability ecosystems. Those lower layers are
 integration routes, not new protocols owned by Loops:
