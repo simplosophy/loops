@@ -26,6 +26,12 @@ Run the dependency-free HLP end-to-end demo:
 uv run loops-hlp-demo
 ```
 
+Run the dependency-free adapter compatibility demo:
+
+```bash
+uv run loops-hlp-adapters-demo
+```
+
 Use the HLP SDK directly:
 
 ```python

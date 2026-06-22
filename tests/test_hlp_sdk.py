@@ -22,6 +22,7 @@ from loops.hlp import (
     SQLiteHumanLoopStore,
 )
 from examples.hlp_e2e_demo import run_demo
+from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
 
 
 def run(coro):
@@ -688,3 +689,30 @@ def test_hlp_e2e_demo_runs_without_external_services():
         "review.submitted",
         "ledger.written",
     ]
+
+
+def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services():
+    result = run(run_adapter_demo())
+
+    assert set(result) == {
+        "openai_python_sdk",
+        "openai_agents_sdk",
+        "langgraph",
+        "crewai",
+        "codex_cli",
+        "claude_code_cli",
+        "herms_cli",
+    }
+    for name, entry in result.items():
+        assert entry["status"] == "ok", name
+        assert entry["task_id"].startswith("task_"), name
+        assert entry["run_id"], name
+        assert entry["correlation_id"] == entry["task_id"], name
+
+    assert result["openai_python_sdk"]["run_id"] == "resp_demo"
+    assert result["openai_agents_sdk"]["run_id"] == "agents_demo"
+    assert result["langgraph"]["run_id"] == "graph_demo"
+    assert result["crewai"]["run_id"] == "crew_demo"
+    assert result["codex_cli"]["run_id"] == "codex_demo"
+    assert result["claude_code_cli"]["run_id"] == "claude_demo"
+    assert result["herms_cli"]["run_id"] == "herms_demo"

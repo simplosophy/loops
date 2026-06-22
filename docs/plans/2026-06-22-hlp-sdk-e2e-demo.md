@@ -170,6 +170,23 @@ uv run pytest tests/test_hlp_sdk.py::test_crewai_adapter_uses_async_kickoff_cont
 uv run pytest tests/test_hlp_sdk.py::test_crewai_adapter_wraps_crew_exception -q
 ```
 
+## Task 9: Adapter Compatibility Demo
+
+Add a dependency-free compatibility demo that exercises every named adapter target with fake framework/process objects:
+
+- OpenAI Python SDK through a fake `client.responses.create(...)`.
+- OpenAI Agents SDK through a fake `runner.run_sync(...)`.
+- LangGraph through a fake compiled graph `ainvoke(...)`.
+- CrewAI through a fake crew `akickoff(...)`.
+- Codex CLI, Claude Code CLI, and herms CLI through injected JSON process runners.
+
+Verification:
+
+```bash
+uv run loops-hlp-adapters-demo
+uv run pytest tests/test_hlp_sdk.py::test_hlp_adapter_compat_demo_covers_named_targets_without_external_services -q
+```
+
 ## Acceptance Criteria
 
 - `from loops.hlp import HLPClient` is the preferred SDK entry point.
@@ -180,3 +197,4 @@ uv run pytest tests/test_hlp_sdk.py::test_crewai_adapter_wraps_crew_exception -q
 - Documentation clearly states that OpenAI Agents SDK, OpenAI Python SDK, Codex CLI, Claude Code, LangGraph/CrewAI, and unknown frameworks such as `herms` are adapter targets, not core dependencies.
 - Process and OpenAI Python SDK adapters perform real delegated execution through injected runners or clients while preserving `task_id` correlation.
 - OpenAI Agents SDK, LangGraph, and CrewAI adapters perform framework-shaped delegated execution through injected framework objects while preserving `task_id` correlation.
+- A dependency-free adapter compatibility demo proves all named adapter paths execute and preserve `task_id` correlation.

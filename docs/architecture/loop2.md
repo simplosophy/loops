@@ -115,4 +115,5 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 - `uv run pytest tests/test_hlp_sdk.py -q`：SDK facade、adapter、event、SQLite、demo
 - `uv run pytest tests/test_loop2_hlp.py -q`：39 passed
 - `uv run loops-hlp-demo`：无外部依赖端到端 demo
+- `uv run loops-hlp-adapters-demo`：无外部依赖 adapter compatibility demo
 - 端到端闭环覆盖 spec 附录 A "Review PR #1234" 全时序
