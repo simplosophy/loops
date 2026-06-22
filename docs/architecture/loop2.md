@@ -79,7 +79,23 @@ loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。`AAPBri
 | checkpoint.resolve | resume | resolution 透传 |
 | ownership.transfer | handoff | correlation_id 保持 |
 
-参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`PythonCallableAgentAdapter` 覆盖 OpenAI Agents SDK、OpenAI Python SDK、LangGraph、CrewAI 等 in-process framework 的接入形态；`ProcessAgentAdapter` 覆盖 Codex CLI、Claude Code CLI、herms 等 CLI/process 形态。
+参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`PythonCallableAgentAdapter` 覆盖 OpenAI Agents SDK、LangGraph、CrewAI 等 in-process framework 的接入形态；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖 Codex CLI、Claude Code CLI、herms 等 CLI/process 形态。
+
+`ProcessAgentAdapter` 约定所有操作都向 runner 传入结构化请求：
+
+```json
+{
+  "operation": "delegate",
+  "task_id": "task_...",
+  "agent_id": "agent_codex",
+  "capability": "code-review",
+  "input": {"goal": "Review PR #1234"},
+  "parent_run": null,
+  "correlation_id": "task_..."
+}
+```
+
+runner 返回 JSON object，`delegate` 至少应返回 `run_id`。非零退出码、非法 JSON、runner exception 和 SDK client exception 都包装为 `AgentAdapterError`。
 
 ## 分层纪律
 

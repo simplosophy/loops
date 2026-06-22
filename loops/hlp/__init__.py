@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from loops.loop2 import (
     AgentAdapter,
+    AgentAdapterError,
     AgentRunHandle,
     Artifact,
     ArtifactPayload,
@@ -38,6 +39,7 @@ from loops.loop2 import (
     OpenAIPythonSDKAdapter,
     Ownership,
     OwnershipTransfer,
+    ProcessResult,
     ProcessAgentAdapter,
     ProtocolError,
     PythonCallableAgentAdapter,
@@ -50,6 +52,7 @@ from loops.loop2 import (
 
 __all__ = [
     "AgentAdapter",
+    "AgentAdapterError",
     "AgentRunHandle",
     "Artifact",
     "ArtifactPayload",
@@ -84,6 +87,7 @@ __all__ = [
     "OpenAIPythonSDKAdapter",
     "Ownership",
     "OwnershipTransfer",
+    "ProcessResult",
     "ProcessAgentAdapter",
     "ProtocolError",
     "PythonCallableAgentAdapter",

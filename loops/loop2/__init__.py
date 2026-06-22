@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .adapters import (
     AgentAdapter,
+    AgentAdapterError,
     AgentRunHandle,
     ClaudeCodeCLIAdapter,
     CodexCLIAdapter,
@@ -20,6 +21,7 @@ from .adapters import (
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
+    ProcessResult,
     ProcessAgentAdapter,
     PythonCallableAgentAdapter,
 )
@@ -70,6 +72,7 @@ __all__ = [
     "HumanLoopStore",
     # 契约
     "AgentAdapter",
+    "AgentAdapterError",
     "AgentRunHandle",
     "ClaudeCodeCLIAdapter",
     "CodexCLIAdapter",
@@ -81,6 +84,7 @@ __all__ = [
     "LangGraphAdapter",
     "OpenAIAgentsSDKAdapter",
     "OpenAIPythonSDKAdapter",
+    "ProcessResult",
     "ProcessAgentAdapter",
     "PythonCallableAgentAdapter",
     "AAPBridge",

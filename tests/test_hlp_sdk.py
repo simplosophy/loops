@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loops.hlp import (
+    AgentAdapterError,
     ArtifactPayload,
     ClaudeCodeCLIAdapter,
     CheckpointOption,
@@ -17,6 +18,7 @@ from loops.hlp import (
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
     PythonCallableAgentAdapter,
+    ProcessResult,
     SQLiteHumanLoopStore,
 )
 from examples.hlp_e2e_demo import run_demo
@@ -175,6 +177,199 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     assert run(claude.healthcheck())["adapter"] == "claude-code-cli"
     assert HermesCLIAdapter is HermsCLIAdapter
     assert run(herms.healthcheck())["adapter"] == "herms-cli"
+
+
+def test_process_agent_adapter_executes_json_runner_contract():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return ProcessResult(
+            exit_code=0,
+            stdout='{"run_id": "external_run_1", "metadata": {"provider": "codex"}}',
+            stderr="",
+        )
+
+    adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner, timeout=12.5)
+
+    run_id = run(adapter.delegate(
+        task_id="task_proc",
+        agent_id="agent_codex",
+        capability="code-review",
+        input={"goal": "review"},
+    ))
+    health = run(adapter.healthcheck())
+
+    assert run_id == "external_run_1"
+    assert adapter.task_of_run(run_id) == "task_proc"
+    assert adapter.process_results[run_id] == {
+        "run_id": "external_run_1",
+        "metadata": {"provider": "codex"},
+    }
+    assert captured == {
+        "command": ("codex", "exec", "--json"),
+        "request": {
+            "operation": "delegate",
+            "task_id": "task_proc",
+            "agent_id": "agent_codex",
+            "capability": "code-review",
+            "input": {"goal": "review"},
+            "parent_run": None,
+            "correlation_id": "task_proc",
+        },
+        "timeout": 12.5,
+    }
+    assert health["adapter"] == "codex-cli"
+    assert health["executable"] == "codex"
+
+
+def test_process_agent_adapter_raises_structured_error_on_failure():
+    async def runner(command, request, timeout):
+        return ProcessResult(exit_code=2, stdout="", stderr="boom")
+
+    adapter = ClaudeCodeCLIAdapter(command=("claude", "-p"), runner=runner)
+
+    try:
+        run(adapter.delegate(
+            task_id="task_proc",
+            agent_id="agent_claude",
+            capability="code-review",
+            input={"goal": "review"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "claude-code-cli"
+        assert exc.operation == "delegate"
+        assert exc.details["exit_code"] == 2
+        assert exc.details["stderr"] == "boom"
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_process_agent_adapter_wraps_runner_exception():
+    async def runner(command, request, timeout):
+        raise FileNotFoundError("missing cli")
+
+    adapter = CodexCLIAdapter(command=("missing-codex",), runner=runner)
+
+    try:
+        run(adapter.delegate(
+            task_id="task_proc",
+            agent_id="agent_codex",
+            capability="code-review",
+            input={"goal": "review"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "codex-cli"
+        assert exc.operation == "delegate"
+        assert exc.details["error_type"] == "FileNotFoundError"
+        assert "missing cli" in exc.details["error"]
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_openai_python_sdk_adapter_uses_responses_client():
+    class FakeResponses:
+        def __init__(self):
+            self.requests = []
+
+        async def create(self, **kwargs):
+            self.requests.append(kwargs)
+            return {
+                "id": "resp_123",
+                "output_text": "review completed",
+            }
+
+    class FakeClient:
+        def __init__(self):
+            self.responses = FakeResponses()
+
+    client = FakeClient()
+    adapter = OpenAIPythonSDKAdapter(client=client, model="gpt-test")
+
+    run_id = run(adapter.delegate(
+        task_id="task_openai",
+        agent_id="agent_openai",
+        capability="analysis",
+        input={"goal": "summarize"},
+    ))
+
+    assert run_id == "resp_123"
+    assert adapter.task_of_run(run_id) == "task_openai"
+    assert adapter.results[run_id] == {
+        "id": "resp_123",
+        "output_text": "review completed",
+    }
+    assert client.responses.requests == [{
+        "model": "gpt-test",
+        "input": "summarize",
+        "metadata": {
+            "hlp_task_id": "task_openai",
+            "hlp_agent_id": "agent_openai",
+            "hlp_capability": "analysis",
+            "hlp_parent_run": "",
+        },
+    }]
+
+
+def test_openai_python_sdk_adapter_wraps_client_exception():
+    class BrokenResponses:
+        async def create(self, **kwargs):
+            raise RuntimeError("api unavailable")
+
+    class BrokenClient:
+        responses = BrokenResponses()
+
+    adapter = OpenAIPythonSDKAdapter(client=BrokenClient(), model="gpt-test")
+
+    try:
+        run(adapter.delegate(
+            task_id="task_openai",
+            agent_id="agent_openai",
+            capability="analysis",
+            input={"goal": "summarize"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "openai-python-sdk"
+        assert exc.operation == "delegate"
+        assert exc.details["error_type"] == "RuntimeError"
+        assert exc.details["error"] == "api unavailable"
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_hlp_client_drives_process_adapter_block_and_resume():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append(request)
+        if request["operation"] == "delegate":
+            return ProcessResult(exit_code=0, stdout='{"run_id": "proc_run_1"}', stderr="")
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner)
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(principal="user_alice", goal="Use Codex adapter"))
+    run_handle = run(client.delegate(task.id, "agent_codex", capability="code-review"))
+    run(client.start(task.id))
+    checkpoint = run(client.raise_checkpoint(
+        task_id=task.id,
+        kind="approval",
+        prompt="Apply patch?",
+        raised_by="agent_codex",
+    ))
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+
+    assert run_handle.run_id == "proc_run_1"
+    assert [request["operation"] for request in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+    assert requests[1]["checkpoint_id"] == checkpoint.id
+    assert requests[2]["resolution"] == {"action": "approve", "choice": None}
 
 
 def test_hlp_client_emits_lifecycle_events_in_order():

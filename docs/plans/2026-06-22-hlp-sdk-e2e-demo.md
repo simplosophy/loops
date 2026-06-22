@@ -130,6 +130,26 @@ Verification:
 uv run pytest -q
 ```
 
+## Task 7: Real Adapter Execution Contracts
+
+Extend adapter entry points beyond naming wrappers:
+
+- `ProcessAgentAdapter` executes a JSON-over-stdin/stdout runner and wraps process failures in `AgentAdapterError`.
+- `CodexCLIAdapter`, `ClaudeCodeCLIAdapter`, and `HermsCLIAdapter` accept command, runner, and timeout parameters.
+- `OpenAIPythonSDKAdapter` accepts an injected OpenAI Python SDK client and calls `client.responses.create(...)`.
+- `HLPClient` process adapter flows drive `delegate`, `block`, and `resume` through the runner during checkpoint lifecycles.
+
+Verification:
+
+```bash
+uv run pytest tests/test_hlp_sdk.py::test_process_agent_adapter_executes_json_runner_contract -q
+uv run pytest tests/test_hlp_sdk.py::test_process_agent_adapter_raises_structured_error_on_failure -q
+uv run pytest tests/test_hlp_sdk.py::test_process_agent_adapter_wraps_runner_exception -q
+uv run pytest tests/test_hlp_sdk.py::test_openai_python_sdk_adapter_uses_responses_client -q
+uv run pytest tests/test_hlp_sdk.py::test_openai_python_sdk_adapter_wraps_client_exception -q
+uv run pytest tests/test_hlp_sdk.py::test_hlp_client_drives_process_adapter_block_and_resume -q
+```
+
 ## Acceptance Criteria
 
 - `from loops.hlp import HLPClient` is the preferred SDK entry point.
@@ -138,3 +158,4 @@ uv run pytest -q
 - SQLite persistence proves restart-safe HLP state for the core objects used by the demo.
 - Existing loop2 protocol tests still pass.
 - Documentation clearly states that OpenAI Agents SDK, OpenAI Python SDK, Codex CLI, Claude Code, LangGraph/CrewAI, and unknown frameworks such as `herms` are adapter targets, not core dependencies.
+- Process and OpenAI Python SDK adapters perform real delegated execution through injected runners or clients while preserving `task_id` correlation.

@@ -71,6 +71,28 @@ from loops.hlp import (
 )
 ```
 
+CLI adapters use a JSON-over-stdin/stdout contract and can be tested with an
+injected runner before wiring a real binary:
+
+```python
+from loops.hlp import CodexCLIAdapter
+
+codex = CodexCLIAdapter(command=("codex", "exec", "--json"))
+```
+
+OpenAI's Python SDK can be injected without adding a hard dependency to the HLP
+core package:
+
+```python
+from openai import AsyncOpenAI
+from loops.hlp import OpenAIPythonSDKAdapter
+
+adapter = OpenAIPythonSDKAdapter(
+    client=AsyncOpenAI(),
+    model="gpt-4.1",
+)
+```
+
 Run the sample agent with DeepSeek's OpenAI-compatible API:
 
 ```bash
