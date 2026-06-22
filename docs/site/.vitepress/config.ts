@@ -19,9 +19,9 @@ function pagePath(page: string) {
 export default defineConfig({
   base,
   lang: 'en-US',
-  title: 'Loops Protocol Stack',
+  title: 'Human Loop Protocol',
   description:
-    'A three-layer protocol stack for human-loop work, agent delegation, and capability invocation.',
+    'A protocol for accountable human-agent work, with integration routes to existing agent and capability protocols.',
   cleanUrls: true,
   srcDir: './',
   ignoreDeadLinks: false,
@@ -33,7 +33,7 @@ export default defineConfig({
       {
         name: 'keywords',
         content:
-          'Loops Protocol Stack,HLP,AAP,CAP,human loop protocol,agent protocol,capability protocol',
+          'Human Loop Protocol,HLP,human-agent work,human loop,A2A,MCP,Agent Skills',
       },
     ],
   ],
@@ -93,7 +93,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    siteTitle: 'Loops',
+    siteTitle: 'HLP',
     logo: {
       light: '/logo.svg',
       dark: '/logo.svg',
@@ -101,21 +101,21 @@ export default defineConfig({
 
     nav: [
       { text: 'Overview', link: '/overview' },
-      { text: 'Protocol Map', link: '/protocol-map' },
+      { text: 'HLP Spec', link: '/specs/hlp' },
       {
         text: 'Implement',
         items: [
           { text: 'Implementation Guide', link: '/reading-routes' },
-          { text: 'Conformance', link: '/conformance' },
-          { text: 'Inter-layer Contracts', link: '/specs/contracts' },
+          { text: 'HLP Conformance', link: '/conformance' },
+          { text: 'Integration Contracts', link: '/specs/contracts' },
+          { text: 'Integration Map', link: '/protocol-map' },
         ],
       },
       {
-        text: 'Specifications',
+        text: 'Ecosystem Routes',
         items: [
-          { text: 'HLP · Human Loop Protocol', link: '/specs/hlp' },
-          { text: 'AAP · Agent-Agent Profile', link: '/specs/aap' },
-          { text: 'CAP · Capability Profile', link: '/specs/cap' },
+          { text: 'L1 · Agent Protocols', link: '/specs/aap' },
+          { text: 'L0 · Capability Protocols', link: '/specs/cap' },
         ],
       },
     ],
@@ -127,26 +127,26 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Overview', link: '/overview' },
-            { text: 'Protocol Map', link: '/protocol-map' },
+            { text: 'HLP Specification', link: '/specs/hlp' },
             { text: 'Implementation Guide', link: '/reading-routes' },
-            { text: 'Conformance', link: '/conformance' },
+            { text: 'HLP Conformance', link: '/conformance' },
           ],
         },
         {
-          text: 'Specifications',
+          text: 'Integration',
           collapsed: false,
           items: [
-            { text: 'L2 · HLP', link: '/specs/hlp' },
-            { text: 'L1 · AAP', link: '/specs/aap' },
-            { text: 'L0 · CAP', link: '/specs/cap' },
-            { text: 'Inter-layer Contracts', link: '/specs/contracts' },
+            { text: 'Integration Map', link: '/protocol-map' },
+            { text: 'Integration Contracts', link: '/specs/contracts' },
+            { text: 'L1 · Agent Protocols', link: '/specs/aap' },
+            { text: 'L0 · Capability Protocols', link: '/specs/cap' },
           ],
         },
       ],
     },
 
     footer: {
-      message: 'Loops Protocol Stack · loop0 owns execution · loop1 owns interaction · loop2 owns coordination',
+      message: 'Human Loop Protocol · HLP owns accountable human-agent work · L1/L0 are ecosystem routes',
       copyright: 'Draft protocol documentation. Version 0.1.0-draft.',
     },
 

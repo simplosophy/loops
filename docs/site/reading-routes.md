@@ -1,15 +1,16 @@
 # Implementation Guide
 
-Use this guide to choose the right entry point. The Loops documents have
-different shapes because the layers have different roles.
+Use this guide to choose the right entry point. HLP is the only complete
+protocol specification in this project. L1 and L0 pages are routing references
+for integrating with existing agent and capability ecosystems.
 
 | Document | Type | Meaning |
 | --- | --- | --- |
-| [HLP](./specs/hlp) | Full protocol specification | Loops defines this layer: schemas, state machine, operations, errors, and conformance. |
-| [AAP](./specs/aap) | Conformance profile | Loops profiles the minimum L1 surface that existing agent protocols must expose. |
-| [CAP](./specs/cap) | Conformance profile | Loops profiles the minimum L0 surface that MCP servers and Skills runtimes already approximate. |
-| [Protocol Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and contract map for the full stack. |
-| [Contracts](./specs/contracts) | Cross-layer reference | Loops defines how the layers join without leaking internal state. |
+| [HLP](./specs/hlp) | Full protocol specification | The primary spec: schemas, state machine, operations, errors, and conformance. |
+| [Agent Protocol Routes](./specs/aap) | L1 routing reference | How HLP can delegate into A2A, ACP, AGNTCY-style meshes, or custom runtimes. |
+| [Capability Protocol Routes](./specs/cap) | L0 routing reference | How HLP references capabilities exposed through MCP, Agent Skills, local tools, or registries. |
+| [Integration Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and adapter boundary map. |
+| [Contracts](./specs/contracts) | Cross-layer reference | The narrow contracts HLP expects adapters to preserve. |
 
 ## Path 1: Build a Human Loop Platform
 
@@ -27,13 +28,14 @@ Implementation checklist:
 - Enforce the Task state machine and operation preconditions.
 - Persist immutable specs, artifact versions, reviews, ledger entries, and audit
   events.
-- Bridge downward to AAP for delegation, blocking, resuming, and handoff.
+- Bridge downward to your chosen agent runtime for delegation, blocking,
+  resuming, and handoff.
 
 Expected work: large. HLP is a complete protocol surface.
 
-## Path 2: Make an Agent Runtime Loops-Compatible
+## Path 2: Connect an Existing Agent Runtime
 
-Read [AAP](./specs/aap), then [Inter-layer Contracts](./specs/contracts).
+Read [Agent Protocol Routes](./specs/aap), then [Integration Contracts](./specs/contracts).
 
 You are building this path if you already have an agent runtime, A2A runtime,
 ACP broker, agent mesh, or multi-agent orchestrator and want it to sit under
@@ -49,12 +51,13 @@ Implementation checklist:
   blocked by a HLP checkpoint.
 - Preserve correlation during handoff.
 
-Expected work: small to medium. Most of the work is correlation, state, and
-event discipline.
+Expected work: small to medium. You are not implementing a new Loops L1
+protocol; you are preserving HLP correlation and pause/resume semantics in an
+existing runtime.
 
-## Path 3: Publish a Capability Source
+## Path 3: Connect a Capability Source
 
-Read [CAP](./specs/cap).
+Read [Capability Protocol Routes](./specs/cap).
 
 You are building this path if you provide tools, MCP servers, Skills, packaged
 automation, retrieval functions, or other agent-callable capabilities.
@@ -65,31 +68,28 @@ Implementation checklist:
 - Give every capability a globally unique `(capability_id, version)`.
 - Publish an input schema for every capability.
 - Return a structured `InvokeResult`.
-- Use CAP error semantics for invalid input, missing capabilities, permission
-  failures, execution failures, and timeouts.
+- Hide transport details from HLP and agent-level planning.
 
 Expected work: minimal for MCP servers and Skills runtimes; moderate for plain
 function-calling registries that lack discovery.
 
-## Path 4: Assemble a Complete Loops Stack
+## Path 4: Assemble a HLP-Centered Stack
 
-Read in dependency order:
+Read in this order:
 
-1. [CAP](./specs/cap)
-2. [AAP](./specs/aap)
-3. [HLP](./specs/hlp)
-4. [Protocol Map](./protocol-map)
-5. [Inter-layer Contracts](./specs/contracts)
-6. [Conformance](./conformance)
+1. [HLP](./specs/hlp)
+2. [Integration Contracts](./specs/contracts)
+3. [Agent Protocol Routes](./specs/aap)
+4. [Capability Protocol Routes](./specs/cap)
+5. [Integration Map](./protocol-map)
+6. [HLP Conformance](./conformance)
 
-Build bottom-up:
+Build from the human-loop boundary outward:
 
-- Start with one or more CAP providers.
-- Add an AAP runtime that can discover and delegate to agents that use those
-  providers.
-- Add HLP on top to represent human-owned work, checkpoints, review, ledger,
-  and audit.
-- Verify that the cross-layer contracts hold in the full flow.
+- Implement HLP objects and operations.
+- Connect your agent runtime through a narrow adapter.
+- Connect capability sources through the agent runtime or host platform.
+- Verify that HLP task identity survives every runtime and capability boundary.
 
 ## Path 5: Evaluate an Existing Product
 
@@ -97,17 +97,16 @@ Use the [Conformance](./conformance) page as an audit checklist.
 
 Ask four questions:
 
-1. Does the product expose versioned capabilities through a CAP-compatible
-   manifest and invocation result?
-2. Does the product expose agent delegation through AAP-compatible runs and
-   correlated events?
-3. Does the product represent human-agent work through HLP tasks, checkpoints,
+1. Does the product represent human-agent work through HLP tasks, checkpoints,
    reviews, artifacts, ledger entries, and audit events?
-4. Can a single task identity survive every handoff from HLP through AAP to the
-   executing runtime?
+2. Can every delegated agent run preserve the HLP TaskID as correlation?
+3. Can checkpoints block and resume the corresponding agent run without letting
+   the agent bypass the human decision?
+4. Can task constraints reference capabilities without exposing transport
+   details to HLP?
 
 If any answer is no, the product may still be useful, but it should not claim
-full Loops Protocol Stack conformance.
+HLP compatibility.
 
 ## Recommended First Flow
 
@@ -116,12 +115,12 @@ For a reference implementation, start with a single task:
 ```text
 Human creates Task
   -> HLP task.assign
-  -> AAP delegate with Run.correlation_id = TaskID
+  -> L1 delegate with Run.correlation_id = TaskID
   -> Agent reaches a decision point
   -> HLP checkpoint.raise
-  -> AAP block
+  -> L1 block
   -> Human resolves the checkpoint
-  -> AAP resume
+  -> L1 resume
   -> Agent commits Artifact
   -> Human submits Review
   -> Task reaches completed

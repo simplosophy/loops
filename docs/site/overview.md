@@ -1,13 +1,18 @@
 # Overview
 
-Loops is a three-layer protocol stack for AI coordination. It separates three
-different concerns that are often bundled into one agent application:
+Human Loop Protocol (HLP) is the focus of this project. It defines the protocol
+surface for accountable human-agent work: a human principal delegates a bounded
+task to an autonomous agent, the agent raises decision checkpoints, humans
+review artifacts, and the full lifecycle remains replayable.
 
-| Layer | Protocol | Concern | Typical implementation |
+HLP sits above existing agent and capability ecosystems. Those lower layers are
+integration routes, not new protocols owned by Loops:
+
+| Layer | Role in this project | Concern | Typical implementation |
 | --- | --- | --- | --- |
-| L2 | HLP | Human-loop work | Task and review platforms |
-| L1 | AAP | Agent-agent delegation | A2A runtimes, ACP brokers, agent meshes |
-| L0 | CAP | Capability invocation | MCP servers, Skills runtimes |
+| L2 | HLP specification | Human-loop work | Task and review platforms |
+| L1 | Agent protocol route | Agent delegation and run lifecycle | A2A runtimes, ACP brokers, agent meshes |
+| L0 | Capability protocol route | Tool, skill, and capability invocation | MCP servers, Agent Skills runtimes, local tools |
 
 The central claim is simple: a platform should be able to change a capability
 provider without changing human review semantics, add a new agent runtime without
@@ -27,9 +32,10 @@ single runtime abstraction cannot carry all three rhythms without coupling them.
 
 ## Model
 
-Loops treats coordination as a protocol stack:
+HLP treats the human loop as the stable top-level protocol and routes downward
+through adapter contracts:
 
-<img src="./assets/stack.svg" alt="Loops Protocol Stack: HLP above AAP above CAP, joined by explicit inter-layer contracts." style="display:block;width:100%;max-width:880px;height:auto;margin:8px auto 16px;border:1px solid var(--vp-c-divider);border-radius:8px;">
+<img src="./assets/stack.svg" alt="HLP integration stack: HLP above agent and capability protocol routes, joined by explicit contracts." style="display:block;width:100%;max-width:880px;height:auto;margin:8px auto 16px;border:1px solid var(--vp-c-divider);border-radius:8px;">
 
 The ASCII view below traces the operations that flow down through the stack:
 
@@ -40,43 +46,44 @@ Human principal
   ▼
 Agent worker
   │
-  │ AAP: discover, delegate, block, resume, handoff
+  │ L1 agent route: discover, delegate, block, resume, handoff
   ▼
 Capability source
   │
-  │ CAP: list, describe, invoke
+  │ L0 capability route: list, describe, invoke
   ▼
 Tool or Skill implementation
 ```
 
-The layers are deliberately narrow:
+The boundaries are deliberately narrow:
 
 - **HLP** defines the lifecycle of human-owned work: tasks, checkpoints,
   ownership, reviews, artifacts, ledgers, and audit events.
-- **AAP** defines the minimum agent-to-agent surface needed by HLP: discovery,
+- **L1 agent routes** point to existing agent protocols. HLP only needs
   delegation, blocking, resuming, handoff, and correlated run events.
-- **CAP** defines the minimum capability surface needed by agents: manifests,
-  versioned capability references, invocation results, and capability errors.
+- **L0 capability routes** point to existing capability protocols. HLP only
+  needs stable capability references when a task constrains required tools or
+  skills.
 
 ## Design Principles
 
 ### One layer, one responsibility
 
-Each layer owns one coordination axis. HLP owns accountable work. AAP owns agent
-delegation. CAP owns capability invocation. A layer may expose events and
-contracts upward, but it does not import the semantics of the layer above it.
+HLP owns accountable work. Existing agent runtimes own execution and delegation.
+Existing capability systems own tool and skill invocation. HLP observes those
+systems through explicit adapter contracts; it does not absorb their protocols.
 
 ### Dependencies flow downward
 
 The allowed dependency direction is:
 
 ```text
-HLP (L2) -> AAP (L1) -> CAP (L0)
+HLP (L2) -> agent protocol route (L1) -> capability protocol route (L0)
 ```
 
-CAP never knows that AAP or HLP exists. AAP never knows human review semantics
-except through explicit correlation and block/resume contracts. HLP never calls
-a tool directly.
+Capability implementations never need to know HLP exists. Agent runtimes only
+see HLP through correlation and block/resume contracts. HLP never calls a tool
+directly.
 
 ### Cross-layer communication uses contract objects
 
@@ -86,9 +93,9 @@ explicit objects:
 | Contract | Purpose |
 | --- | --- |
 | `CapabilityRef` | Lets upper layers reference a capability by `(capability_id, version)` without seeing transport details. |
-| `TaskID = Run.correlation_id` | Carries HLP task identity through every AAP run and event. |
+| `TaskID = Run.correlation_id` | Carries HLP task identity through every agent run and event. |
 | `Checkpoint -> block/resume` | Maps a human decision point to an agent run pause and restart. |
-| `Ownership -> handoff` | Maps task ownership transfer to AAP handoff while preserving correlation. |
+| `Ownership -> handoff` | Maps task ownership transfer to agent handoff while preserving correlation. |
 
 ### Forward-only state
 
@@ -98,20 +105,22 @@ as new entries or new versions, not as destructive edits.
 
 ## What Loops Defines
 
-Loops defines:
+This project defines:
 
 - A complete HLP 0.1.0-draft protocol for accountable human-loop work.
-- AAP and CAP conformance profiles for existing agent and capability protocols.
-- The inter-layer contracts required for full-stack interoperability.
-- Conformance requirements that let implementations make precise claims.
+- Integration contracts for routing HLP task identity, checkpoints, ownership,
+  and capability references into existing agent and capability protocols.
+- Introductory L1/L0 route pages that explain where A2A, ACP, AGNTCY-style
+  meshes, MCP, Agent Skills, and local capability systems fit.
+- HLP conformance requirements that let implementations make precise claims.
 
-Loops does not define:
+This project does not define:
 
+- A replacement for A2A, ACP, AGNTCY, MCP, Agent Skills, or agent runtime internals.
 - A mandatory transport such as HTTP, gRPC, WebSocket, or stdio.
 - A required persistence backend.
 - A universal identity, RBAC, or billing model.
 - A UI specification for chat, web, IM, or CLI experiences.
-- A replacement for MCP, Skills, A2A, ACP, or agent runtime internals.
 
 ## Why HLP Is New
 

@@ -9,7 +9,7 @@ outline: [2, 3]
 | --- | --- |
 | Version | 0.1.0-draft |
 | Status | Draft, validated by the current reference implementation |
-| Layer | L2, top layer of the Loops Protocol Stack |
+| Layer | HLP layer above existing agent and capability routes |
 | Document type | Full protocol specification |
 | Primary concern | Human-owned work delegated to autonomous agents |
 
@@ -38,8 +38,8 @@ HLP governs:
 HLP does not govern:
 
 - How an agent internally executes a run.
-- How agents delegate to other agents; that is AAP.
-- How agents invoke tools or skills; that is CAP.
+- How agents delegate to other agents; use an existing L1 agent route.
+- How agents invoke tools or skills; use an existing L0 capability route.
 - How notifications are rendered in chat, web, mobile, or CLI channels.
 - The host platform's identity, RBAC, billing, or tenant model.
 
@@ -418,20 +418,20 @@ State-changing operations **MUST** map to audit actions.
 | `artifact.commit` | `artifact.committed` |
 | `ledger.write` | `ledger.written` |
 
-## Inter-layer Contracts
+## Integration Contracts
 
-HLP is L2. It communicates downward through explicit contracts:
+HLP communicates downward through explicit adapter contracts:
 
-| HLP event | AAP action | Contract |
+| HLP event | L1 route action | Contract |
 | --- | --- | --- |
-| `task.assign` | `agent.delegate` | TaskID **MUST** become `Run.correlation_id` |
+| `task.assign` | `delegate` | TaskID **MUST** become `Run.correlation_id` |
 | `checkpoint.raise` | `agent.block` | The corresponding run **MUST** enter `blocked` |
 | `checkpoint.resolve` | `agent.resume` | Resolution **MUST** be passed to the run |
-| `ownership.delegate` | `agent.delegate` | Parent run **SHOULD** remain traceable |
-| `ownership.transfer` | `agent.handoff` | Correlation **MUST** be preserved |
+| `ownership.delegate` | `delegate` | Parent run **SHOULD** remain traceable |
+| `ownership.transfer` | `handoff` | Correlation **MUST** be preserved |
 
-HLP **MUST NOT** directly invoke CAP capabilities. It references capabilities
-only through `CapabilityRef`.
+HLP **MUST NOT** directly invoke capabilities. It references them only through
+`CapabilityRef`; invocation belongs to the agent runtime or host platform.
 
 ## Errors
 
@@ -459,7 +459,8 @@ An implementation claiming HLP 0.1.0-draft compatibility **MUST**:
 4. Enforce the immutability rules.
 5. Emit audit events for every state-changing protocol operation.
 6. Validate operation preconditions.
-7. Satisfy the inter-layer contracts when used in a full Loops stack.
+7. Satisfy the integration contracts when routed into existing agent or
+   capability systems.
 
 ## Open Issues
 
@@ -480,10 +481,10 @@ The following topics remain intentionally draft-scoped:
 ```text
 Human Alice                 HLP                         Agent Devin
   | task.create              |                             |
-  | task.assign              | -> AAP delegate(TaskID)     |
+  | task.assign              | -> L1 delegate(TaskID)      |
   |                           | <- checkpoint.raise         |
-  | <- checkpoint notice      | -> AAP block                |
-  | checkpoint.resolve        | -> AAP resume               |
+  | <- checkpoint notice      | -> L1 block                 |
+  | checkpoint.resolve        | -> L1 resume                |
   |                           | <- artifact.commit(v1)      |
   | review.submit(changes)    | -> in_progress              |
   |                           | <- artifact.commit(v2)      |

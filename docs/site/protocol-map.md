@@ -1,61 +1,57 @@
-# Protocol Map
+# HLP Integration Map
 
-This page is the compact implementation map for the Loops Protocol Stack. Use it
-when you need to decide which layer owns a behavior, which object carries state,
-and which contract joins two layers.
+This page is the compact map for embedding HLP in an existing AI system. HLP is
+the project-defined protocol. L1 and L0 are integration routes to agent and
+capability ecosystems the host platform already uses.
 
-## Layer Responsibility Map
+## Responsibility Map
 
-| Layer | Protocol | Owns | Does not own |
-| --- | --- | --- | --- |
-| L2 | HLP | Human-owned work, checkpoints, reviews, artifacts, ledger entries, audit events | Tool transport, model execution loops, raw capability calls |
-| L1 | AAP | Agent discovery, delegation, run lifecycle, block/resume, handoff, correlated events | Human review policy, artifact review verdicts, capability implementation |
-| L0 | CAP | Capability manifests, schemas, invocation, structured results, capability errors | Agent planning, task ownership, human approvals |
+| Boundary | Owned here | Routed elsewhere |
+| --- | --- | --- |
+| HLP | Human-owned tasks, checkpoints, reviews, artifacts, ledger entries, audit events | Agent execution loops, tool invocation, provider transport |
+| L1 agent route | Task-to-run correlation, block/resume, handoff adapters | A2A, ACP, AGNTCY-style meshes, custom agent runtimes |
+| L0 capability route | Stable capability references and provenance | MCP, Agent Skills, local tools, function-calling registries |
 
-The allowed dependency direction is always downward:
+The allowed dependency direction remains downward:
 
 ```text
-HLP (L2) -> AAP (L1) -> CAP (L0)
+HLP -> agent protocol route -> capability protocol route
 ```
 
-Lower layers expose capabilities and events. They do not import the business
-semantics of higher layers.
+Lower routes expose capabilities and events. They do not import HLP business
+objects.
 
-## Protocol Surface Map
+## Operation Map
 
-| Concern | HLP | AAP | CAP |
+| Concern | HLP operation | Adapter expectation |
+| --- | --- | --- |
+| Start human-owned work | `task.create`, `task.assign` | Delegate to an agent run and return a correlated run handle. |
+| Pause for human decision | `checkpoint.raise` | Block the corresponding agent run. |
+| Resume after decision | `checkpoint.resolve` | Resume the run with the resolution payload. |
+| Transfer responsibility | `ownership.transfer` | Handoff execution while preserving task correlation. |
+| Produce output | `artifact.commit` | Preserve provenance from agent and capability use. |
+| Review output | `review.open`, `review.submit` | Feed human verdicts back to the agent route when changes are requested. |
+| Audit | `audit.query`, `audit.replay` | Keep enough correlated run/capability evidence to replay the task. |
+
+## Identity Map
+
+| Object | Owner | Stable identity | Rule |
 | --- | --- | --- | --- |
-| Discovery | Optional host-specific task templates | `agent.discover` | `capability.list`, `capability.describe` |
-| Start work | `task.create`, `task.assign` | `agent.delegate` | Not applicable |
-| Pause work | `checkpoint.raise` | `agent.block` | Invocation timeout or error only |
-| Resume work | `checkpoint.resolve` | `agent.resume` | Not applicable |
-| Transfer work | `ownership.transfer` | `agent.handoff` | Not applicable |
-| Produce output | `artifact.commit` | `run.completed` event | `capability.invoke` result |
-| Review output | `review.open`, `review.submit` | Emits correlated run events | Not applicable |
-| Audit | `audit.query`, `audit.replay` | Correlated run event stream | Structured invocation result and error records |
+| Task | HLP | `task_id` | Primary identity for the human loop. |
+| Checkpoint | HLP | `checkpoint_id` | Human decision point attached to a task. |
+| Review | HLP | `review_id` | Immutable human verdict and feedback. |
+| Artifact | HLP | `artifact_id` plus version | Immutable deliverable with provenance. |
+| Agent run | L1 route | Runtime-specific `run_id` | Must carry HLP `Task.id` as correlation. |
+| Capability | L0 route | `(capability_id, version)` | Must be referenced without exposing transport. |
 
-## Object Ownership Map
-
-| Object | Owner | Stable identity | Mutability rule |
-| --- | --- | --- | --- |
-| Task | HLP | `task_id` | State changes are explicit transitions; task spec is immutable. |
-| Checkpoint | HLP | `checkpoint_id` | Resolution is append-only and auditable. |
-| Ownership | HLP | Task-scoped ownership chain | Transfers append records; history remains visible. |
-| Review | HLP | `review_id` | Submitted reviews are immutable. |
-| Artifact | HLP | `artifact_id` plus version | Versions are immutable; new content creates a new version. |
-| Run | AAP | `run_id` | State follows AAP transitions; `correlation_id` is stable. |
-| Capability | CAP | `(capability_id, version)` | Manifests are versioned; invocation results are records. |
-
-## Layer Contract Map
-
-These four contracts are required for full-stack interoperability.
+## Integration Contracts
 
 | Contract | Rule | Evidence |
 | --- | --- | --- |
-| `CapabilityRef` | Upper layers reference capabilities only by `(capability_id, version)`. | HLP task constraints and AAP invocation plans contain no transport endpoints. |
-| `TaskID` correlation | `HLP Task.id` **MUST** equal `AAP Run.correlation_id`. | Every AAP run event for the task carries the same correlation id. |
-| Checkpoint-to-Block | `checkpoint.raise` **MUST** block the AAP run; `checkpoint.resolve` **MUST** resume it. | Audit replay shows the checkpoint and run state transition as one logical pause. |
-| Ownership-to-Handoff | `ownership.transfer` **MUST** preserve correlation through AAP handoff. | The new run uses the original `TaskID` as `correlation_id`. |
+| `CapabilityRef` | HLP references capabilities only by `(capability_id, version)`. | Task constraints contain no transport endpoints or local command strings. |
+| TaskID correlation | HLP `Task.id` survives every agent run and event. | Run/event metadata carries the same task id. |
+| Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. | Audit replay shows the checkpoint and run transition as one logical pause. |
+| Ownership-to-Handoff | `ownership.transfer` preserves task correlation through handoff. | The receiving run keeps the original HLP task id. |
 
 ## End-to-End Flow
 
@@ -63,37 +59,30 @@ These four contracts are required for full-stack interoperability.
 Human principal
   -> HLP task.create
   -> HLP task.assign
-  -> AAP agent.delegate(correlation_id = TaskID)
-  -> AAP run.started
-  -> CAP capability.invoke(CapabilityRef)
-  -> AAP run.progress
+  -> L1 delegate(correlation_id = TaskID)
+  -> L1 run.started
+  -> L0 capability invoked by the agent runtime
+  -> L1 run.progress
   -> HLP checkpoint.raise
-  -> AAP agent.block
+  -> L1 block
   -> HLP checkpoint.resolve
-  -> AAP agent.resume
+  -> L1 resume
   -> HLP artifact.commit
   -> HLP review.submit
   -> HLP audit.replay
 ```
 
-The flow is conforming only if the same task identity can be followed from
+The flow is compatible only if the same task identity can be followed from
 human assignment through agent execution, capability use, checkpoint handling,
 artifact review, and audit replay.
 
 ## Implementation Boundaries
 
-| If you are building... | Implement first | Then prove |
+| If you are building... | Implement | Then prove |
 | --- | --- | --- |
-| A capability source | CAP | Capabilities have stable ids, schemas, structured results, and typed errors. |
-| An agent runtime | AAP | Runs are discoverable, delegateable, blockable, resumable, handoff-capable, and correlated. |
-| A collaboration platform | HLP | Tasks, checkpoints, reviews, artifacts, ledger entries, and audit events are first-class records. |
-| A complete Loops stack | CAP -> AAP -> HLP | The four layer contracts hold in a replayable end-to-end trace. |
+| A Human Loop Platform | HLP | Tasks, checkpoints, reviews, artifacts, ledger entries, and audit events are first-class records. |
+| An agent runtime adapter | L1 route | Runs are delegateable, blockable, resumable, handoff-capable, and correlated. |
+| A capability adapter | L0 route | Capabilities have stable ids, manifests, provenance, and hidden transport. |
 
-## Conformance Shortcut
-
-A system may claim a single layer without implementing the whole stack. A system
-must not claim full Loops stack compatibility unless it satisfies CAP, AAP, HLP,
-and every layer contract listed on this page.
-
-Use [Conformance](./conformance) for normative requirements and
-[Inter-layer Contracts](./specs/contracts) for deeper contract examples.
+Use [HLP Conformance](./conformance) for compatibility requirements and
+[Integration Contracts](./specs/contracts) for deeper contract examples.

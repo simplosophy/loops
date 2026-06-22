@@ -1,245 +1,80 @@
 ---
-title: CAP — Capability Protocol Profile
+title: L0 Capability Protocol Routes
 outline: [2, 3]
 ---
 
-# CAP — Capability Protocol Profile
+# L0 Capability Protocol Routes
 
-| Field | Value |
+HLP does not define a new tool or capability protocol. This page is an
+integration guide for routing HLP task constraints to existing capability
+ecosystems such as MCP servers, Agent Skills, local tools, or function-calling
+registries.
+
+HLP only needs stable capability references. Actual invocation remains owned by
+the agent runtime or host platform.
+
+## What HLP Needs From L0
+
+| HLP need | L0 expectation |
 | --- | --- |
-| Version | 0.1.0-draft |
-| Status | Draft |
-| Layer | L0, bottom layer of the Loops Protocol Stack |
-| Document type | Conformance profile |
-| Primary concern | Agent-callable tools and skills |
+| Name required capabilities | Provide stable `(capability_id, version)` references. |
+| Hide transport | Keep stdio, SSE, HTTP, local function names, and credentials below HLP. |
+| Explain inputs | Expose enough manifest/schema data for task constraints and review. |
+| Preserve provenance | Let artifacts and audit events reference which capability was used. |
+| Report failures | Return structured errors through the agent or host runtime. |
 
-CAP defines the minimum L0 surface required for agents to discover and invoke
-capabilities in the Loops Protocol Stack.
-
-CAP is not a replacement for MCP or Skills. It is the profile that lets existing
-capability systems participate in a layered stack without leaking transport
-details upward.
-
-Normative keywords follow RFC 2119.
-
-## Scope
-
-CAP governs:
-
-- Capability identity and versioning.
-- Capability manifests.
-- Discovery through list and describe operations.
-- Invocation result shape.
-- Capability error semantics.
-- `CapabilityRef` as the only legal upper-layer reference.
-
-CAP does not govern:
-
-- Who the caller is; HLP and the host platform own that context.
-- Agent sessions, memory, or run state.
-- Organization RBAC or billing.
-- How an agent decides which capability to call.
-- The concrete transport used by an MCP server, Skills runtime, or local host.
-
-## Capability
-
-```yaml
-Capability:
-  capability_id: string
-  version: string
-  kind: "tool" | "skill"
-  manifest: CapabilityManifest
-```
-
-Rules:
-
-- `(capability_id, version)` **MUST** be globally unique within the capability
-  source.
-- `version` **SHOULD** follow semantic versioning.
-- `kind` **MUST** be either `tool` or `skill`.
-
-## CapabilityRef
-
-`CapabilityRef` is CAP's cross-layer reference object.
+The HLP task schema uses `CapabilityRef` for this boundary:
 
 ```yaml
 CapabilityRef:
-  capability_id: string
-  version: string
+  capability_id: "cap:code-review"
+  version: "2.1.0"
 ```
 
-Rules:
+## Existing Protocol Routes
 
-- AAP and HLP **MUST** use `CapabilityRef` to refer to capabilities.
-- Upper layers **MUST NOT** depend on transport details such as stdio commands,
-  SSE endpoints, HTTP paths, or local function names.
-
-## Tool and Skill Granularity
-
-| Dimension | Tool | Skill |
+| Route | Use when | HLP adapter focus |
 | --- | --- | --- |
-| Shape | Single callable function | Packaged capability |
-| Prompt template | No | Yes |
-| Bundled resources | No | Yes |
-| Permission declaration | Optional or host-defined | Required by manifest |
-| Invocation semantics | `input -> output` | `vars -> result + side effects` |
-| Typical mapping | MCP tool | Skills protocol |
+| MCP | Tools are exposed through MCP servers. | Map tool names and versions into stable `CapabilityRef` values and keep transport below the agent runtime. |
+| Agent Skills | Capabilities are packaged with instructions, resources, and permission expectations. | Treat the skill package as the capability identity and record skill version in provenance. |
+| Local tools | The host platform invokes in-process or CLI tools. | Publish a manifest/registry entry so HLP never depends on raw command strings. |
+| Function calling | Capabilities are model-provider functions. | Add host-side discovery and stable ids before referencing them from HLP tasks. |
 
-A skill **MUST** be reducible to a package of tools, prompt instructions,
-resources, and permission declarations. This prevents CAP from splitting into
-two unrelated capability models.
+## Adapter Boundary
 
-## Capability Manifest
+HLP should never call a capability directly. The normal path is:
 
-```yaml
-CapabilityManifest:
-  capability_id: string
-  version: string
-  kind: "tool" | "skill"
-  name: string
-  description: string
-  input_schema: JSONSchema
-  output_schema: JSONSchema | null
-  prompt_template: string | null
-  resources: [Resource] | null
-  required_permissions: [string] | null
+```text
+HLP Task.constraints.must_use_capabilities
+  -> L1 agent runtime
+  -> selected L0 capability route
+  -> tool, skill, or function implementation
 ```
 
-Rules:
+HLP records intent and provenance. The agent runtime decides how to invoke the
+capability, handle retries, and translate provider-specific errors.
 
-- `input_schema` **MUST** be present.
-- `output_schema` **SHOULD** be present.
-- `prompt_template`, `resources`, and `required_permissions` are required for
-  skills when the underlying Skills system supports them.
-- Custom manifest fields **MAY** be added, but they **MUST NOT** be required by
-  upper layers to preserve basic CAP compatibility.
+## What HLP Does Not Standardize
 
-## Discovery
+HLP does not choose:
 
-```yaml
-capability.list() -> [CapabilityManifest]
-capability.describe(capability_id, version) -> CapabilityManifest | NOT_FOUND
-```
+- MCP transport.
+- Skill package format.
+- Function-calling provider schema.
+- Tool authentication.
+- Sandbox policy.
+- Retry, timeout, or rate-limit behavior.
 
-Rules:
+Those decisions belong to the capability ecosystem or the host platform.
 
-- A conforming L0 **MUST** provide both operations.
-- `describe` **MUST** return `NOT_FOUND` for unknown id/version pairs.
-- A registry **MAY** cache manifests, but invocation must still validate against
-  the manifest contract.
+## Implementation Checklist
 
-## Invocation
+- Assign stable ids and versions to capabilities that HLP tasks may require.
+- Keep transport endpoints and credentials out of HLP task specs.
+- Expose enough manifest data for humans to understand why a task requires a
+  capability.
+- Record capability use in artifact provenance or audit evidence.
+- Route invocation through the agent runtime or host platform, not through HLP
+  operations.
 
-```yaml
-capability.invoke(ref: CapabilityRef, input: object) -> InvokeResult
-
-InvokeResult:
-  ok: boolean
-  output: object | null
-  error: CapabilityError | null
-  duration_ms: integer
-```
-
-Rules:
-
-- `invoke` **MUST** validate `input` against `input_schema`.
-- If validation fails, `invoke` **MUST** return `INVALID_INPUT`.
-- If `output_schema` is declared, successful output **MUST** conform to it.
-- The CAP contract is synchronous from the caller's perspective. Implementations
-  **MAY** use asynchronous internals as long as the protocol result preserves the
-  `InvokeResult` shape.
-
-## Errors
-
-| Code | Meaning |
-| --- | --- |
-| `NOT_FOUND` | Capability id/version does not exist |
-| `INVALID_INPUT` | Input failed schema validation |
-| `PERMISSION_DENIED` | Required permission is missing |
-| `EXECUTION_FAILED` | Capability failed during execution |
-| `TIMEOUT` | Capability execution exceeded deadline |
-
-## Reference Mappings
-
-### MCP
-
-| CAP profile requirement | MCP mapping |
-| --- | --- |
-| `capability.list` | `tools/list` |
-| `capability.describe` | `tools/list` plus id/version filtering or host registry |
-| `capability.invoke` | `tools/call` |
-| `input_schema` | MCP tool `inputSchema` |
-| Transport hiding | Host-level adapter over stdio, SSE, or HTTP |
-
-Any MCP server that exposes tools with input schemas can satisfy the Tool
-portion of CAP through a thin adapter.
-
-### Skills
-
-| CAP profile requirement | Skills mapping |
-| --- | --- |
-| Capability manifest | Skill manifest |
-| `capability.invoke` | Skill invocation |
-| Prompt template | Skill instructions or template |
-| Resources | Skill resources |
-| Permissions | Skill permission declaration |
-
-Skills naturally satisfy the Skill portion of CAP when they expose manifests and
-invocation semantics.
-
-### Function Calling
-
-Function-calling registries can satisfy CAP Tool invocation semantics, but they
-usually lack discovery. A host registry must provide `list`, `describe`, and
-stable `CapabilityRef` values before claiming CAP compatibility.
-
-## Inter-layer Contracts
-
-CAP is L0. Upper layers refer to it only through `CapabilityRef`.
-
-| Upper layer | Allowed behavior | Forbidden behavior |
-| --- | --- | --- |
-| AAP | Invoke capabilities by reference | Depend on MCP transport or raw tool endpoint |
-| HLP | Declare required capabilities by reference | Call tools directly |
-
-Example task constraint:
-
-```yaml
-constraints:
-  must_use_capabilities:
-    - capability_id: "cap:code-review"
-      version: "2.1.0"
-```
-
-## Conformance
-
-An implementation claiming CAP 0.1.0-draft compatibility **MUST**:
-
-1. Provide `capability.list`, `capability.describe`, and `capability.invoke`.
-2. Give every capability a globally unique `(capability_id, version)`.
-3. Include `input_schema` in every manifest.
-4. Return `InvokeResult` from invocation.
-5. Use the defined error semantics.
-
-An implementation **MAY**:
-
-- Support only tools.
-- Support only skills.
-- Support both tools and skills.
-- Choose any transport.
-- Add custom manifest fields.
-
-## Open Issues
-
-| Issue | Draft stance |
-| --- | --- |
-| Version fallback | Semantic versioning plus explicit compatibility declarations are recommended. |
-| Long-running capabilities | Asynchronous internals are allowed; progress protocol is not standardized. |
-| Side-effect declarations | A future manifest field such as `side_effects` is expected. |
-| Skill permission schema | Align with Skills ecosystem evolution. |
-
-## Changelog
-
-| Version | Date | Change |
-| --- | --- | --- |
-| 0.1.0-draft | 2026-06-19 | Initial L0 conformance profile for capability sources. |
+For the exact HLP-side boundary, see [Integration Contracts](./contracts).

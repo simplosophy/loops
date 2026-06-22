@@ -1,6 +1,6 @@
 <svg width="960" height="510" viewBox="0 0 960 510" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="st-title st-desc">
-  <title id="st-title">Loops Protocol Stack</title>
-  <desc id="st-desc">A three-layer protocol stack. HLP (L2) owns human loop, AAP (L1) profiles agent delegation, CAP (L0) profiles capability invocation. Explicit inter-layer contracts join the layers as seams.</desc>
+  <title id="st-title">Human Loop Protocol Integration Stack</title>
+  <desc id="st-desc">HLP owns accountable human-agent work. L1 and L0 are integration routes to existing agent and capability protocols. Explicit contracts join the routes.</desc>
   <defs>
     <clipPath id="stack-clip">
       <rect x="60" y="82" width="840" height="310" rx="14"/>
@@ -59,23 +59,23 @@
   <text class="st-objs" x="110" y="150" dominant-baseline="central">Task · Checkpoint · Ownership · Review · Artifact · Ledger · Audit</text>
 
   <!-- contract seam 1 -->
-  <text class="st-ccap" x="480" y="178" text-anchor="middle" dominant-baseline="central">INTER-LAYER CONTRACTS</text>
+  <text class="st-ccap" x="480" y="178" text-anchor="middle" dominant-baseline="central">INTEGRATION CONTRACTS</text>
   <text class="st-ctext" x="480" y="194" text-anchor="middle" dominant-baseline="central">TaskID correlation  ·  Checkpoint ↔ Block  ·  Ownership ↔ Handoff</text>
 
   <!-- L1 -->
   <text class="st-code" x="84" y="228" dominant-baseline="central">L1</text>
-  <text class="st-name" x="110" y="228" dominant-baseline="central">AAP · Agent-Agent Protocol Profile</text>
-  <text class="st-tag-p" x="884" y="228" text-anchor="end" dominant-baseline="central">◇ Profiles A2A · ACP · AGNTCY</text>
+  <text class="st-name" x="110" y="228" dominant-baseline="central">L1 · Agent Protocol Routes</text>
+  <text class="st-tag-p" x="884" y="228" text-anchor="end" dominant-baseline="central">◇ A2A · ACP · AGNTCY · custom</text>
   <text class="st-objs" x="110" y="258" dominant-baseline="central">discover · delegate · block · resume · handoff</text>
 
   <!-- contract seam 2 -->
-  <text class="st-ccap" x="480" y="292" text-anchor="middle" dominant-baseline="central">INTER-LAYER CONTRACT</text>
+  <text class="st-ccap" x="480" y="292" text-anchor="middle" dominant-baseline="central">INTEGRATION CONTRACT</text>
   <text class="st-ctext" x="480" y="308" text-anchor="middle" dominant-baseline="central">CapabilityRef only  ·  no transport leakage across layers</text>
 
   <!-- L0 -->
   <text class="st-code" x="84" y="342" dominant-baseline="central">L0</text>
-  <text class="st-name" x="110" y="342" dominant-baseline="central">CAP · Capability Protocol Profile</text>
-  <text class="st-tag-p" x="884" y="342" text-anchor="end" dominant-baseline="central">◇ Profiles MCP · Skills</text>
+  <text class="st-name" x="110" y="342" dominant-baseline="central">L0 · Capability Protocol Routes</text>
+  <text class="st-tag-p" x="884" y="342" text-anchor="end" dominant-baseline="central">◇ MCP · Agent Skills · local tools</text>
   <text class="st-objs" x="110" y="372" dominant-baseline="central">capability.list · capability.describe · capability.invoke</text>
 
   <!-- arrow + Tool/Skill -->
@@ -87,5 +87,5 @@
   <line x1="306" y1="484" x2="334" y2="484" stroke="#8b5cf6" stroke-width="2.5"/>
   <text class="st-leg" x="342" y="484" dominant-baseline="central">Defined by Loops (HLP)</text>
   <line x1="498" y1="484" x2="526" y2="484" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="4 3"/>
-  <text class="st-leg" x="534" y="484" dominant-baseline="central">Profiles existing protocols (AAP · CAP)</text>
+  <text class="st-leg" x="534" y="484" dominant-baseline="central">Routes to existing protocols (L1 · L0)</text>
 </svg>

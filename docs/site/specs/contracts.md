@@ -1,20 +1,21 @@
-# Inter-layer Contracts
+# HLP Integration Contracts
 
-This page is the quick reference for the contracts that join the Loops layers.
-Most interoperability bugs happen here.
+This page defines the narrow contracts HLP expects when it routes work into an
+existing agent runtime and capability ecosystem. These contracts do not define a
+new L1 or L0 protocol; they define the adapter invariants HLP relies on.
 
 ## Contract Summary
 
-| Contract | Cross-layer object | Layers | Rule |
-| --- | --- | --- | --- |
-| `CapabilityRef` | Capability reference | L0 -> L1 -> L2 | Upper layers reference capabilities only by `(capability_id, version)`. |
-| TaskID correlation | Task and Run identity | L2 -> L1 | `HLP Task.id` **MUST** equal `AAP Run.correlation_id`. |
-| Checkpoint-to-Block | Checkpoint and Run state | L2 <-> L1 | `checkpoint.raise` **MUST** block the corresponding run; `checkpoint.resolve` **MUST** resume it. |
-| Ownership-to-Handoff | Ownership transfer and Run handoff | L2 <-> L1 | `ownership.transfer` **MUST** preserve correlation through AAP handoff. |
+| Contract | Cross-boundary object | Rule |
+| --- | --- | --- |
+| `CapabilityRef` | Capability reference | HLP references capabilities only by `(capability_id, version)`. |
+| TaskID correlation | Task and agent run identity | HLP `Task.id` must survive every delegated run and event. |
+| Checkpoint-to-Block | Checkpoint and run state | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
+| Ownership-to-Handoff | Ownership transfer and run handoff | `ownership.transfer` preserves task correlation through handoff. |
 
 ## Contract 1: CapabilityRef
 
-`CapabilityRef` is the only legal way for upper layers to refer to a capability.
+`CapabilityRef` is the only legal way for HLP to refer to a capability.
 
 ```yaml
 CapabilityRef:
@@ -24,13 +25,12 @@ CapabilityRef:
 
 Required behavior:
 
-- CAP creates and owns the capability identity.
-- AAP calls capabilities by reference.
+- Capability identities are created by the host capability ecosystem.
 - HLP uses references in task constraints such as `must_use_capabilities`.
-- AAP and HLP **MUST NOT** know whether the capability is reached through MCP
-  stdio, MCP SSE, HTTP, a local function, or a Skills runtime.
+- HLP must not know whether the capability is reached through MCP stdio, MCP
+  SSE, HTTP, a local function, or an Agent Skills runtime.
 
-Non-conforming behavior:
+Non-compatible behavior:
 
 ```yaml
 must_use_capabilities:
@@ -38,7 +38,7 @@ must_use_capabilities:
     command: "node server.js"
 ```
 
-Conforming behavior:
+Compatible behavior:
 
 ```yaml
 must_use_capabilities:
@@ -48,25 +48,25 @@ must_use_capabilities:
 
 ## Contract 2: TaskID Correlation
 
-TaskID correlation is the most important full-stack invariant.
+TaskID correlation is the most important integration invariant.
 
-When HLP assigns a task to an agent, the resulting AAP run **MUST** carry the
-same identity:
+When HLP assigns a task to an agent, the resulting agent run must carry the same
+identity:
 
 ```yaml
 Task:
   id: "task_01J0K7..."
 
-Run:
+AgentRun:
   run_id: "run_01J0K8..."
   correlation_id: "task_01J0K7..."
 ```
 
 Required behavior:
 
-- `task.assign` calls `agent.delegate`.
-- `DelegateRequest.task_id` becomes `Run.correlation_id`.
-- Every AAP event includes the same `correlation_id`.
+- `task.assign` delegates work through the L1 adapter.
+- The adapter stores the mapping from HLP `Task.id` to runtime `run_id`.
+- Every run event includes the same correlation id.
 - Child delegations and handoffs preserve the original correlation unless a new
   HLP task is explicitly created.
 
@@ -75,40 +75,41 @@ task across agent runs, subdelegations, checkpoints, and artifact commits.
 
 ## Contract 3: Checkpoint-to-Block
 
-HLP checkpoints are human decision points. AAP block/resume is how those
-decision points affect the executing agent run.
+HLP checkpoints are human decision points. The L1 route is responsible for
+making that decision point affect the executing agent run.
 
 ```text
 Agent reaches a decision point
   -> HLP checkpoint.raise
   -> Task state becomes blocked
-  -> AAP agent.block(run_id, checkpoint_id)
+  -> L1 adapter blocks the run
   -> Human resolves the checkpoint
   -> HLP checkpoint.resolve
-  -> AAP agent.resume(run_id, resolution)
+  -> L1 adapter resumes the run with the resolution
 ```
 
 Required behavior:
 
-- `checkpoint.raise` **MUST** identify the affected task and corresponding run.
-- `agent.block` **MUST** carry `checkpoint_id`.
-- A blocked run **MUST NOT** resume itself.
-- `checkpoint.resolve` **MUST** pass the human resolution to `agent.resume`.
-- Resolution and resume **SHOULD** be auditable as one logical transition.
+- `checkpoint.raise` identifies the affected task and corresponding run.
+- The adapter blocks the run with the checkpoint id.
+- A blocked run must not resume itself.
+- `checkpoint.resolve` passes the human resolution to the run.
+- Resolution and resume should be auditable as one logical transition.
 
 ## Contract 4: Ownership-to-Handoff
 
-HLP ownership expresses who is responsible for a task. AAP handoff expresses how
-an agent run transfers execution to another agent.
+HLP ownership expresses who is responsible for a task. The L1 route expresses
+how execution moves to another agent or human-operated worker.
 
 Required behavior:
 
 - `ownership.transfer` changes the HLP assignee and appends an ownership chain
   record.
-- When the new assignee is another agent, the implementation **MUST** call AAP
-  `agent.handoff`.
-- The new run **MUST** keep the original `correlation_id`.
-- The old run **SHOULD** remain visible as read-only history.
+- When the new assignee requires a different agent run, the adapter performs
+  the runtime-specific handoff.
+- The receiving run keeps the original HLP task correlation id.
+- The old run should remain visible as read-only history if the runtime
+  supports it.
 
 Example:
 
@@ -123,26 +124,12 @@ NewRun:
   correlation_id: "task_01J0K7..."
 ```
 
-## Dependency Direction
-
-The only allowed dependency direction is downward:
-
-```text
-HLP (L2) -> AAP (L1) -> CAP (L0)
-```
-
-The reverse direction is forbidden:
-
-- CAP **MUST NOT** import or depend on AAP or HLP.
-- AAP **MUST NOT** import or depend on HLP business semantics.
-- HLP **MUST NOT** call concrete tools or skills directly.
-
 ## Event Responsibilities
 
-| Layer | Emits | Consumed by |
+| Boundary | Emits | Consumed by |
 | --- | --- | --- |
-| CAP | Capability invocation results and capability errors | AAP runtime |
-| AAP | Run events with `correlation_id` | HLP bridge and host platform |
+| Capability route | Capability invocation results and capability errors | Agent runtime or host platform |
+| Agent route | Run events with HLP task correlation | HLP bridge and host platform |
 | HLP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
 
 HLP produces events, but it does not define how those events are rendered in

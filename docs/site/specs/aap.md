@@ -1,263 +1,91 @@
 ---
-title: AAP — Agent-Agent Protocol Profile
+title: L1 Agent Protocol Routes
 outline: [2, 3]
 ---
 
-# AAP — Agent-Agent Protocol Profile
+# L1 Agent Protocol Routes
 
-| Field | Value |
+HLP does not define a new agent-to-agent protocol. This page is an integration
+guide for connecting HLP to existing L1 agent ecosystems.
+
+Use this route when a Human Loop Platform needs an agent runtime to accept work,
+pause for checkpoints, resume after human decisions, and preserve task identity
+across delegation or handoff.
+
+## What HLP Needs From L1
+
+An agent runtime can sit under HLP if an adapter can provide these semantics:
+
+| HLP need | L1 expectation |
 | --- | --- |
-| Version | 0.1.0-draft |
-| Status | Draft |
-| Layer | L1, middle layer of the Loops Protocol Stack |
-| Document type | Conformance profile |
-| Primary concern | Agent discovery, delegation, blocking, and handoff |
+| Assign work | Start an asynchronous agent run and return a handle immediately. |
+| Preserve identity | Carry `Task.id` as the run correlation id in every run event. |
+| Raise checkpoints | Let HLP block a run at a human decision point. |
+| Resolve checkpoints | Resume the blocked run with the human resolution payload. |
+| Transfer ownership | Handoff execution while preserving the original task correlation. |
+| Inspect progress | Emit correlated run events for audit and debugging. |
 
-AAP defines the minimum L1 surface required for agent-to-agent coordination in
-the Loops Protocol Stack.
+These are adapter obligations, not a new protocol surface. If A2A, ACP,
+AGNTCY-style meshes, or a custom runtime already expose equivalent behavior,
+HLP should route through that implementation.
 
-AAP is not a new agent transport protocol. A2A, ACP, AGNTCY, and custom agent
-meshes may satisfy this profile if they expose the required semantics and
-preserve the Loops inter-layer contracts.
+## Existing Protocol Routes
 
-Normative keywords follow RFC 2119.
-
-## Scope
-
-AAP governs:
-
-- Agent discovery by capability.
-- Asynchronous delegation to another agent.
-- Run handles and run state.
-- Blocking and resuming a run for HLP checkpoints.
-- Handoff from one agent to another.
-- Correlated event streams.
-
-AAP does not govern:
-
-- How an agent internally plans or executes.
-- How humans review work; that is HLP.
-- How tools and skills are invoked; that is CAP.
-- Host platform lifecycle, identity, billing, or placement.
-
-## Core Primitives
-
-| Primitive | Meaning | Required for |
+| Route | Use when | HLP adapter focus |
 | --- | --- | --- |
-| `discover` | Find agents by capability or tags | Routing work |
-| `delegate` | Start an asynchronous run on another agent | HLP task assignment and subdelegation |
-| `block` | Pause a run pending external decision | HLP checkpoint gating |
-| `resume` | Continue a blocked run with resolution data | HLP checkpoint resolution |
-| `handoff` | Transfer execution context to another agent | HLP ownership transfer |
+| A2A-style runtime | Agents expose cards, tasks, and asynchronous status updates. | Store HLP `Task.id` in task metadata or an extension field and map status updates to run events. |
+| ACP-style broker | Agents communicate through a broker or session-oriented channel. | Keep HLP task correlation outside session-local ids and prevent autonomous resume while blocked. |
+| AGNTCY-style mesh | Agents are discovered and routed through a mesh or registry. | Treat mesh discovery as the L1 route and keep HLP ownership separate from mesh placement. |
+| Custom runtime | The platform already owns agent scheduling. | Implement only the narrow adapter methods HLP needs: delegate, block, resume, handoff, and events. |
 
-## Agent
+## Required Adapter Shape
 
-```yaml
-Agent:
-  agent_id: string
-  capabilities: [CapabilityRef]
-  manifest: AgentManifest
+The HLP reference implementation names the boundary `AAPBridge` for historical
+continuity, but the boundary is intentionally small:
+
+```text
+delegate(task_id, assignee, payload) -> run_id
+block(task_id, checkpoint_id) -> void
+resume(task_id, checkpoint_id, resolution) -> void
+handoff(task_id, from_assignee, to_assignee, context) -> run_id
+events(task_id) -> correlated run events
 ```
 
-An agent is an execution unit that can accept delegated work. It declares
-capabilities through CAP `CapabilityRef` values.
-
-## AgentCard
+The important invariant is correlation:
 
 ```yaml
-AgentCard:
-  agent_id: string
-  name: string
-  description: string
-  capabilities: [CapabilityRef]
-  endpoint: string
-  protocol: "a2a" | "acp" | "agntcy" | string
+Task:
+  id: "task_01J0K7..."
+
+AgentRun:
+  run_id: "run_01J0K8..."
+  correlation_id: "task_01J0K7..."
 ```
 
-Rules:
+HLP compatibility fails if the agent runtime loses that identity during
+subdelegation, retries, handoff, or recovery.
 
-- `AgentCard` **MUST** be discoverable through `agent.discover`.
-- `endpoint` is transport-specific and **MUST NOT** be exposed upward to HLP.
-- `capabilities` **MUST** use CAP `CapabilityRef` values.
+## What HLP Does Not Standardize
 
-## Run
+HLP does not choose:
 
-```yaml
-Run:
-  run_id: string
-  agent_id: string
-  correlation_id: string
-  state: "running" | "blocked" | "completed" | "failed"
-  created_at: timestamp
-```
+- Agent card schema.
+- Broker topology.
+- Agent authentication.
+- Placement or scheduling policy.
+- Multi-agent planning strategy.
+- Internal run state beyond the checkpoint contract.
 
-`correlation_id` is the key L1-to-L2 contract. For HLP-originated work,
-`Run.correlation_id` **MUST** equal `Task.id`.
+Those decisions belong to the existing L1 ecosystem or the host platform.
 
-## Discovery
+## Implementation Checklist
 
-```yaml
-agent.discover(query: DiscoveryQuery) -> [AgentCard]
+- Pick the existing agent protocol or runtime you already use.
+- Add a HLP adapter at the platform boundary.
+- Persist the mapping from `Task.id` to agent `run_id`.
+- Ensure every run event carries the HLP task correlation id.
+- Treat `checkpoint.raise` as authoritative: the run must remain blocked until
+  HLP resolves the checkpoint.
+- Preserve correlation through handoff and child delegation.
 
-DiscoveryQuery:
-  capability: CapabilityRef | null
-  tags: [string] | null
-```
-
-Rules:
-
-- A conforming L1 **MUST** support `agent.discover`.
-- Results **MUST** include enough endpoint data for the L1 runtime to reach the
-  target agent.
-- HLP callers **MUST NOT** depend on endpoint details.
-
-## Delegation
-
-```yaml
-agent.delegate(req: DelegateRequest) -> Run
-
-DelegateRequest:
-  to_agent: agent_id
-  task_id: string
-  capability: CapabilityRef
-  input: object
-  parent_run: run_id | null
-```
-
-Rules:
-
-- `delegate` **MUST** return a `Run` handle without waiting for completion.
-- `DelegateRequest.task_id` **MUST** become `Run.correlation_id`.
-- If delegation fails after the run is created, the implementation **MUST** emit
-  `run.failed`.
-- If the target agent does not support the requested capability, the
-  implementation **MUST** return `CAPABILITY_NOT_SUPPORTED`.
-
-## Block and Resume
-
-```yaml
-agent.block(run_id, reason: string, checkpoint_id: string) -> void
-agent.resume(run_id, resolution: object) -> void
-```
-
-Rules:
-
-- `block` **MUST** include `checkpoint_id`.
-- A blocked run **MUST NOT** resume itself.
-- `resume` **MUST** carry the HLP checkpoint resolution payload.
-- Invalid state transitions **MUST** return `INVALID_TRANSITION`.
-
-## Handoff
-
-```yaml
-agent.handoff(run_id, to_agent: agent_id, context: object) -> Run
-```
-
-Rules:
-
-- Handoff creates a new run for the receiving agent.
-- The new run **MUST** preserve the original `correlation_id`.
-- The old run **SHOULD** remain available as read-only history.
-- Handoff is the AAP expression of HLP ownership transfer.
-
-## Event Stream
-
-Conforming L1 implementations **MUST** emit run events.
-
-```yaml
-AgentEvent:
-  run_id: string
-  correlation_id: string
-  type: AgentEventType
-  payload: object
-  at: timestamp
-
-AgentEventType:
-  "run.started" | "run.progress" | "run.blocked" |
-  "run.completed" | "run.failed"
-```
-
-Rules:
-
-- Every event **MUST** include `correlation_id`.
-- `run.blocked` **MUST** identify the HLP checkpoint when the block came from
-  a checkpoint.
-- AAP events **SHOULD** be replayable for debugging and audit correlation.
-
-## Errors
-
-| Code | Meaning |
-| --- | --- |
-| `AGENT_NOT_FOUND` | Target agent does not exist or is unavailable |
-| `CAPABILITY_NOT_SUPPORTED` | Target agent does not declare the requested capability |
-| `DELEGATION_REFUSED` | Target agent refused delegated work |
-| `RUN_NOT_FOUND` | Run id is invalid |
-| `INVALID_TRANSITION` | Run state transition is invalid |
-
-## Reference Mappings
-
-| AAP profile requirement | A2A-style mapping |
-| --- | --- |
-| `agent.discover` | Agent card discovery |
-| `agent.delegate` | Asynchronous task send |
-| `Run` | Task or run handle |
-| `AgentEvent` | Task status updates |
-| `correlation_id` | Task metadata or extension field |
-
-ACP and AGNTCY-style runtimes may also conform if they expose the same semantics
-and preserve correlation.
-
-## Inter-layer Contracts
-
-### AAP to HLP
-
-| HLP operation | AAP action | Requirement |
-| --- | --- | --- |
-| `task.assign` | `agent.delegate` | TaskID **MUST** become `Run.correlation_id` |
-| `checkpoint.raise` | `agent.block` | `checkpoint_id` **MUST** be provided |
-| `checkpoint.resolve` | `agent.resume` | Resolution **MUST** be passed through |
-| `ownership.delegate` | `agent.delegate` | Parent run **SHOULD** remain traceable |
-| `ownership.transfer` | `agent.handoff` | Correlation **MUST** be preserved |
-
-### AAP to CAP
-
-AAP calls capabilities through CAP `CapabilityRef`. It **MUST NOT** depend on
-the capability transport.
-
-```yaml
-CapabilityRef:
-  capability_id: "cap:code-review"
-  version: "2.1.0"
-```
-
-## Conformance
-
-An implementation claiming AAP 0.1.0-draft compatibility **MUST**:
-
-1. Support `agent.discover`, `agent.delegate`, `agent.block`, `agent.resume`,
-   and `agent.handoff`.
-2. Maintain the run states `running`, `blocked`, `completed`, and `failed`.
-3. Include `correlation_id` on every run and run event.
-4. Preserve HLP TaskID as `Run.correlation_id`.
-5. Emit the required event stream.
-6. Use the defined error semantics.
-
-An implementation **MAY** choose the underlying transport, mesh topology,
-authentication scheme, retry policy, and hosting model.
-
-## Open Issues
-
-| Issue | Draft stance |
-| --- | --- |
-| Agent mesh topology | Brokered and decentralized designs may both conform. |
-| Delegate timeout and retry | Host-defined; no default retry in the profile. |
-| Concurrent delegation limits | Host-defined. |
-| Agent trust and authentication | Host platform responsibility. |
-| Old run visibility after handoff | Read-only historical visibility is recommended. |
-| Multi-agent coordination beyond pairs | Not standardized in this draft. |
-
-## Changelog
-
-| Version | Date | Change |
-| --- | --- | --- |
-| 0.1.0-draft | 2026-06-19 | Initial L1 conformance profile for agent-to-agent coordination. |
+For the exact HLP-side obligations, see [Integration Contracts](./contracts).

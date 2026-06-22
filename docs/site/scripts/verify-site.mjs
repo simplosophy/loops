@@ -100,13 +100,13 @@ if (existsSync(distDir)) {
   assert(homeHtml.includes('rel="stylesheet"'), 'Home page is missing a standard stylesheet link.')
   assert(!homeHtml.includes('rel="preload stylesheet"'), 'Home page uses preload stylesheet links that are not stable in static screenshot tools.')
   assert(!homeHtml.includes('as="style"'), 'Home page stylesheet links should not retain preload-only as="style" attributes.')
-  assert(homeHtml.includes('class="stack-art"'), 'Home page is missing the protocol stack visual.')
+  assert(homeHtml.includes('class="stack-art"'), 'Home page is missing the HLP integration visual.')
   assert(!homeHtml.includes('&lt;rect'), 'Home page appears to render an SVG as escaped code.')
 
   const protocolMapHtmlPath = join(distDir, 'protocol-map.html')
   if (existsSync(protocolMapHtmlPath)) {
     const protocolMapHtml = readText(protocolMapHtmlPath)
-    assert(protocolMapHtml.includes('Layer Contract Map'), 'Protocol map is missing the layer contract map section.')
+    assert(protocolMapHtml.includes('Integration Contracts'), 'Protocol map is missing the integration contracts section.')
     assert(protocolMapHtml.includes('CapabilityRef'), 'Protocol map is missing the CapabilityRef contract.')
     assert(protocolMapHtml.includes('TaskID'), 'Protocol map is missing the TaskID correlation contract.')
   }
