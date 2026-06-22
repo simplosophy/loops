@@ -5,7 +5,7 @@ different concerns that are often bundled into one agent application:
 
 | Layer | Protocol | Concern | Typical implementation |
 | --- | --- | --- | --- |
-| L2 | HACP | Human-agent collaboration | Task and review platforms |
+| L2 | HLP | Human-loop work | Task and review platforms |
 | L1 | AAP | Agent-agent delegation | A2A runtimes, ACP brokers, agent meshes |
 | L0 | CAP | Capability invocation | MCP servers, Skills runtimes |
 
@@ -29,14 +29,14 @@ single runtime abstraction cannot carry all three rhythms without coupling them.
 
 Loops treats coordination as a protocol stack:
 
-<img src="./assets/stack.svg" alt="Loops Protocol Stack: HACP above AAP above CAP, joined by explicit inter-layer contracts." style="display:block;width:100%;max-width:880px;height:auto;margin:8px auto 16px;border:1px solid var(--vp-c-divider);border-radius:8px;">
+<img src="./assets/stack.svg" alt="Loops Protocol Stack: HLP above AAP above CAP, joined by explicit inter-layer contracts." style="display:block;width:100%;max-width:880px;height:auto;margin:8px auto 16px;border:1px solid var(--vp-c-divider);border-radius:8px;">
 
 The ASCII view below traces the operations that flow down through the stack:
 
 ```text
 Human principal
   │
-  │ HACP: task.assign, checkpoint.raise, review.submit, audit.replay
+  │ HLP: task.assign, checkpoint.raise, review.submit, audit.replay
   ▼
 Agent worker
   │
@@ -51,9 +51,9 @@ Tool or Skill implementation
 
 The layers are deliberately narrow:
 
-- **HACP** defines the lifecycle of human-owned work: tasks, checkpoints,
+- **HLP** defines the lifecycle of human-owned work: tasks, checkpoints,
   ownership, reviews, artifacts, ledgers, and audit events.
-- **AAP** defines the minimum agent-to-agent surface needed by HACP: discovery,
+- **AAP** defines the minimum agent-to-agent surface needed by HLP: discovery,
   delegation, blocking, resuming, handoff, and correlated run events.
 - **CAP** defines the minimum capability surface needed by agents: manifests,
   versioned capability references, invocation results, and capability errors.
@@ -62,7 +62,7 @@ The layers are deliberately narrow:
 
 ### One layer, one responsibility
 
-Each layer owns one coordination axis. HACP owns accountable work. AAP owns agent
+Each layer owns one coordination axis. HLP owns accountable work. AAP owns agent
 delegation. CAP owns capability invocation. A layer may expose events and
 contracts upward, but it does not import the semantics of the layer above it.
 
@@ -71,11 +71,11 @@ contracts upward, but it does not import the semantics of the layer above it.
 The allowed dependency direction is:
 
 ```text
-HACP (L2) -> AAP (L1) -> CAP (L0)
+HLP (L2) -> AAP (L1) -> CAP (L0)
 ```
 
-CAP never knows that AAP or HACP exists. AAP never knows human review semantics
-except through explicit correlation and block/resume contracts. HACP never calls
+CAP never knows that AAP or HLP exists. AAP never knows human review semantics
+except through explicit correlation and block/resume contracts. HLP never calls
 a tool directly.
 
 ### Cross-layer communication uses contract objects
@@ -86,13 +86,13 @@ explicit objects:
 | Contract | Purpose |
 | --- | --- |
 | `CapabilityRef` | Lets upper layers reference a capability by `(capability_id, version)` without seeing transport details. |
-| `TaskID = Run.correlation_id` | Carries HACP task identity through every AAP run and event. |
+| `TaskID = Run.correlation_id` | Carries HLP task identity through every AAP run and event. |
 | `Checkpoint -> block/resume` | Maps a human decision point to an agent run pause and restart. |
 | `Ownership -> handoff` | Maps task ownership transfer to AAP handoff while preserving correlation. |
 
 ### Forward-only state
 
-HACP is designed for replayability and audit. Task specs, artifact versions,
+HLP is designed for replayability and audit. Task specs, artifact versions,
 reviews, ledger entries, and audit events are immutable. Corrections are modeled
 as new entries or new versions, not as destructive edits.
 
@@ -100,7 +100,7 @@ as new entries or new versions, not as destructive edits.
 
 Loops defines:
 
-- A complete HACP 0.1.0-draft protocol for human-agent collaboration.
+- A complete HLP 0.1.0-draft protocol for accountable human-loop work.
 - AAP and CAP conformance profiles for existing agent and capability protocols.
 - The inter-layer contracts required for full-stack interoperability.
 - Conformance requirements that let implementations make precise claims.
@@ -113,13 +113,13 @@ Loops does not define:
 - A UI specification for chat, web, IM, or CLI experiences.
 - A replacement for MCP, Skills, A2A, ACP, or agent runtime internals.
 
-## Why HACP Is New
+## Why HLP Is New
 
 MCP and Skills cover agent-to-capability calls. A2A and related protocols cover
 agent-to-agent delegation. The missing protocol surface is the one that connects
 autonomous agents back to the people responsible for the work.
 
-HACP fills that gap with seven first-class objects:
+HLP fills that gap with seven first-class objects:
 
 | Object | Role |
 | --- | --- |
@@ -131,7 +131,7 @@ HACP fills that gap with seven first-class objects:
 | Ledger | Append-only project or organization state. |
 | Audit | Immutable protocol operation log. |
 
-Together, these objects make human-agent collaboration inspectable, replayable,
+Together, these objects make human-loop work inspectable, replayable,
 and implementable across runtimes.
 
 ## Specification Status

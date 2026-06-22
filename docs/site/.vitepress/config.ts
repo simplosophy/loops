@@ -21,7 +21,7 @@ export default defineConfig({
   lang: 'en-US',
   title: 'Loops Protocol Stack',
   description:
-    'A three-layer protocol stack for human-agent collaboration, agent delegation, and capability invocation.',
+    'A three-layer protocol stack for human-loop work, agent delegation, and capability invocation.',
   cleanUrls: true,
   srcDir: './',
   ignoreDeadLinks: false,
@@ -33,7 +33,7 @@ export default defineConfig({
       {
         name: 'keywords',
         content:
-          'Loops Protocol Stack,HACP,AAP,CAP,human-agent collaboration,agent protocol,capability protocol',
+          'Loops Protocol Stack,HLP,AAP,CAP,human loop protocol,agent protocol,capability protocol',
       },
     ],
   ],
@@ -113,7 +113,7 @@ export default defineConfig({
       {
         text: 'Specifications',
         items: [
-          { text: 'HACP · Human-Agent Collaboration', link: '/specs/hacp' },
+          { text: 'HLP · Human Loop Protocol', link: '/specs/hlp' },
           { text: 'AAP · Agent-Agent Profile', link: '/specs/aap' },
           { text: 'CAP · Capability Profile', link: '/specs/cap' },
         ],
@@ -136,7 +136,7 @@ export default defineConfig({
           text: 'Specifications',
           collapsed: false,
           items: [
-            { text: 'L2 · HACP', link: '/specs/hacp' },
+            { text: 'L2 · HLP', link: '/specs/hlp' },
             { text: 'L1 · AAP', link: '/specs/aap' },
             { text: 'L0 · CAP', link: '/specs/cap' },
             { text: 'Inter-layer Contracts', link: '/specs/contracts' },

@@ -25,7 +25,7 @@ from .objects import (
     TaskSpec,
 )
 from .state_machine import check_transition
-from .store import HACPStore
+from .store import HumanLoopStore
 from .types import (
     CheckpointKind,
     CheckpointResolutionAction,
@@ -41,7 +41,7 @@ def _now() -> datetime:
 
 
 # ════════════════════════════════════════════════════════════
-# HACP 协议操作 (spec §4)
+# HLP 协议操作 (spec §4)
 #
 # 每个操作遵循统一结构：
 #   1. 前置条件校验 (spec §4.3) → 失败抛 ProtocolError
@@ -54,14 +54,14 @@ def _now() -> datetime:
 
 
 @dataclass
-class HACPOperations:
-    """HACP 协议操作入口 (spec §4.1, 共 21 个)。
+class HumanLoopOperations:
+    """HLP 协议操作入口 (spec §4.1, 共 21 个)。
 
     持有 store + audit + aap_bridge，是协议层的 facade。
     上层 (transport/CLI) 调用这里；本类不感知 transport。
     """
 
-    store: HACPStore = field(default_factory=HACPStore)
+    store: HumanLoopStore = field(default_factory=HumanLoopStore)
     aap: AAPBridge = field(default_factory=InMemoryAAPBridge)
 
     # ────────────────── Task (spec §4.1) ──────────────────
@@ -263,8 +263,13 @@ class HACPOperations:
             check_transition(task.state, "in_progress")
             task.state = "in_progress"
             # ownership 回 agent
-            target_agent = reassign_to or task.ownership.principal
-            task.ownership = task.ownership.transfer(target_agent, via="approve")
+            target_agent = reassign_to or self._last_assignee_before(
+                task,
+                to=task.ownership.principal,
+                via="checkpoint",
+            )
+            if target_agent is not None and task.ownership.assignee != target_agent:
+                task.ownership = task.ownership.transfer(target_agent, via="approve")
 
         self._audit(
             actor=by,
@@ -418,6 +423,13 @@ class HACPOperations:
         elif verdict == "changes_requested":
             check_transition(task.state, "in_progress")
             task.state = "in_progress"
+            target_agent = self._last_assignee_before(
+                task,
+                to=task.ownership.principal,
+                via="handoff",
+            )
+            if target_agent is not None and task.ownership.assignee != target_agent:
+                task.ownership = task.ownership.transfer(target_agent, via="reject")
         else:  # rejected
             check_transition(task.state, "rejected")
             task.state = "rejected"
@@ -503,6 +515,8 @@ class HACPOperations:
         # 首次交付触发 review_ready (spec §3.3)
         check_transition(task.state, "review_ready")
         task.state = "review_ready"
+        if task.ownership.assignee != task.ownership.principal:
+            task.ownership = task.ownership.transfer(task.ownership.principal, via="handoff")
 
         self._audit(
             actor=produced_by,
@@ -526,7 +540,7 @@ class HACPOperations:
     ) -> Artifact:
         """artifact.reference (spec §4.1)。被 Task 引用为输入。"""
         art = self.store.get_artifact(art_id)
-        art.references.append(ArtifactRef(task_id=by_task, as_=as_))  # type: ignore[arg-type]
+        self.store.add_artifact_reference(art.id, ArtifactRef(task_id=by_task, as_=as_))
         self._audit(
             actor=by_task,
             action="artifact.referenced",
@@ -616,6 +630,18 @@ class HACPOperations:
             before=before,
             after=after,
         )
+
+    @staticmethod
+    def _last_assignee_before(
+        task: Task,
+        *,
+        to: str,
+        via: str,
+    ) -> str | None:
+        for transfer in reversed(task.ownership.chain):
+            if transfer.to == to and transfer.via == via:
+                return transfer.from_
+        return None
 
     # ────────────────── 测试/演示辅助 (非 spec 操作) ──────────────────
 

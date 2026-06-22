@@ -8,7 +8,7 @@
   :root {
     --l0: #f97316;  /* 橙 — CAP 能力 */
     --l1: #3b82f6;  /* 蓝 — AAP agent 间 */
-    --l2: #8b5cf6;  /* 紫 — HACP 人机协作 */
+    --l2: #8b5cf6;  /* 紫 — HLP 人机协作 */
     --cross: #10b981; /* 绿 — 横切 */
     --proto: #06b6d4; /* 青 — 协议契约 */
     --bg: #0a0a0f;
@@ -233,7 +233,7 @@
       <text x="260" y="105" text-anchor="middle" fill="#3b82f6" font-size="15" font-weight="700">AAP</text>
       <text x="260" y="160" text-anchor="middle" fill="#8a8a9a" font-size="11">agent 间</text>
       <ellipse cx="420" cy="100" rx="70" ry="34" stroke="#8b5cf6" stroke-width="2" opacity=".9"/>
-      <text x="420" y="105" text-anchor="middle" fill="#8b5cf6" font-size="15" font-weight="700">HACP</text>
+      <text x="420" y="105" text-anchor="middle" fill="#8b5cf6" font-size="15" font-weight="700">HLP</text>
       <text x="420" y="160" text-anchor="middle" fill="#8a8a9a" font-size="11">人机协作 ★</text>
       <path d="M170 100 L185 100" stroke="#06b6d4" stroke-width="1.5"/>
       <path d="M330 100 L345 100" stroke="#06b6d4" stroke-width="1.5"/>
@@ -278,7 +278,7 @@
         <p class="tag">三层协议 · 显式契约 · 各自替换</p>
         <svg viewBox="0 0 320 220">
           <rect x="30"  y="20"  width="260" height="50" rx="6" fill="#8b5cf6" opacity=".18" stroke="#8b5cf6"/>
-          <text x="160" y="50" text-anchor="middle" fill="#e8e8f0" font-size="12">HACP · 人机协作</text>
+          <text x="160" y="50" text-anchor="middle" fill="#e8e8f0" font-size="12">HLP · 人机协作</text>
           <rect x="30"  y="85"  width="260" height="50" rx="6" fill="#3b82f6" opacity=".18" stroke="#3b82f6"/>
           <text x="160" y="115" text-anchor="middle" fill="#e8e8f0" font-size="12">AAP · agent 间</text>
           <rect x="30"  y="150" width="260" height="50" rx="6" fill="#f97316" opacity=".18" stroke="#f97316"/>
@@ -310,18 +310,18 @@
       <rect x="24" y="10" width="992" height="40" rx="20" fill="#8b5cf6" fill-opacity="0.06" stroke="#8b5cf6" stroke-opacity="0.3" stroke-dasharray="3 2"/>
       <text x="520" y="35" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="600">人 (principal) · 团队成员 · 审批者 · 委派者</text>
 
-      <!-- HACP L2 -->
+      <!-- HLP L2 -->
       <rect x="24" y="64" width="992" height="120" rx="14" fill="#8b5cf6" fill-opacity="0.07" stroke="#8b5cf6" stroke-opacity="0.5"/>
       <rect x="24" y="78" width="4" height="92" rx="2" fill="#8b5cf6"/>
       <rect x="44" y="82" width="56" height="22" rx="5" fill="#8b5cf6"/>
       <text x="72" y="97" text-anchor="middle" fill="#0a0a0f" font-size="12" font-weight="700">L2</text>
-      <text x="44" y="124" fill="#a78bfa" font-size="20" font-weight="700">HACP</text>
-      <text x="44" y="146" fill="#8a8a9a" font-size="11" font-family="SF Mono,monospace">Human-Agent Collaboration Protocol</text>
+      <text x="44" y="124" fill="#a78bfa" font-size="20" font-weight="700">HLP</text>
+      <text x="44" y="146" fill="#8a8a9a" font-size="11" font-family="SF Mono,monospace">Human Loop Protocol</text>
       <text x="44" y="166" fill="#8a8a9a" font-size="11">人机协作 · Task/Checkpoint/Ownership/Review/Artifact/Ledger/Audit</text>
       <text x="990" y="100" text-anchor="end" fill="#8b5cf6" font-size="11" font-weight="600">★ Loops 新建</text>
       <text x="990" y="146" text-anchor="end" fill="#8a8a9a" font-size="10">参考实现已落地 · 31 测试</text>
 
-      <!-- 契约带 HACP↔AAP -->
+      <!-- 契约带 HLP↔AAP -->
       <rect x="24" y="192" width="992" height="34" rx="8" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4" stroke-dasharray="5 3"/>
       <text x="520" y="214" text-anchor="middle" fill="#06b6d4" font-size="11" font-family="SF Mono,monospace">task.assign / checkpoint.raise↔resolve · TaskID 全栈贯穿</text>
 
@@ -362,7 +362,7 @@
       <rect x="420" y="412" width="92" height="22" rx="5" fill="#12121a" stroke="#2a2a38"/><circle cx="430" cy="423" r="3" fill="#f97316"/><text x="466" y="427" text-anchor="middle" fill="#e8e8f0" font-size="10">Skills</text>
       <rect x="520" y="412" width="92" height="22" rx="5" fill="#12121a" stroke="#2a2a38"/><circle cx="530" cy="423" r="3" fill="#f97316"/><text x="566" y="427" text-anchor="middle" fill="#e8e8f0" font-size="10">Func Calling</text>
 
-      <text x="990" y="540" text-anchor="end" fill="#8a8a9a" font-size="10">依赖只能向下 HACP→AAP→CAP · 跨层只走契约对象</text>
+      <text x="990" y="540" text-anchor="end" fill="#8a8a9a" font-size="10">依赖只能向下 HLP→AAP→CAP · 跨层只走契约对象</text>
     </svg>
   </div>
 </section>
@@ -373,7 +373,7 @@
     <div class="num">三层协议详解</div>
     <h2>每层一个协议，<span class="accent">各管一件事</span></h2>
     <p class="sec-lede">
-      HACP 是 Loops 新建的协议，AAP 和 CAP 是对已有协议的"一致性剖面"——
+      HLP 是 Loops 新建的协议，AAP 和 CAP 是对已有协议的"一致性剖面"——
       不重新发明砖，只规定砖怎么垒。这就是"只定义层规范，不重造协议"。
     </p>
 
@@ -407,8 +407,8 @@
       <div class="layer-detail l2">
         <span class="new-tag">NEW</span>
         <span class="badge">L2</span>
-        <h3>HACP · 人机协作协议</h3>
-        <div class="full">Human-Agent Collaboration Protocol</div>
+        <h3>HLP · 人机协作协议</h3>
+        <div class="full">Human Loop Protocol</div>
         <div class="desc">定义人↔agent 如何围绕 Task 协作。7 个一等对象，21 个操作。</div>
         <div class="meta">
           <div><b>做什么</b>：Task / Checkpoint / Review / Ownership / Artifact / Ledger / Audit</div>
@@ -435,7 +435,7 @@
       <!-- 左：三层色带 -->
       <rect x="20" y="40" width="180" height="100" rx="10" fill="#8b5cf6" fill-opacity="0.1" stroke="#8b5cf6" stroke-opacity="0.5"/>
       <rect x="20" y="52" width="3" height="76" rx="1.5" fill="#8b5cf6"/>
-      <text x="40" y="78" fill="#a78bfa" font-size="16" font-weight="700">L2 HACP</text>
+      <text x="40" y="78" fill="#a78bfa" font-size="16" font-weight="700">L2 HLP</text>
       <text x="40" y="100" fill="#8a8a9a" font-size="10">人机协作</text>
 
       <rect x="20" y="170" width="180" height="100" rx="10" fill="#3b82f6" fill-opacity="0.1" stroke="#3b82f6" stroke-opacity="0.5"/>
@@ -449,29 +449,29 @@
       <text x="40" y="360" fill="#8a8a9a" font-size="10">能力</text>
 
       <!-- 右：四个契约 -->
-      <!-- 契约1 CapabilityRef: CAP→AAP→HACP -->
+      <!-- 契约1 CapabilityRef: CAP→AAP→HLP -->
       <line x1="200" y1="350" x2="280" y2="90" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4,2"/>
       <rect x="280" y="60" width="700" height="60" rx="10" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4"/>
       <text x="300" y="84" fill="#06b6d4" font-size="13" font-weight="700">① CapabilityRef</text>
       <text x="300" y="104" fill="#e8e8f0" font-size="12">跨 L0→L1→L2 · 上层只用 (id, version)，禁止感知 transport</text>
 
-      <!-- 契约2 TaskID 贯穿: HACP→AAP -->
+      <!-- 契约2 TaskID 贯穿: HLP→AAP -->
       <line x1="200" y1="90" x2="280" y2="160" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4,2"/>
       <rect x="280" y="135" width="700" height="60" rx="10" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4"/>
       <text x="300" y="159" fill="#06b6d4" font-size="13" font-weight="700">② TaskID 贯穿</text>
-      <text x="300" y="179" fill="#e8e8f0" font-size="12">HACP↔AAP · TaskID = Run.correlation_id，全栈到底（铁律）</text>
+      <text x="300" y="179" fill="#e8e8f0" font-size="12">HLP↔AAP · TaskID = Run.correlation_id，全栈到底（铁律）</text>
 
       <!-- 契约3 Checkpoint→Block -->
       <line x1="200" y1="100" x2="280" y2="240" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4,2"/>
       <rect x="280" y="210" width="700" height="60" rx="10" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4"/>
       <text x="300" y="234" fill="#06b6d4" font-size="13" font-weight="700">③ Checkpoint → Block</text>
-      <text x="300" y="254" fill="#e8e8f0" font-size="12">HACP↔AAP · checkpoint.raise → agent.block，resolve → resume</text>
+      <text x="300" y="254" fill="#e8e8f0" font-size="12">HLP↔AAP · checkpoint.raise → agent.block，resolve → resume</text>
 
       <!-- 契约4 Ownership→Handoff -->
       <line x1="200" y1="110" x2="280" y2="320" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4,2"/>
       <rect x="280" y="285" width="700" height="60" rx="10" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4"/>
       <text x="300" y="309" fill="#06b6d4" font-size="13" font-weight="700">④ Ownership → Handoff</text>
-      <text x="300" y="329" fill="#e8e8f0" font-size="12">HACP↔AAP · ownership.transfer → agent.handoff，correlation 保持</text>
+      <text x="300" y="329" fill="#e8e8f0" font-size="12">HLP↔AAP · ownership.transfer → agent.handoff，correlation 保持</text>
 
       <text x="500" y="420" text-anchor="middle" fill="#8a8a9a" font-size="11" font-family="SF Mono,monospace">依赖只能向下 · 跨层只走契约对象 · 状态归属分层所有</text>
     </svg>
@@ -492,7 +492,7 @@
     <div class="map-legend">
       <span><i class="chip l0-chip"></i>L0 CAP 能力</span>
       <span><i class="chip l1-chip"></i>L1 AAP agent 间</span>
-      <span><i class="chip l2-chip"></i>L2 HACP 人机协作</span>
+      <span><i class="chip l2-chip"></i>L2 HLP 人机协作</span>
       <span><i class="chip cross-chip"></i>横切正交</span>
       <span><i class="chip proto-chip"></i>协议连接件</span>
       <span><i class="chip grad"></i>跨层融合体</span>
@@ -547,11 +547,11 @@
         </div>
       </div>
 
-      <!-- L2 HACP -->
+      <!-- L2 HLP -->
       <div class="layer l2">
         <div class="layer-head">
           <span class="layer-badge l2-badge">L2</span>
-          <h3>HACP · 人机协作协议</h3>
+          <h3>HLP · 人机协作协议</h3>
           <span class="owns">agent ↔ 人 · Loops 新建 ★</span>
         </div>
         <div class="layer-body">
@@ -667,7 +667,7 @@
       <div class="rule">
         <div class="ico">⬇️</div>
         <h4>依赖只能向下</h4>
-        <p>HACP → AAP → CAP。低层永远不能 import 或感知高层。能力协议不该知道 agent 间通信，更不该知道人机协作。</p>
+        <p>HLP → AAP → CAP。低层永远不能 import 或感知高层。能力协议不该知道 agent 间通信，更不该知道人机协作。</p>
       </div>
       <div class="rule">
         <div class="ico">🔌</div>
@@ -705,7 +705,7 @@
 
 <footer>
   <div class="wrap">
-    Loops Protocol Stack · L0 CAP owns capability / L1 AAP owns agent-agent / L2 HACP owns human-agent
+    Loops Protocol Stack · L0 CAP owns capability / L1 AAP owns agent-agent / L2 HLP owns human-agent
   </div>
 </footer>
 

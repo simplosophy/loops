@@ -6,11 +6,11 @@
 
 ## loops 协议栈（AI 协作的 OSI 模型）
 
-loops 的核心贡献是把已有 AI 协作协议（MCP、Skills、A2A）分层归位，定义层间契约，并填补生态缺失的人机协作协议：
+loops 的核心贡献是把已有 AI 协作协议（MCP、Skills、A2A）分层归位，定义层间契约，并填补生态缺失的人机责任闭环协议：
 
 ```text
   ┌───────────────────────────────────────────────────────────┐
-  │  L2  HACP   Human-Agent Collaboration Protocol            │  loops 新建 ★
+  │  L2  HLP    Human Loop Protocol                         │  loops 新建 ★
   │      Task · Checkpoint · Ownership · Review               │  填补生态空白
   │      Artifact · Ledger · Audit                            │
   ├───────────────────────────────────────────────────────────┤

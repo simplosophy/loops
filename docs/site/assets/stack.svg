@@ -1,6 +1,6 @@
 <svg width="960" height="510" viewBox="0 0 960 510" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="st-title st-desc">
   <title id="st-title">Loops Protocol Stack</title>
-  <desc id="st-desc">A three-layer protocol stack. HACP (L2) owns human-agent collaboration, AAP (L1) profiles agent delegation, CAP (L0) profiles capability invocation. Explicit inter-layer contracts join the layers as seams.</desc>
+  <desc id="st-desc">A three-layer protocol stack. HLP (L2) owns human loop, AAP (L1) profiles agent delegation, CAP (L0) profiles capability invocation. Explicit inter-layer contracts join the layers as seams.</desc>
   <defs>
     <clipPath id="stack-clip">
       <rect x="60" y="82" width="840" height="310" rx="14"/>
@@ -53,7 +53,7 @@
 
   <!-- L2 -->
   <text class="st-code" x="84" y="106" dominant-baseline="central">L2</text>
-  <text class="st-name" x="110" y="106" dominant-baseline="central">HACP · Human-Agent Collaboration Protocol</text>
+  <text class="st-name" x="110" y="106" dominant-baseline="central">HLP · Human Loop Protocol</text>
   <text class="st-tag-d" x="884" y="106" text-anchor="end" dominant-baseline="central">◆ Defined by Loops</text>
   <text class="st-role" x="110" y="128" dominant-baseline="central">Owns accountable work delegated to autonomous agents</text>
   <text class="st-objs" x="110" y="150" dominant-baseline="central">Task · Checkpoint · Ownership · Review · Artifact · Ledger · Audit</text>
@@ -85,7 +85,7 @@
 
   <!-- legend -->
   <line x1="306" y1="484" x2="334" y2="484" stroke="#8b5cf6" stroke-width="2.5"/>
-  <text class="st-leg" x="342" y="484" dominant-baseline="central">Defined by Loops (HACP)</text>
+  <text class="st-leg" x="342" y="484" dominant-baseline="central">Defined by Loops (HLP)</text>
   <line x1="498" y1="484" x2="526" y2="484" stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="4 3"/>
   <text class="st-leg" x="534" y="484" dominant-baseline="central">Profiles existing protocols (AAP · CAP)</text>
 </svg>

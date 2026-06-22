@@ -28,8 +28,8 @@ hero:
 </section>
 
 <section class="stack-diagram" aria-label="Loops three-layer protocol stack">
-  <img class="stack-art" src="./assets/stack.svg" alt="Loops Protocol Stack diagram: HACP above AAP above CAP, joined by explicit inter-layer contracts.">
-  <p class="stack-caption">Three layers, four contracts. HACP is newly defined by Loops; AAP and CAP profile protocols that already exist.</p>
+  <img class="stack-art" src="./assets/stack.svg" alt="Loops Protocol Stack diagram: HLP above AAP above CAP, joined by explicit inter-layer contracts.">
+  <p class="stack-caption">Three layers, four contracts. HLP is newly defined by Loops; AAP and CAP profile protocols that already exist.</p>
 </section>
 
 <section class="route-cards" aria-label="Primary reading routes">
@@ -47,14 +47,14 @@ hero:
   </a>
   <a class="route-card" href="./conformance">
     <strong>Check compatibility</strong>
-    <span>Validate CAP, AAP, HACP, and full-stack conformance claims.</span>
+    <span>Validate CAP, AAP, HLP, and full-stack conformance claims.</span>
   </a>
 </section>
 
 <section class="layer-cards" aria-label="Protocol layers">
-  <a class="layer-card l2" href="./specs/hacp">
+  <a class="layer-card l2" href="./specs/hlp">
     <span class="badge">L2</span>
-    <h3>HACP</h3>
+    <h3>HLP</h3>
     <p>Defines how people assign, gate, review, and govern work performed by autonomous agents.</p>
   </a>
   <a class="layer-card l1" href="./specs/aap">
@@ -95,8 +95,8 @@ hero:
   <h2>Adopt one layer at a time</h2>
   <p>
     Capability providers can start with CAP. Agent runtimes can expose the AAP
-    profile. Platforms that need accountable human-agent collaboration can implement
-    HACP directly and bridge downward through the explicit contracts.
+    profile. Platforms that need accountable human-loop work can implement
+    HLP directly and bridge downward through the explicit contracts.
   </p>
   <p><a href="./protocol-map">Use the protocol map</a> or <a href="./conformance">view conformance requirements</a>.</p>
 </section>

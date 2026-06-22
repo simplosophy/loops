@@ -4,7 +4,7 @@ from ulid import ULID
 
 
 def _gen_id(prefix: str) -> str:
-    """生成带前缀的 ULID，符合 HACP spec §3.1。
+    """生成带前缀的 ULID，符合 HLP spec §3.1。
 
     例: gen_task_id() -> "task_01HXY8KQ3JF0DZ6V1Q9M1ZRQM"
     """

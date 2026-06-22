@@ -4,13 +4,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .audit import AuditLog
-from .objects import Artifact, Checkpoint, Ledger, Review, Task
+from .objects import Artifact, ArtifactRef, Checkpoint, Ledger, Review, Task
 from .types import ProtocolError
 
 
 @dataclass
-class HACPStore:
-    """内存存储：所有 HACP 对象的集合 (spec §3)。
+class HumanLoopStore:
+    """内存存储：所有 HLP 对象的集合 (spec §3)。
 
     参考实现用纯内存 dict/list，不持久化。生产实现可替换为
     SQLite/Postgres 后端，接口不变。
@@ -29,6 +29,8 @@ class HACPStore:
 
     # artifacts 按 (id, version) 二元组也建索引（spec §3.7）
     _artifact_versions: dict[tuple[str, str], Artifact] = field(default_factory=dict, repr=False)
+    # artifact reference 是消费关系索引，不修改已封印 Artifact 本体
+    _artifact_references: dict[str, tuple[ArtifactRef, ...]] = field(default_factory=dict, repr=False)
     # task 的 run_id 映射（由 operations 维护，用于 checkpoint 联动）
     _task_runs: dict[str, str] = field(default_factory=dict, repr=False)
 
@@ -93,6 +95,17 @@ class HACPStore:
     def artifact_versions(self, art_id: str) -> list[Artifact]:
         """返回某 artifact 的所有版本，按版本时间序。"""
         return [a for (aid, _v), a in self._artifact_versions.items() if aid == art_id]
+
+    def add_artifact_reference(self, art_id: str, ref: ArtifactRef) -> None:
+        self.get_artifact(art_id)
+        self._artifact_references[art_id] = (
+            *self._artifact_references.get(art_id, ()),
+            ref,
+        )
+
+    def artifact_references(self, art_id: str) -> list[ArtifactRef]:
+        self.get_artifact(art_id)
+        return list(self._artifact_references.get(art_id, ()))
 
     # ── Ledger ──
     def put_ledger(self, ledger: Ledger) -> None:

@@ -1,9 +1,9 @@
 ---
-title: HACP — Human-Agent Collaboration Protocol
+title: HLP — Human Loop Protocol
 outline: [2, 3]
 ---
 
-# HACP — Human-Agent Collaboration Protocol
+# HLP — Human Loop Protocol
 
 | Field | Value |
 | --- | --- |
@@ -13,11 +13,11 @@ outline: [2, 3]
 | Document type | Full protocol specification |
 | Primary concern | Human-owned work delegated to autonomous agents |
 
-HACP defines how people and autonomous agents collaborate around a bounded unit
+HLP defines how people and autonomous agents collaborate around a bounded unit
 of work called a **Task**. It covers assignment, checkpoints, ownership,
 artifact delivery, review, project state, and audit.
 
-HACP is transport-agnostic. It specifies protocol semantics, not whether those
+HLP is transport-agnostic. It specifies protocol semantics, not whether those
 semantics are carried over HTTP, WebSocket, gRPC, stdio, an event bus, or a host
 platform API.
 
@@ -26,7 +26,7 @@ Normative keywords follow RFC 2119: **MUST**, **MUST NOT**, **SHOULD**,
 
 ## Scope
 
-HACP governs:
+HLP governs:
 
 - Human principals assigning work to agents.
 - Agents raising decision checkpoints.
@@ -35,7 +35,7 @@ HACP governs:
 - Immutable artifact versions and append-only project ledger state.
 - Audit events for protocol replay and accountability.
 
-HACP does not govern:
+HLP does not govern:
 
 - How an agent internally executes a run.
 - How agents delegate to other agents; that is AAP.
@@ -53,7 +53,7 @@ HACP does not govern:
 
 ## First-Class Objects
 
-HACP defines seven first-class objects. A conforming implementation **MUST**
+HLP defines seven first-class objects. A conforming implementation **MUST**
 support all seven.
 
 | Object | Purpose | Lifecycle |
@@ -68,7 +68,7 @@ support all seven.
 
 ## Immutability
 
-HACP is forward-only:
+HLP is forward-only:
 
 - Task `spec` **MUST NOT** change after `task.create`.
 - Artifact versions **MUST NOT** change after `artifact.commit`.
@@ -360,7 +360,7 @@ Rules:
 
 ## Operations
 
-HACP operation names follow `<object>.<verb>`. A conforming implementation
+HLP operation names follow `<object>.<verb>`. A conforming implementation
 **MUST** support all 21 operations.
 
 | Object | Operation | Caller | Semantics |
@@ -420,9 +420,9 @@ State-changing operations **MUST** map to audit actions.
 
 ## Inter-layer Contracts
 
-HACP is L2. It communicates downward through explicit contracts:
+HLP is L2. It communicates downward through explicit contracts:
 
-| HACP event | AAP action | Contract |
+| HLP event | AAP action | Contract |
 | --- | --- | --- |
 | `task.assign` | `agent.delegate` | TaskID **MUST** become `Run.correlation_id` |
 | `checkpoint.raise` | `agent.block` | The corresponding run **MUST** enter `blocked` |
@@ -430,7 +430,7 @@ HACP is L2. It communicates downward through explicit contracts:
 | `ownership.delegate` | `agent.delegate` | Parent run **SHOULD** remain traceable |
 | `ownership.transfer` | `agent.handoff` | Correlation **MUST** be preserved |
 
-HACP **MUST NOT** directly invoke CAP capabilities. It references capabilities
+HLP **MUST NOT** directly invoke CAP capabilities. It references capabilities
 only through `CapabilityRef`.
 
 ## Errors
@@ -451,7 +451,7 @@ the caller's perspective.
 
 ## Conformance
 
-An implementation claiming HACP 0.1.0-draft compatibility **MUST**:
+An implementation claiming HLP 0.1.0-draft compatibility **MUST**:
 
 1. Support all seven first-class objects.
 2. Implement all 21 operations.
@@ -478,7 +478,7 @@ The following topics remain intentionally draft-scoped:
 ## Reference Flow
 
 ```text
-Human Alice                 HACP                         Agent Devin
+Human Alice                 HLP                         Agent Devin
   | task.create              |                             |
   | task.assign              | -> AAP delegate(TaskID)     |
   |                           | <- checkpoint.raise         |

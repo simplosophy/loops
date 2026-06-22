@@ -6,10 +6,10 @@ from typing import Any, Protocol, runtime_checkable
 
 @runtime_checkable
 class AAPBridge(Protocol):
-    """HACP → AAP 层间接口契约 (spec §5.1)。
+    """HLP → AAP 层间接口契约 (spec §5.1)。
 
     这是 L2 调用 L1 的唯一合法通道。参考实现提供一个 InMemoryAAPBridge
-    只记录调用、不真实执行 agent——用于验证 HACP 在正确时机调用正确方法。
+    只记录调用、不真实执行 agent——用于验证 HLP 在正确时机调用正确方法。
 
     真实 AAP 实现 (A2A runtime 等) 注入此接口即可接入 Loops 栈。
     TaskID 必须贯穿 (spec §5.1 铁律)。
@@ -27,7 +27,7 @@ class AAPBridge(Protocol):
         ...
 
     async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
-        """阻塞 run，等待 HACP checkpoint.resolve。"""
+        """阻塞 run，等待 HLP checkpoint.resolve。"""
         ...
 
     async def resume(self, run_id: str, resolution: Any) -> None:
@@ -43,7 +43,7 @@ class AAPBridge(Protocol):
 class InMemoryAAPBridge:
     """参考实现 stub：记录所有调用，不执行真实 agent。
 
-    用于测试和协议验证——确证 HACP 在正确时机调用了正确的 AAP 方法，
+    用于测试和协议验证——确证 HLP 在正确时机调用了正确的 AAP 方法，
     TaskID 正确贯穿。真实部署时替换为 A2A-backed 实现。
     """
 

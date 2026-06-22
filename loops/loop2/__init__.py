@@ -1,7 +1,7 @@
-"""loops.loop2 — HACP (Human-Agent Collaboration Protocol) reference implementation.
+"""loops.loop2 — HLP (Human Loop Protocol) reference implementation.
 
-Loops Protocol Stack 的 L2 层：人机协作协议的参考实现。
-对应 spec: docs/specs/HACP.md
+Loops Protocol Stack 的 L2 层：人机责任闭环协议的参考实现。
+对应 spec: docs/specs/HLP.md
 
 本包不依赖 loop1/loop0 (分层纪律: 依赖只能向下)。
 """
@@ -29,9 +29,9 @@ from .objects import (
     Task,
     TaskSpec,
 )
-from .operations import HACPOperations
+from .operations import HumanLoopOperations
 from .state_machine import LEGAL_TRANSITIONS, TERMINAL_STATES, check_transition, is_legal
-from .store import HACPStore
+from .store import HumanLoopStore
 from .types import (
     CheckpointKind,
     CheckpointResolutionAction,
@@ -46,8 +46,8 @@ from .types import (
 
 __all__ = [
     # 操作 facade
-    "HACPOperations",
-    "HACPStore",
+    "HumanLoopOperations",
+    "HumanLoopStore",
     # 契约
     "AAPBridge",
     "InMemoryAAPBridge",

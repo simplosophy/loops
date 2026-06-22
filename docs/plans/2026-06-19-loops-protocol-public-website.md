@@ -10,7 +10,7 @@ Build an English website for the Loops Protocol Stack that is credible as a publ
 
 ## Source of Truth
 
-- `docs/specs/HACP.md` defines the full HACP 0.1.0-draft protocol surface.
+- `docs/specs/HLP.md` defines the full HLP 0.1.0-draft protocol surface.
 - `docs/specs/AAP.md` defines the AAP L1 conformance profile.
 - `docs/specs/CAP.md` defines the CAP L0 conformance profile.
 - `docs/architecture/LOOPS_STACK.md` and `docs/plans/2026-06-19-loops-protocol-stack.md` define the public positioning: Loops is a protocol stack, not another runtime framework.
@@ -20,10 +20,10 @@ Build an English website for the Loops Protocol Stack that is credible as a publ
 - Home: protocol positioning, stack diagram, layer summaries, adoption paths.
 - Overview: problem statement, stack model, design principles, responsibilities.
 - Implementation Guide: role-based reading paths and adoption sequence.
-- Conformance: what it means to claim CAP, AAP, HACP, or full-stack conformance.
+- Conformance: what it means to claim CAP, AAP, HLP, or full-stack conformance.
 - Inter-layer Contracts: quick reference for CapabilityRef, TaskID correlation, Checkpoint-to-Block, Ownership-to-Handoff.
 - Specifications:
-  - HACP: full English protocol page with objects, operations, state machine, errors, conformance, open issues, and example flow.
+  - HLP: full English protocol page with objects, operations, state machine, errors, conformance, open issues, and example flow.
   - AAP: English conformance profile for agent-to-agent runtimes.
   - CAP: English conformance profile for capability providers.
 

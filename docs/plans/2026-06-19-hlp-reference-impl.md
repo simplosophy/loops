@@ -1,12 +1,12 @@
-# HACP 参考实现 — 实施计划
+# HLP 参考实现 — 实施计划
 
 > 日期：2026-06-19
 > 状态：已完成（代码 + 测试 + 文档全部落地）
-> 规范：[`docs/specs/HACP.md`](../specs/HACP.md)
+> 规范：[`docs/specs/HLP.md`](../specs/HLP.md)
 
 ## 目标
 
-在 `loops/loop2/` 下实现 HACP 0.1.0-draft 的最小可验证参考实现，验证 spec 可落地，为收敛开放议题提供基础。
+在 `loops/loop2/` 下实现 HLP 0.1.0-draft 的最小可验证参考实现，验证 spec 可落地，为收敛开放议题提供基础。
 
 ## 范围
 
@@ -17,7 +17,7 @@
 4. 不可变性约束 §2.3
 5. 每个操作产生 audit event §4.2
 6. 操作前置条件 §4.3
-7. 层间契约 §5（HACP→AAP stub，不实现 AAP 本身）
+7. 层间契约 §5（HLP→AAP stub，不实现 AAP 本身）
 
 **不做**：transport 绑定、真实 AAP/CAP 实现真实执行、UI、真实持久化后端、CLI。这些是 spec §7 开放议题。
 
@@ -26,7 +26,7 @@
 - **风格**：stdlib dataclasses + `typing.Literal`（非 enum）+ `from __future__ import annotations`，严格对齐 `loops/loop0/` 现有风格，无 pydantic。
 - **ID**：python-ulid 依赖 + 前缀（`task_` `ckpt_` 等），符合 spec §3.1。引入仓库第二个运行时依赖（首个是 jinja2），并显式补 typing-extensions（python-ulid 传递依赖，uv.lock 未自动解析）。
 - **时间戳**：`datetime.now(timezone.utc)`，符合 RFC 3339。
-- **持久化**：纯内存 HACPStore + 可选 JSONL audit sink。
+- **持久化**：纯内存 HumanLoopStore + 可选 JSONL audit sink。
 - **状态机**：显式 `LEGAL_TRANSITIONS` 转移表 dict + 非法转移抛 `ProtocolError(PRECONDITION_FAILED)`。
 - **位置**：`loops/loop2/`（新建，不依赖 loop1/loop0）。
 - **测试**：遵循 `tests/test_loops_core.py` 约定——同步 `def test_*` + `asyncio.run()` 驱动 async 操作，不引入 pytest-asyncio。
@@ -39,13 +39,13 @@
 loops/loop2/
   __init__.py, _ids.py, types.py, objects.py, state_machine.py,
   audit.py, store.py, contracts.py, operations.py
-tests/test_loop2_hacp.py  (31 tests)
+tests/test_loop2_hlp.py  (31 tests)
 docs/architecture/loop2.md
 docs/notes/2026-06-19.md
 ```
 
 ### 验证标准（全部达成）
-- `uv run pytest tests/test_loop2_hacp.py -q`：31 passed
+- `uv run pytest tests/test_loop2_hlp.py -q`：31 passed
 - 全仓库 `uv run pytest -q`：62 passed（含 loop0 现有 31）
 - 端到端闭环覆盖 spec 附录 A "Review PR #1234" 全时序
 - 非法状态转移被拦截并抛 PRECONDITION_FAILED

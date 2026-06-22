@@ -15,6 +15,7 @@ from .types import (
     CheckpointResolutionAction,
     CheckpointState,
     OwnershipTransferVia,
+    ProtocolError,
     ReviewCommentSeverity,
     ReviewVerdict,
     TaskState,
@@ -204,9 +205,17 @@ class Review:
     at: datetime = field(default_factory=_now)
     _sealed: bool = field(default=False, repr=False)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name != "_sealed" and getattr(self, "_sealed", False):
+            raise ProtocolError(
+                "IMMUTABLE_VIOLATION",
+                f"review {self.id} is sealed; cannot modify {name}",
+            )
+        object.__setattr__(self, name, value)
+
     def seal(self) -> "Review":
         """提交后封印，之后不可改 (spec §2.3)。"""
-        self._sealed = True
+        object.__setattr__(self, "_sealed", True)
         return self
 
 
@@ -220,11 +229,19 @@ class Artifact:
     version: str = "v1"
     parent_version: str | None = None
     payload: ArtifactPayload | None = None
-    references: list[ArtifactRef] = field(default_factory=list)
+    references: tuple[ArtifactRef, ...] = ()
     _sealed: bool = field(default=False, repr=False)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name != "_sealed" and getattr(self, "_sealed", False):
+            raise ProtocolError(
+                "IMMUTABLE_VIOLATION",
+                f"artifact {self.id} is sealed; cannot modify {name}",
+            )
+        object.__setattr__(self, name, value)
+
     def seal(self) -> "Artifact":
-        self._sealed = True
+        object.__setattr__(self, "_sealed", True)
         return self
 
 
@@ -234,19 +251,17 @@ class Ledger:
 
     id: str = field(default_factory=gen_ledger_id)
     scope: str = ""
-    entries: dict[str, LedgerEntry] = field(default_factory=dict)
+    entries: dict[str, tuple[LedgerEntry, ...]] = field(default_factory=dict)
 
     def read(self, key: str) -> Any | None:
-        entry = self.entries.get(key)
-        return entry.value if entry else None
+        history = self.entries.get(key, ())
+        return history[-1].value if history else None
 
     def write(self, key: str, value: Any, by: str) -> LedgerEntry:
-        """覆盖写 (last-write-wins)，返回新 entry。旧值不删 (spec §7.4)。"""
+        """追加写入，读取时按 last-write-wins 取最新值。"""
         entry = LedgerEntry(key=key, value=value, by=by)
-        self.entries[key] = entry
+        self.entries[key] = (*self.entries.get(key, ()), entry)
         return entry
 
     def history(self, key: str) -> list[LedgerEntry]:
-        """参考实现只存最新值；完整历史需 audit 回放 (spec §3.8)。"""
-        entry = self.entries.get(key)
-        return [entry] if entry else []
+        return list(self.entries.get(key, ()))

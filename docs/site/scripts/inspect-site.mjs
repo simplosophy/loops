@@ -19,7 +19,7 @@ const routes = [
   { path: '/protocol-map', label: 'protocol-map' },
   { path: '/reading-routes', label: 'reading-routes' },
   { path: '/conformance', label: 'conformance' },
-  { path: '/specs/hacp', label: 'specs/hacp' },
+  { path: '/specs/hlp', label: 'specs/hlp' },
   { path: '/specs/aap', label: 'specs/aap' },
   { path: '/specs/cap', label: 'specs/cap' },
   { path: '/specs/contracts', label: 'specs/contracts' },
@@ -201,7 +201,7 @@ if (homeDesktop) {
   if (!homeDesktop.stackArt) fail('[home/desktop] missing .stack-art visual')
 }
 
-const specPages = ['specs/hacp', 'specs/aap', 'specs/cap', 'specs/contracts']
+const specPages = ['specs/hlp', 'specs/aap', 'specs/cap', 'specs/contracts']
 for (const label of specPages) {
   const entry = collected.find((c) => c.route.label === label && c.viewport.label === 'desktop')?.value
   if (entry && entry.sidebarItems === 0) {

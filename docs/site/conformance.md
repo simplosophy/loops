@@ -1,7 +1,7 @@
 # Conformance
 
 Loops conformance is claimed per layer. An implementation may conform to CAP,
-AAP, HACP, or to the complete stack.
+AAP, HLP, or to the complete stack.
 
 Normative keywords on this site follow RFC 2119 usage: **MUST**, **MUST NOT**,
 **SHOULD**, **SHOULD NOT**, and **MAY**.
@@ -12,7 +12,7 @@ Normative keywords on this site follow RFC 2119 usage: **MUST**, **MUST NOT**,
 | --- | --- |
 | CAP-compatible | The implementation exposes the L0 capability profile. |
 | AAP-compatible | The implementation exposes the L1 agent delegation profile. |
-| HACP-compatible | The implementation implements the L2 human-agent collaboration protocol. |
+| HLP-compatible | The implementation implements the L2 Human Loop Protocol. |
 | Loops stack-compatible | The implementation satisfies all three layers and the inter-layer contracts. |
 
 Do not claim full-stack compatibility if only one layer is implemented.
@@ -39,7 +39,7 @@ An implementation claiming AAP compatibility **MUST**:
    and `agent.handoff`.
 2. Maintain the AAP run states: `running`, `blocked`, `completed`, and `failed`.
 3. Attach `correlation_id` to all runs and events.
-4. Preserve HACP TaskID as `Run.correlation_id`.
+4. Preserve HLP TaskID as `Run.correlation_id`.
 5. Emit the required event stream: `run.started`, `run.progress`,
    `run.blocked`, `run.completed`, and `run.failed`.
 6. Use AAP error semantics for agent lookup, capability mismatch, refused
@@ -48,14 +48,14 @@ An implementation claiming AAP compatibility **MUST**:
 An implementation **MAY** use A2A, ACP, AGNTCY, or a custom runtime underneath
 the profile.
 
-## HACP 0.1.0-draft Requirements
+## HLP 0.1.0-draft Requirements
 
-An implementation claiming HACP compatibility **MUST**:
+An implementation claiming HLP compatibility **MUST**:
 
 1. Support all seven first-class objects: Task, Checkpoint, Ownership, Review,
    Artifact, Ledger, and Audit.
-2. Implement all 21 HACP operations.
-3. Enforce the HACP Task state machine.
+2. Implement all 21 HLP operations.
+3. Enforce the HLP Task state machine.
 4. Enforce immutability for Task specs, Artifact versions, Reviews, Ledger
    entries, and Audit events.
 5. Produce audit events for every protocol operation that changes state.
@@ -67,21 +67,21 @@ types, Artifact types, and policies for open issues that remain draft-scoped.
 
 ## Full Stack Requirements
 
-A complete Loops stack **MUST** satisfy CAP, AAP, HACP, and the four cross-layer
+A complete Loops stack **MUST** satisfy CAP, AAP, HLP, and the four cross-layer
 contracts:
 
 | Contract | Required evidence |
 | --- | --- |
 | `CapabilityRef` | Upper layers reference capabilities only by `(capability_id, version)` and never by transport endpoint. |
-| TaskID correlation | `HACP Task.id = AAP Run.correlation_id` for every delegated run. |
+| TaskID correlation | `HLP Task.id = AAP Run.correlation_id` for every delegated run. |
 | Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding AAP run; `checkpoint.resolve` resumes it. |
-| Ownership-to-Handoff | HACP ownership transfer maps to AAP handoff while preserving correlation. |
+| Ownership-to-Handoff | HLP ownership transfer maps to AAP handoff while preserving correlation. |
 
 ## Evidence Checklist
 
 Before publishing a compatibility claim, produce evidence for each layer:
 
-| Evidence | CAP | AAP | HACP | Full stack |
+| Evidence | CAP | AAP | HLP | Full stack |
 | --- | --- | --- | --- | --- |
 | Public manifest or API description | Required | Required | Recommended | Required |
 | State machine tests | Recommended | Required | Required | Required |

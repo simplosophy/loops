@@ -2,7 +2,7 @@
 
 > AI 协作的 OSI 模型：三层协议、每层只解一个维度、层间靠显式契约咬合。
 
-本目录包含 Loops Protocol Stack 三层协议的完整规范。Loops 不是又一个 AI 框架——它是一套**协议栈规范**，把已有的、各自优秀的协议（MCP、Skills、A2A、ACP）分层归位，定义它们之间的边界契约，并填补生态中缺失的人机协作层。
+本目录包含 Loops Protocol Stack 三层协议的完整规范。Loops 不是又一个 AI 框架——它是一套**协议栈规范**，把已有的、各自优秀的协议（MCP、Skills、A2A、ACP）分层归位，定义它们之间的边界契约，并填补生态中缺失的人机责任闭环层。
 
 ---
 
@@ -12,7 +12,7 @@
 
 Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管一件事，层间只通过显式契约对话。已有协议是各层的"砖"，Loops 是"建筑规范"——规定砖怎么垒、每层用什么砖、哪一层还缺砖。
 
-核心贡献是**填补了缺失的 L2**：MCP 解决了 agent↔工具，A2A 解决了 agent↔agent，但 agent↔人 在项目/组织级如何协作，至今是生态空白。HACP 就是来补这一格的。
+核心贡献是**填补了缺失的 L2**：MCP 解决了 agent↔工具，A2A 解决了 agent↔agent，但 agent↔人 在项目/组织级如何协作，至今是生态空白。HLP 就是来补这一格的。
 
 ---
 
@@ -23,7 +23,7 @@ Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管
 │                     人 (principal)                            │
 └──────────────────────────┬───────────────────────────────────┘
                            │
-                           │  HACP  (L2 · 人机协作) ★ Loops 新建
+                           │  HLP  (L2 · 人机责任闭环) ★ Loops 新建
                            │  Task / Checkpoint / Ownership / Review
                            │  Artifact / Ledger / Audit
                            ▼
@@ -44,7 +44,7 @@ Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管
 
 | 层 | 协议 | 全称 | 性质 | 规范 |
 |----|------|------|------|------|
-| **L2** | **HACP** | Human-Agent Collaboration Protocol | Loops **新建** | [HACP.md](./HACP.md) |
+| **L2** | **HLP** | Human Loop Protocol | Loops **新建** | [HLP.md](./HLP.md) |
 | **L1** | **AAP** | Agent-Agent Protocol | 复用 A2A/ACP | [AAP.md](./AAP.md) |
 | **L0** | **CAP** | Capability Protocol | 复用 MCP/Skills | [CAP.md](./CAP.md) |
 
@@ -56,7 +56,7 @@ Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管
 
 | spec | 文档类型 | 含义 |
 |------|---------|------|
-| **HACP.md** | **完整协议规范** | Loops 新建的协议。全套自研：schema、状态机、错误码、一致性。实现者照着写代码即可。 |
+| **HLP.md** | **完整协议规范** | Loops 新建的协议。全套自研：schema、状态机、错误码、一致性。实现者照着写代码即可。 |
 | **AAP.md** | **一致性剖面（Conformance Profile）** | Loops 复用 A2A/ACP。本文档定义"L1 层必须暴露的最小接口契约"，任何满足它的现有实现都能接入，**不重新发明协议**。 |
 | **CAP.md** | **一致性剖面（Conformance Profile）** | Loops 复用 MCP/Skills。同上。 |
 
@@ -68,20 +68,20 @@ Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管
 
 按角色选入口：
 
-### 我想实现一个 HACP 服务（人机协作平台）
-→ 读 [HACP.md](./HACP.md) 全文。这是新建协议，需要完整实现 21 个操作和 7 个一等对象。重点看 §3（schema）、§4（操作）、§5（层间契约）。
+### 我想实现一个 HLP 服务（Human Loop 平台）
+→ 读 [HLP.md](./HLP.md) 全文。这是新建协议，需要完整实现 21 个操作和 7 个一等对象。重点看 §3（schema）、§4（操作）、§5（层间契约）。
 
 ### 我有一个 MCP server / Skills，想接入 Loops 栈
 → 读 [CAP.md](./CAP.md)。重点看 §4（参考实现映射）——你会发现自己的实现大概率已经满足 CAP 剖面，几乎零改造。
 
 ### 我有一个 A2A runtime，想接入 Loops 栈
-→ 读 [AAP.md](./AAP.md)。重点看 §4（A2A→AAP 映射）和 §5.1（HACP↔AAP 联动）——关键是给 Run 加上 `correlation_id` 字段以贯穿 TaskID。
+→ 读 [AAP.md](./AAP.md)。重点看 §4（A2A→AAP 映射）和 §5.1（HLP↔AAP 联动）——关键是给 Run 加上 `correlation_id` 字段以贯穿 TaskID。
 
 ### 我想搭一个完整的 Loops 栈
-→ 三份都读，按 **CAP → AAP → HACP** 的依赖顺序（自底向上）。三份的层间契约是缝合点：
+→ 三份都读，按 **CAP → AAP → HLP** 的依赖顺序（自底向上）。三份的层间契约是缝合点：
 - CAP.md §5 定义 CapabilityRef（唯一跨 L0→L1→L2 的能力引用）
-- AAP.md §5.1 定义 TaskID 贯穿（HACP↔AAP 的铁律）
-- HACP.md §5 定义 Task→AAP delegate / Checkpoint→AAP block
+- AAP.md §5.1 定义 TaskID 贯穿（HLP↔AAP 的铁律）
+- HLP.md §5 定义 Task→AAP delegate / Checkpoint→AAP block
 
 ---
 
@@ -91,10 +91,10 @@ Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管
 
 | 契约 | 跨层对象 | 定义位置 | 铁律 |
 |------|---------|---------|------|
-| **CapabilityRef** | 能力引用 | CAP §2.2 / HACP §5.3 | 上层只用 `(id, version)`，禁止感知 transport |
-| **TaskID 贯穿** | Task↔Run | AAP §5.1 | HACP TaskID **必须** = AAP Run.correlation_id，全栈到底 |
-| **Checkpoint→Block** | 决策点→阻塞 | HACP §5.1 / AAP §3.3 | checkpoint.raise **必须**触发 agent.block，resolve **必须**触发 resume |
-| **Ownership→Handoff** | 所有权→交接 | HACP §3.5 / AAP §3.4 | ownership.transfer **必须**联动 agent.handoff，correlation 保持 |
+| **CapabilityRef** | 能力引用 | CAP §2.2 / HLP §5.3 | 上层只用 `(id, version)`，禁止感知 transport |
+| **TaskID 贯穿** | Task↔Run | AAP §5.1 | HLP TaskID **必须** = AAP Run.correlation_id，全栈到底 |
+| **Checkpoint→Block** | 决策点→阻塞 | HLP §5.1 / AAP §3.3 | checkpoint.raise **必须**触发 agent.block，resolve **必须**触发 resume |
+| **Ownership→Handoff** | 所有权→交接 | HLP §3.5 / AAP §3.4 | ownership.transfer **必须**联动 agent.handoff，correlation 保持 |
 
 ---
 
@@ -117,7 +117,7 @@ Loops 的主张：**把 AI 协作拆成三个正交的协议层**，每层只管
 - 三份 spec 当前均为 **0.1.0-draft**，等待参考实现验证。
 - 每份 spec 的最后一节（§8 或 §6）定义了"声称符合该版本"必须满足的硬指标。
 - 开放议题（每份 spec 的 §7）在参考实现后逐一收敛。
-- 版本兼容规则见 HACP §7.7——目前承诺语义版本 + 向后兼容。
+- 版本兼容规则见 HLP §7.7——目前承诺语义版本 + 向后兼容。
 
 ---
 

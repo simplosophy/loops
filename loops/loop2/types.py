@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-# ── 错误码 (HACP spec §6.1) ──
+# ── 错误码 (HLP spec §6.1) ──
 ErrorCode = Literal[
     "INVALID_SPEC",
     "PRECONDITION_FAILED",
@@ -17,7 +17,7 @@ ErrorCode = Literal[
 
 
 class ProtocolError(Exception):
-    """HACP 协议错误。code 对应 spec §6.1 错误码。"""
+    """HLP 协议错误。code 对应 spec §6.1 错误码。"""
 
     def __init__(self, code: ErrorCode, message: str = "") -> None:
         super().__init__(f"[{code}] {message}" if message else code)

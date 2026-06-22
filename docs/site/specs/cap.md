@@ -35,7 +35,7 @@ CAP governs:
 
 CAP does not govern:
 
-- Who the caller is; HACP and the host platform own that context.
+- Who the caller is; HLP and the host platform own that context.
 - Agent sessions, memory, or run state.
 - Organization RBAC or billing.
 - How an agent decides which capability to call.
@@ -70,7 +70,7 @@ CapabilityRef:
 
 Rules:
 
-- AAP and HACP **MUST** use `CapabilityRef` to refer to capabilities.
+- AAP and HLP **MUST** use `CapabilityRef` to refer to capabilities.
 - Upper layers **MUST NOT** depend on transport details such as stdio commands,
   SSE endpoints, HTTP paths, or local function names.
 
@@ -200,7 +200,7 @@ CAP is L0. Upper layers refer to it only through `CapabilityRef`.
 | Upper layer | Allowed behavior | Forbidden behavior |
 | --- | --- | --- |
 | AAP | Invoke capabilities by reference | Depend on MCP transport or raw tool endpoint |
-| HACP | Declare required capabilities by reference | Call tools directly |
+| HLP | Declare required capabilities by reference | Call tools directly |
 
 Example task constraint:
 

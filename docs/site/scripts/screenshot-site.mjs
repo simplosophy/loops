@@ -12,7 +12,7 @@ mkdirSync(outDir, { recursive: true })
 const targets = [
   { path: '/', label: 'home' },
   { path: '/protocol-map', label: 'protocol-map' },
-  { path: '/specs/hacp', label: 'specs-hacp' },
+  { path: '/specs/hlp', label: 'specs-hlp' },
 ]
 const viewports = [
   { label: 'desktop', width: 1280, height: 900, mobile: false },

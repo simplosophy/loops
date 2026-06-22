@@ -15,7 +15,7 @@ const expectedRoutes = [
   'protocol-map.html',
   'reading-routes.html',
   'conformance.html',
-  'specs/hacp.html',
+  'specs/hlp.html',
   'specs/aap.html',
   'specs/cap.html',
   'specs/contracts.html',

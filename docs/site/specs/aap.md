@@ -29,14 +29,14 @@ AAP governs:
 - Agent discovery by capability.
 - Asynchronous delegation to another agent.
 - Run handles and run state.
-- Blocking and resuming a run for HACP checkpoints.
+- Blocking and resuming a run for HLP checkpoints.
 - Handoff from one agent to another.
 - Correlated event streams.
 
 AAP does not govern:
 
 - How an agent internally plans or executes.
-- How humans review work; that is HACP.
+- How humans review work; that is HLP.
 - How tools and skills are invoked; that is CAP.
 - Host platform lifecycle, identity, billing, or placement.
 
@@ -45,10 +45,10 @@ AAP does not govern:
 | Primitive | Meaning | Required for |
 | --- | --- | --- |
 | `discover` | Find agents by capability or tags | Routing work |
-| `delegate` | Start an asynchronous run on another agent | HACP task assignment and subdelegation |
-| `block` | Pause a run pending external decision | HACP checkpoint gating |
-| `resume` | Continue a blocked run with resolution data | HACP checkpoint resolution |
-| `handoff` | Transfer execution context to another agent | HACP ownership transfer |
+| `delegate` | Start an asynchronous run on another agent | HLP task assignment and subdelegation |
+| `block` | Pause a run pending external decision | HLP checkpoint gating |
+| `resume` | Continue a blocked run with resolution data | HLP checkpoint resolution |
+| `handoff` | Transfer execution context to another agent | HLP ownership transfer |
 
 ## Agent
 
@@ -77,7 +77,7 @@ AgentCard:
 Rules:
 
 - `AgentCard` **MUST** be discoverable through `agent.discover`.
-- `endpoint` is transport-specific and **MUST NOT** be exposed upward to HACP.
+- `endpoint` is transport-specific and **MUST NOT** be exposed upward to HLP.
 - `capabilities` **MUST** use CAP `CapabilityRef` values.
 
 ## Run
@@ -91,7 +91,7 @@ Run:
   created_at: timestamp
 ```
 
-`correlation_id` is the key L1-to-L2 contract. For HACP-originated work,
+`correlation_id` is the key L1-to-L2 contract. For HLP-originated work,
 `Run.correlation_id` **MUST** equal `Task.id`.
 
 ## Discovery
@@ -109,7 +109,7 @@ Rules:
 - A conforming L1 **MUST** support `agent.discover`.
 - Results **MUST** include enough endpoint data for the L1 runtime to reach the
   target agent.
-- HACP callers **MUST NOT** depend on endpoint details.
+- HLP callers **MUST NOT** depend on endpoint details.
 
 ## Delegation
 
@@ -144,7 +144,7 @@ Rules:
 
 - `block` **MUST** include `checkpoint_id`.
 - A blocked run **MUST NOT** resume itself.
-- `resume` **MUST** carry the HACP checkpoint resolution payload.
+- `resume` **MUST** carry the HLP checkpoint resolution payload.
 - Invalid state transitions **MUST** return `INVALID_TRANSITION`.
 
 ## Handoff
@@ -158,7 +158,7 @@ Rules:
 - Handoff creates a new run for the receiving agent.
 - The new run **MUST** preserve the original `correlation_id`.
 - The old run **SHOULD** remain available as read-only history.
-- Handoff is the AAP expression of HACP ownership transfer.
+- Handoff is the AAP expression of HLP ownership transfer.
 
 ## Event Stream
 
@@ -180,7 +180,7 @@ AgentEventType:
 Rules:
 
 - Every event **MUST** include `correlation_id`.
-- `run.blocked` **MUST** identify the HACP checkpoint when the block came from
+- `run.blocked` **MUST** identify the HLP checkpoint when the block came from
   a checkpoint.
 - AAP events **SHOULD** be replayable for debugging and audit correlation.
 
@@ -209,9 +209,9 @@ and preserve correlation.
 
 ## Inter-layer Contracts
 
-### AAP to HACP
+### AAP to HLP
 
-| HACP operation | AAP action | Requirement |
+| HLP operation | AAP action | Requirement |
 | --- | --- | --- |
 | `task.assign` | `agent.delegate` | TaskID **MUST** become `Run.correlation_id` |
 | `checkpoint.raise` | `agent.block` | `checkpoint_id` **MUST** be provided |
@@ -238,7 +238,7 @@ An implementation claiming AAP 0.1.0-draft compatibility **MUST**:
    and `agent.handoff`.
 2. Maintain the run states `running`, `blocked`, `completed`, and `failed`.
 3. Include `correlation_id` on every run and run event.
-4. Preserve HACP TaskID as `Run.correlation_id`.
+4. Preserve HLP TaskID as `Run.correlation_id`.
 5. Emit the required event stream.
 6. Use the defined error semantics.
 

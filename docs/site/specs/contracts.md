@@ -8,7 +8,7 @@ Most interoperability bugs happen here.
 | Contract | Cross-layer object | Layers | Rule |
 | --- | --- | --- | --- |
 | `CapabilityRef` | Capability reference | L0 -> L1 -> L2 | Upper layers reference capabilities only by `(capability_id, version)`. |
-| TaskID correlation | Task and Run identity | L2 -> L1 | `HACP Task.id` **MUST** equal `AAP Run.correlation_id`. |
+| TaskID correlation | Task and Run identity | L2 -> L1 | `HLP Task.id` **MUST** equal `AAP Run.correlation_id`. |
 | Checkpoint-to-Block | Checkpoint and Run state | L2 <-> L1 | `checkpoint.raise` **MUST** block the corresponding run; `checkpoint.resolve` **MUST** resume it. |
 | Ownership-to-Handoff | Ownership transfer and Run handoff | L2 <-> L1 | `ownership.transfer` **MUST** preserve correlation through AAP handoff. |
 
@@ -26,8 +26,8 @@ Required behavior:
 
 - CAP creates and owns the capability identity.
 - AAP calls capabilities by reference.
-- HACP uses references in task constraints such as `must_use_capabilities`.
-- AAP and HACP **MUST NOT** know whether the capability is reached through MCP
+- HLP uses references in task constraints such as `must_use_capabilities`.
+- AAP and HLP **MUST NOT** know whether the capability is reached through MCP
   stdio, MCP SSE, HTTP, a local function, or a Skills runtime.
 
 Non-conforming behavior:
@@ -50,7 +50,7 @@ must_use_capabilities:
 
 TaskID correlation is the most important full-stack invariant.
 
-When HACP assigns a task to an agent, the resulting AAP run **MUST** carry the
+When HLP assigns a task to an agent, the resulting AAP run **MUST** carry the
 same identity:
 
 ```yaml
@@ -68,23 +68,23 @@ Required behavior:
 - `DelegateRequest.task_id` becomes `Run.correlation_id`.
 - Every AAP event includes the same `correlation_id`.
 - Child delegations and handoffs preserve the original correlation unless a new
-  HACP task is explicitly created.
+  HLP task is explicitly created.
 
 This invariant lets audit replay reconstruct the complete lifecycle of a human
 task across agent runs, subdelegations, checkpoints, and artifact commits.
 
 ## Contract 3: Checkpoint-to-Block
 
-HACP checkpoints are human decision points. AAP block/resume is how those
+HLP checkpoints are human decision points. AAP block/resume is how those
 decision points affect the executing agent run.
 
 ```text
 Agent reaches a decision point
-  -> HACP checkpoint.raise
+  -> HLP checkpoint.raise
   -> Task state becomes blocked
   -> AAP agent.block(run_id, checkpoint_id)
   -> Human resolves the checkpoint
-  -> HACP checkpoint.resolve
+  -> HLP checkpoint.resolve
   -> AAP agent.resume(run_id, resolution)
 ```
 
@@ -98,12 +98,12 @@ Required behavior:
 
 ## Contract 4: Ownership-to-Handoff
 
-HACP ownership expresses who is responsible for a task. AAP handoff expresses how
+HLP ownership expresses who is responsible for a task. AAP handoff expresses how
 an agent run transfers execution to another agent.
 
 Required behavior:
 
-- `ownership.transfer` changes the HACP assignee and appends an ownership chain
+- `ownership.transfer` changes the HLP assignee and appends an ownership chain
   record.
 - When the new assignee is another agent, the implementation **MUST** call AAP
   `agent.handoff`.
@@ -128,22 +128,22 @@ NewRun:
 The only allowed dependency direction is downward:
 
 ```text
-HACP (L2) -> AAP (L1) -> CAP (L0)
+HLP (L2) -> AAP (L1) -> CAP (L0)
 ```
 
 The reverse direction is forbidden:
 
-- CAP **MUST NOT** import or depend on AAP or HACP.
-- AAP **MUST NOT** import or depend on HACP business semantics.
-- HACP **MUST NOT** call concrete tools or skills directly.
+- CAP **MUST NOT** import or depend on AAP or HLP.
+- AAP **MUST NOT** import or depend on HLP business semantics.
+- HLP **MUST NOT** call concrete tools or skills directly.
 
 ## Event Responsibilities
 
 | Layer | Emits | Consumed by |
 | --- | --- | --- |
 | CAP | Capability invocation results and capability errors | AAP runtime |
-| AAP | Run events with `correlation_id` | HACP bridge and host platform |
-| HACP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
+| AAP | Run events with `correlation_id` | HLP bridge and host platform |
+| HLP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
 
-HACP produces events, but it does not define how those events are rendered in
+HLP produces events, but it does not define how those events are rendered in
 chat, web, mobile, or CLI channels. Delivery belongs to the host platform.

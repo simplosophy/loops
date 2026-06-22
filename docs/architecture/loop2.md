@@ -1,14 +1,14 @@
 # loop2 架构
 
-> HACP（Human-Agent Collaboration Protocol）参考实现。
-> 对应规范：[`docs/specs/HACP.md`](../specs/HACP.md)
+> HLP（Human Loop Protocol）参考实现。
+> 对应规范：[`docs/specs/HLP.md`](../specs/HLP.md)
 > 设计稿：[`docs/plans/2026-06-19-loops-protocol-stack.md`](../plans/2026-06-19-loops-protocol-stack.md)
 
 ## 定位
 
-loop2 是 Loops Protocol Stack 的 L2 层——人机协作协议的参考实现。它定义**人**与**自主 agent** 如何围绕一个有边界的工作单元（Task）进行委派、把关、交付与治理。
+loop2 是 Loops Protocol Stack 的 L2 层——人机责任闭环协议的参考实现。它定义**人**与**自主 agent** 如何围绕一个有边界的工作单元（Task）进行委派、把关、交付与治理。
 
-loop2 不与 loop0/loop1 竞争，而是补上 MCP（agent↔工具）和 A2A（agent↔agent）未覆盖的维度：**agent 与其负责人之间的协作语义**。
+loop2 不与 loop0/loop1 竞争，而是补上 MCP（agent↔工具）和 A2A（agent↔agent）未覆盖的维度：**agent 与其负责人之间的责任闭环语义**。
 
 ## owns coordination
 
@@ -23,7 +23,7 @@ loops/loop2/
   types.py             # ProtocolError + Literal 类型别名
   objects.py           # 7 个一等对象 dataclass
   state_machine.py     # Task 状态机：合法转移表 + 校验
-  store.py             # HACPStore：内存存储
+  store.py             # HumanLoopStore：内存存储
   operations.py        # 21 个操作 (spec §4)
   audit.py             # AuditEvent + AuditLog (append-only)
   contracts.py         # AAPBridge Protocol + InMemoryAAPBridge stub
@@ -56,14 +56,14 @@ created → assigned → in_progress → blocked → (resolve) → in_progress
 
 loop2 与 AAP（L1）的缝合点，通过 `AAPBridge` Protocol 定义：
 
-| HACP 操作 | AAP 联动 | 铁律 |
+| HLP 操作 | AAP 联动 | 铁律 |
 |----------|---------|------|
 | task.assign | delegate | TaskID = Run.correlation_id |
 | checkpoint.raise | block | CheckpointID 传入 |
 | checkpoint.resolve | resume | resolution 透传 |
 | ownership.transfer | handoff | correlation_id 保持 |
 
-参考实现提供 `InMemoryAAPBridge` stub——只记录调用不执行，用于验证 HACP 在正确时机调用了正确的 AAP 方法，且 TaskID 全栈贯穿。
+参考实现提供 `InMemoryAAPBridge` stub——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 AAP 方法，且 TaskID 全栈贯穿。
 
 ## 分层纪律
 
@@ -75,11 +75,11 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 - 真实 AAP 实现 — 当前只 stub
 - 真实持久化后端 — 当前内存 + 可选 JSONL
 - CLI — 本阶段不做
-- HACP→channel 通知 — stub
+- HLP→channel 通知 — stub
 - 开放议题定论（checkpoint 超时、委派深度、Ledger 并发等）— 实现后待收敛
 
 ## 验证
 
-- `uv run pytest tests/test_loop2_hacp.py -q`：31 passed
+- `uv run pytest tests/test_loop2_hlp.py -q`：39 passed
 - 端到端闭环覆盖 spec 附录 A "Review PR #1234" 全时序
-- 全仓库 `uv run pytest -q`：62 passed（含 loop0 现有 31 测试）
+- 全仓库 `uv run pytest -q`：70 passed
