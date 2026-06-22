@@ -101,7 +101,14 @@ class HumanLoopOperations:
         )
         return task
 
-    async def task_assign(self, task_id: str, agent_id: str) -> Task:
+    async def task_assign(
+        self,
+        task_id: str,
+        agent_id: str,
+        *,
+        capability: str = "",
+        input: dict[str, Any] | None = None,
+    ) -> Task:
         """task.assign (spec §4.1)。created→assigned，ownership 转 agent。"""
         task = self.store.get_task(task_id)
         self._require_state(task, "created")
@@ -122,8 +129,8 @@ class HumanLoopOperations:
         run_id = await self.aap.delegate(
             task_id=task_id,
             agent_id=agent_id,
-            capability="",  # 由 caller 决定，参考实现留空
-            input={"goal": task.spec.goal},
+            capability=capability,
+            input=input or {"goal": task.spec.goal},
         )
         self.store.bind_run(task_id, run_id)
         return task

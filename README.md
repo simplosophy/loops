@@ -1,6 +1,6 @@
 # loops
 
-Minimal agent runtime SDK.
+Minimal agent runtime SDK with a Human Loop Protocol (HLP) control plane.
 
 loops models an agent as:
 
@@ -12,7 +12,64 @@ The core runtime includes one built-in tool, `shell`. Other capabilities such
 as skills, MCP, memory backends, app-specific I/O, and knowledge systems
 are intended to be added as components or integrations.
 
+HLP is the public SDK surface for human responsibility loops: task delegation,
+checkpoint decisions, artifact review, ledger writes, and audit replay. It is
+not a new agent framework. OpenAI Agents SDK, OpenAI Python SDK, Codex CLI,
+Claude Code CLI, LangGraph, CrewAI, and similar runtimes connect through
+adapters.
+
 ## Quick Start
+
+Run the dependency-free HLP end-to-end demo:
+
+```bash
+uv run loops-hlp-demo
+```
+
+Use the HLP SDK directly:
+
+```python
+from loops.hlp import ArtifactPayload, FakeAgentAdapter, HLPClient
+
+client = HLPClient(adapter=FakeAgentAdapter())
+
+task = await client.create_task(
+    principal="user_alice",
+    goal="Review PR #1234 for security issues",
+    type="code-review",
+)
+run = await client.delegate(
+    task.id,
+    agent_id="agent_reviewer",
+    capability="code-review",
+    input={"goal": task.spec.goal, "repository": "web"},
+)
+await client.start(task.id)
+
+artifact = await client.commit_artifact(
+    task_id=task.id,
+    type="report",
+    payload=ArtifactPayload(
+        kind="inline",
+        uri="mem://report-v1",
+        checksum="sha256:report-v1",
+    ),
+    produced_by=run.agent_id,
+)
+```
+
+Adapter entry points are optional-dependency friendly:
+
+```python
+from loops.hlp import (
+    ClaudeCodeCLIAdapter,
+    CodexCLIAdapter,
+    CrewAIAdapter,
+    LangGraphAdapter,
+    OpenAIAgentsSDKAdapter,
+    OpenAIPythonSDKAdapter,
+)
+```
 
 Run the sample agent with DeepSeek's OpenAI-compatible API:
 

@@ -7,8 +7,25 @@ Loops Protocol Stack 的 L2 层：人机责任闭环协议的参考实现。
 """
 from __future__ import annotations
 
+from .adapters import (
+    AgentAdapter,
+    AgentRunHandle,
+    ClaudeCodeCLIAdapter,
+    CodexCLIAdapter,
+    CrewAIAdapter,
+    FakeAgentAdapter,
+    HermesCLIAdapter,
+    HermsCLIAdapter,
+    InMemoryAgentAdapter,
+    LangGraphAdapter,
+    OpenAIAgentsSDKAdapter,
+    OpenAIPythonSDKAdapter,
+    ProcessAgentAdapter,
+    PythonCallableAgentAdapter,
+)
 from .audit import AuditEvent, AuditLog
 from .contracts import AAPBridge, InMemoryAAPBridge
+from .events import EventBus, HLPEvent, InMemoryEventBus
 from .objects import (
     Artifact,
     ArtifactPayload,
@@ -30,6 +47,8 @@ from .objects import (
     TaskSpec,
 )
 from .operations import HumanLoopOperations
+from .sdk import HLPClient
+from .sqlite_store import SQLiteHumanLoopStore
 from .state_machine import LEGAL_TRANSITIONS, TERMINAL_STATES, check_transition, is_legal
 from .store import HumanLoopStore
 from .types import (
@@ -46,11 +65,32 @@ from .types import (
 
 __all__ = [
     # 操作 facade
+    "HLPClient",
     "HumanLoopOperations",
     "HumanLoopStore",
     # 契约
+    "AgentAdapter",
+    "AgentRunHandle",
+    "ClaudeCodeCLIAdapter",
+    "CodexCLIAdapter",
+    "CrewAIAdapter",
+    "FakeAgentAdapter",
+    "HermesCLIAdapter",
+    "HermsCLIAdapter",
+    "InMemoryAgentAdapter",
+    "LangGraphAdapter",
+    "OpenAIAgentsSDKAdapter",
+    "OpenAIPythonSDKAdapter",
+    "ProcessAgentAdapter",
+    "PythonCallableAgentAdapter",
     "AAPBridge",
     "InMemoryAAPBridge",
+    # 事件
+    "EventBus",
+    "HLPEvent",
+    "InMemoryEventBus",
+    # 持久化
+    "SQLiteHumanLoopStore",
     # 审计
     "AuditEvent",
     "AuditLog",
