@@ -93,6 +93,17 @@ adapter = OpenAIPythonSDKAdapter(
 )
 ```
 
+Framework adapters accept native framework objects without adding those packages
+to `loops` core dependencies:
+
+```python
+from loops.hlp import CrewAIAdapter, LangGraphAdapter, OpenAIAgentsSDKAdapter
+
+openai_agents = OpenAIAgentsSDKAdapter(agent=agent, runner=Runner)
+langgraph = LangGraphAdapter(graph=compiled_graph, config={"thread_id": "t1"})
+crew = CrewAIAdapter(crew=my_crew)
+```
+
 Run the sample agent with DeepSeek's OpenAI-compatible API:
 
 ```bash

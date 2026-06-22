@@ -339,6 +339,195 @@ def test_openai_python_sdk_adapter_wraps_client_exception():
         raise AssertionError("expected AgentAdapterError")
 
 
+def test_openai_agents_sdk_adapter_uses_runner_contract():
+    class FakeRunner:
+        def __init__(self):
+            self.calls = []
+
+        def run_sync(self, agent, input, run_config=None):
+            self.calls.append({
+                "agent": agent,
+                "input": input,
+                "run_config": run_config,
+            })
+            return {
+                "id": "agents_run_123",
+                "final_output": "agents done",
+            }
+
+    runner = FakeRunner()
+    adapter = OpenAIAgentsSDKAdapter(
+        agent="agent-object",
+        runner=runner,
+        run_config={"trace": "hlp"},
+    )
+
+    run_id = run(adapter.delegate(
+        task_id="task_agents",
+        agent_id="agent_openai_agents",
+        capability="multi-agent",
+        input={"goal": "coordinate work"},
+    ))
+
+    assert run_id == "agents_run_123"
+    assert adapter.task_of_run(run_id) == "task_agents"
+    assert adapter.results[run_id] == {
+        "id": "agents_run_123",
+        "final_output": "agents done",
+    }
+    assert runner.calls == [{
+        "agent": "agent-object",
+        "input": "coordinate work",
+        "run_config": {"trace": "hlp"},
+    }]
+
+
+def test_openai_agents_sdk_adapter_wraps_runner_exception():
+    class BrokenRunner:
+        def run_sync(self, agent, input, run_config=None):
+            raise RuntimeError("agents failed")
+
+    adapter = OpenAIAgentsSDKAdapter(agent="agent-object", runner=BrokenRunner())
+
+    try:
+        run(adapter.delegate(
+            task_id="task_agents",
+            agent_id="agent_openai_agents",
+            capability="multi-agent",
+            input={"goal": "coordinate work"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "openai-agents-sdk"
+        assert exc.operation == "delegate"
+        assert exc.details["error_type"] == "RuntimeError"
+        assert exc.details["error"] == "agents failed"
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_langgraph_adapter_invokes_compiled_graph():
+    class FakeGraph:
+        def __init__(self):
+            self.calls = []
+
+        async def ainvoke(self, input, config=None):
+            self.calls.append({"input": input, "config": config})
+            return {"messages": ["done"], "run_id": "graph_run_123"}
+
+    graph = FakeGraph()
+    adapter = LangGraphAdapter(graph=graph, config={"thread_id": "thread-1"})
+
+    run_id = run(adapter.delegate(
+        task_id="task_graph",
+        agent_id="agent_langgraph",
+        capability="workflow",
+        input={"goal": "run graph", "state": {"foo": "bar"}},
+    ))
+
+    assert run_id == "graph_run_123"
+    assert adapter.task_of_run(run_id) == "task_graph"
+    assert adapter.results[run_id] == {"messages": ["done"], "run_id": "graph_run_123"}
+    assert graph.calls == [{
+        "input": {
+            "messages": [{"role": "user", "content": "run graph"}],
+            "hlp": {
+                "task_id": "task_graph",
+                "agent_id": "agent_langgraph",
+                "capability": "workflow",
+                "parent_run": None,
+            },
+            "state": {"foo": "bar"},
+        },
+        "config": {
+            "thread_id": "thread-1",
+            "metadata": {
+                "hlp_task_id": "task_graph",
+                "hlp_agent_id": "agent_langgraph",
+                "hlp_capability": "workflow",
+                "hlp_parent_run": "",
+            },
+        },
+    }]
+
+
+def test_langgraph_adapter_wraps_graph_exception():
+    class BrokenGraph:
+        async def ainvoke(self, input, config=None):
+            raise RuntimeError("graph failed")
+
+    adapter = LangGraphAdapter(graph=BrokenGraph())
+
+    try:
+        run(adapter.delegate(
+            task_id="task_graph",
+            agent_id="agent_langgraph",
+            capability="workflow",
+            input={"goal": "run graph"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "langgraph"
+        assert exc.operation == "delegate"
+        assert exc.details["error_type"] == "RuntimeError"
+        assert exc.details["error"] == "graph failed"
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_crewai_adapter_uses_async_kickoff_contract():
+    class FakeCrew:
+        def __init__(self):
+            self.calls = []
+
+        async def akickoff(self, inputs):
+            self.calls.append(inputs)
+            return {"id": "crew_run_123", "raw": "crew done"}
+
+    crew = FakeCrew()
+    adapter = CrewAIAdapter(crew=crew)
+
+    run_id = run(adapter.delegate(
+        task_id="task_crew",
+        agent_id="agent_crewai",
+        capability="crew",
+        input={"goal": "research topic", "topic": "HLP"},
+    ))
+
+    assert run_id == "crew_run_123"
+    assert adapter.task_of_run(run_id) == "task_crew"
+    assert adapter.results[run_id] == {"id": "crew_run_123", "raw": "crew done"}
+    assert crew.calls == [{
+        "goal": "research topic",
+        "topic": "HLP",
+        "hlp_task_id": "task_crew",
+        "hlp_agent_id": "agent_crewai",
+        "hlp_capability": "crew",
+        "hlp_parent_run": "",
+    }]
+
+
+def test_crewai_adapter_wraps_crew_exception():
+    class BrokenCrew:
+        async def akickoff(self, inputs):
+            raise RuntimeError("crew failed")
+
+    adapter = CrewAIAdapter(crew=BrokenCrew())
+
+    try:
+        run(adapter.delegate(
+            task_id="task_crew",
+            agent_id="agent_crewai",
+            capability="crew",
+            input={"goal": "research topic"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "crewai"
+        assert exc.operation == "delegate"
+        assert exc.details["error_type"] == "RuntimeError"
+        assert exc.details["error"] == "crew failed"
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
 def test_hlp_client_drives_process_adapter_block_and_resume():
     requests = []
 

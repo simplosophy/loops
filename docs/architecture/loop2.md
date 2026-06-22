@@ -79,7 +79,7 @@ loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。`AAPBri
 | checkpoint.resolve | resume | resolution 透传 |
 | ownership.transfer | handoff | correlation_id 保持 |
 
-参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`PythonCallableAgentAdapter` 覆盖 OpenAI Agents SDK、LangGraph、CrewAI 等 in-process framework 的接入形态；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖 Codex CLI、Claude Code CLI、herms 等 CLI/process 形态。
+参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`OpenAIAgentsSDKAdapter` 可通过注入 `runner + agent` 调用 OpenAI Agents SDK 的 `run/run_sync` 形态；`LangGraphAdapter` 可通过注入 compiled graph 调用 `ainvoke/invoke`；`CrewAIAdapter` 可通过注入 crew 调用 `akickoff/kickoff_async/kickoff`；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖 Codex CLI、Claude Code CLI、herms 等 CLI/process 形态。
 
 `ProcessAgentAdapter` 约定所有操作都向 runner 传入结构化请求：
 
@@ -104,7 +104,7 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 ## 不在本参考实现范围（spec §7 开放议题）
 
 - transport 绑定（HTTP/gRPC/WebSocket）— 当前纯内存 async API
-- vendor-specific 深度 adapter — 当前提供稳定 adapter 入口，不强依赖第三方包
+- vendor package 直接依赖 — 当前通过对象注入提供框架级契约，不强依赖第三方包
 - 服务端数据库后端 — 当前提供内存 store + SQLite 本地 durable store
 - HLP server/CLI 管理面 — 当前只提供 SDK 和 demo console script
 - HLP→channel 通知 — stub

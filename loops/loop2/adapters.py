@@ -434,10 +434,114 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
         self.calls.append(("healthcheck", result))
         return result
 
+    def _record_framework_result(
+        self,
+        result: Any,
+        *,
+        fallback_prefix: str,
+        task_id: str,
+        agent_id: str,
+        capability: str,
+        input: dict[str, Any],
+        parent_run: str | None,
+    ) -> str:
+        payload = _response_to_dict(result)
+        run_id = str(
+            payload.get("id")
+            or payload.get("run_id")
+            or self._next_framework_run_id(fallback_prefix)
+        )
+        self._runs[run_id] = AgentRunHandle(
+            run_id=run_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            correlation_id=task_id,
+            capability=capability,
+            parent_run=parent_run,
+        )
+        self.results[run_id] = payload
+        self.calls.append((
+            "delegate",
+            {
+                "run_id": run_id,
+                "task_id": task_id,
+                "agent_id": agent_id,
+                "capability": capability,
+                "input": input,
+                "parent_run": parent_run,
+            },
+        ))
+        return run_id
+
+    def _next_framework_run_id(self, prefix: str) -> str:
+        self._run_counter += 1
+        return f"{prefix}_{self._run_counter:06d}"
+
 
 class OpenAIAgentsSDKAdapter(PythonCallableAgentAdapter):
-    def __init__(self, handler: Callable[[dict[str, Any]], Any] | None = None) -> None:
+    def __init__(
+        self,
+        handler: Callable[[dict[str, Any]], Any] | None = None,
+        *,
+        agent: Any = None,
+        runner: Any = None,
+        run_config: Any = None,
+    ) -> None:
         super().__init__("openai-agents-sdk", handler)
+        self.agent = agent
+        self.runner = runner
+        self.run_config = run_config
+
+    async def delegate(
+        self,
+        task_id: str,
+        agent_id: str,
+        capability: str,
+        input: dict[str, Any],
+        parent_run: str | None = None,
+    ) -> str:
+        if self.agent is None or self.runner is None:
+            return await super().delegate(
+                task_id=task_id,
+                agent_id=agent_id,
+                capability=capability,
+                input=input,
+                parent_run=parent_run,
+            )
+        try:
+            if hasattr(self.runner, "run"):
+                result = self.runner.run(
+                    self.agent,
+                    _prompt_from_input(input),
+                    run_config=self.run_config,
+                )
+            else:
+                result = self.runner.run_sync(
+                    self.agent,
+                    _prompt_from_input(input),
+                    run_config=self.run_config,
+                )
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:
+            raise AgentAdapterError(
+                self.name,
+                "delegate",
+                "OpenAI Agents SDK runner failed",
+                details={
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc),
+                },
+            ) from exc
+        return self._record_framework_result(
+            result,
+            fallback_prefix="agents_run",
+            task_id=task_id,
+            agent_id=agent_id,
+            capability=capability,
+            input=input,
+            parent_run=parent_run,
+        )
 
 
 class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
@@ -521,13 +625,130 @@ class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
 
 
 class LangGraphAdapter(PythonCallableAgentAdapter):
-    def __init__(self, handler: Callable[[dict[str, Any]], Any] | None = None) -> None:
+    def __init__(
+        self,
+        handler: Callable[[dict[str, Any]], Any] | None = None,
+        *,
+        graph: Any = None,
+        config: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__("langgraph", handler)
+        self.graph = graph
+        self.config = config or {}
+
+    async def delegate(
+        self,
+        task_id: str,
+        agent_id: str,
+        capability: str,
+        input: dict[str, Any],
+        parent_run: str | None = None,
+    ) -> str:
+        if self.graph is None:
+            return await super().delegate(
+                task_id=task_id,
+                agent_id=agent_id,
+                capability=capability,
+                input=input,
+                parent_run=parent_run,
+            )
+        graph_input = {
+            "messages": [{"role": "user", "content": _prompt_from_input(input)}],
+            "hlp": _hlp_payload(task_id, agent_id, capability, parent_run),
+        }
+        if isinstance(input.get("state"), dict):
+            graph_input["state"] = input["state"]
+        config = dict(self.config)
+        config["metadata"] = {
+            **dict(config.get("metadata", {})),
+            **_hlp_metadata(task_id, agent_id, capability, parent_run),
+        }
+        try:
+            if hasattr(self.graph, "ainvoke"):
+                result = self.graph.ainvoke(graph_input, config=config)
+            else:
+                result = self.graph.invoke(graph_input, config=config)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:
+            raise AgentAdapterError(
+                self.name,
+                "delegate",
+                "LangGraph invocation failed",
+                details={
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc),
+                },
+            ) from exc
+        return self._record_framework_result(
+            result,
+            fallback_prefix="langgraph_run",
+            task_id=task_id,
+            agent_id=agent_id,
+            capability=capability,
+            input=input,
+            parent_run=parent_run,
+        )
 
 
 class CrewAIAdapter(PythonCallableAgentAdapter):
-    def __init__(self, handler: Callable[[dict[str, Any]], Any] | None = None) -> None:
+    def __init__(
+        self,
+        handler: Callable[[dict[str, Any]], Any] | None = None,
+        *,
+        crew: Any = None,
+    ) -> None:
         super().__init__("crewai", handler)
+        self.crew = crew
+
+    async def delegate(
+        self,
+        task_id: str,
+        agent_id: str,
+        capability: str,
+        input: dict[str, Any],
+        parent_run: str | None = None,
+    ) -> str:
+        if self.crew is None:
+            return await super().delegate(
+                task_id=task_id,
+                agent_id=agent_id,
+                capability=capability,
+                input=input,
+                parent_run=parent_run,
+            )
+        crew_inputs = {
+            **input,
+            **_hlp_metadata(task_id, agent_id, capability, parent_run),
+        }
+        try:
+            if hasattr(self.crew, "akickoff"):
+                result = self.crew.akickoff(inputs=crew_inputs)
+            elif hasattr(self.crew, "kickoff_async"):
+                result = self.crew.kickoff_async(inputs=crew_inputs)
+            else:
+                result = self.crew.kickoff(inputs=crew_inputs)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:
+            raise AgentAdapterError(
+                self.name,
+                "delegate",
+                "CrewAI kickoff failed",
+                details={
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc),
+                },
+            ) from exc
+        return self._record_framework_result(
+            result,
+            fallback_prefix="crewai_run",
+            task_id=task_id,
+            agent_id=agent_id,
+            capability=capability,
+            input=input,
+            parent_run=parent_run,
+        )
 
 
 class CodexCLIAdapter(ProcessAgentAdapter):
@@ -605,6 +826,34 @@ def _prompt_from_input(input: dict[str, Any]) -> str:
     return json.dumps(input, sort_keys=True)
 
 
+def _hlp_payload(
+    task_id: str,
+    agent_id: str,
+    capability: str,
+    parent_run: str | None,
+) -> dict[str, Any]:
+    return {
+        "task_id": task_id,
+        "agent_id": agent_id,
+        "capability": capability,
+        "parent_run": parent_run,
+    }
+
+
+def _hlp_metadata(
+    task_id: str,
+    agent_id: str,
+    capability: str,
+    parent_run: str | None,
+) -> dict[str, str]:
+    return {
+        "hlp_task_id": task_id,
+        "hlp_agent_id": agent_id,
+        "hlp_capability": capability,
+        "hlp_parent_run": parent_run or "",
+    }
+
+
 def _response_to_dict(response: Any) -> dict[str, Any]:
     if isinstance(response, dict):
         return response
@@ -614,7 +863,7 @@ def _response_to_dict(response: Any) -> dict[str, Any]:
         return response.dict()
     result = {
         key: getattr(response, key)
-        for key in ("id", "output_text")
+        for key in ("id", "run_id", "output_text", "final_output", "raw")
         if hasattr(response, key)
     }
     return result or {"raw": response}

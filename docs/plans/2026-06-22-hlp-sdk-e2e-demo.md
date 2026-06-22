@@ -150,6 +150,26 @@ uv run pytest tests/test_hlp_sdk.py::test_openai_python_sdk_adapter_wraps_client
 uv run pytest tests/test_hlp_sdk.py::test_hlp_client_drives_process_adapter_block_and_resume -q
 ```
 
+## Task 8: Framework-Level Adapter Contracts
+
+Extend in-process adapters from generic callable wrappers to framework-shaped contracts:
+
+- `OpenAIAgentsSDKAdapter` accepts `runner + agent + run_config` and calls `runner.run(...)` or `runner.run_sync(...)`.
+- `LangGraphAdapter` accepts a compiled graph and calls `ainvoke(...)` or `invoke(...)` with HLP metadata in config.
+- `CrewAIAdapter` accepts a crew and calls `akickoff(...)`, `kickoff_async(...)`, or `kickoff(...)`.
+- All three adapters preserve `task_id` correlation and wrap framework exceptions in `AgentAdapterError`.
+
+Verification:
+
+```bash
+uv run pytest tests/test_hlp_sdk.py::test_openai_agents_sdk_adapter_uses_runner_contract -q
+uv run pytest tests/test_hlp_sdk.py::test_openai_agents_sdk_adapter_wraps_runner_exception -q
+uv run pytest tests/test_hlp_sdk.py::test_langgraph_adapter_invokes_compiled_graph -q
+uv run pytest tests/test_hlp_sdk.py::test_langgraph_adapter_wraps_graph_exception -q
+uv run pytest tests/test_hlp_sdk.py::test_crewai_adapter_uses_async_kickoff_contract -q
+uv run pytest tests/test_hlp_sdk.py::test_crewai_adapter_wraps_crew_exception -q
+```
+
 ## Acceptance Criteria
 
 - `from loops.hlp import HLPClient` is the preferred SDK entry point.
@@ -159,3 +179,4 @@ uv run pytest tests/test_hlp_sdk.py::test_hlp_client_drives_process_adapter_bloc
 - Existing loop2 protocol tests still pass.
 - Documentation clearly states that OpenAI Agents SDK, OpenAI Python SDK, Codex CLI, Claude Code, LangGraph/CrewAI, and unknown frameworks such as `herms` are adapter targets, not core dependencies.
 - Process and OpenAI Python SDK adapters perform real delegated execution through injected runners or clients while preserving `task_id` correlation.
+- OpenAI Agents SDK, LangGraph, and CrewAI adapters perform framework-shaped delegated execution through injected framework objects while preserving `task_id` correlation.
