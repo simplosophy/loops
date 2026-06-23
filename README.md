@@ -26,6 +26,16 @@ Run the dependency-free adapter compatibility demo:
 uv run loops-hlp-adapters-demo
 ```
 
+Run the local CLI smoke demo against installed Codex, Kimi, and Claude Code:
+
+```bash
+uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
+```
+
+For Kimi, the smoke demo can build a temporary `kimi-cli` config from
+`~/.metaworker/config.yaml` when the native Kimi Code config has no model. The
+temporary file is created under `/private/tmp` and deleted after the run.
+
 Use the HLP host directly:
 
 ```python
@@ -66,20 +76,23 @@ from loops import (
     ClaudeCodeCLIAdapter,
     CodexCLIAdapter,
     CrewAIAdapter,
+    KimiCLIAdapter,
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
 )
 ```
 
-CLI adapters use a JSON-over-stdin/stdout contract, accept JSON object or JSONL
-event-stream stdout, and can be tested with an injected runner before wiring a
-real binary:
+`ProcessAgentAdapter` is the generic JSON-over-stdin/stdout contract for custom
+processes. The named local coding-agent adapters use one-shot prompt mode so
+they match the real CLIs installed on a developer machine:
 
 ```python
-from loops import CodexCLIAdapter
+from loops import ClaudeCodeCLIAdapter, CodexCLIAdapter, KimiCLIAdapter
 
-codex = CodexCLIAdapter(command=("codex", "exec", "--json"))
+codex = CodexCLIAdapter()
+kimi = KimiCLIAdapter()
+claude = ClaudeCodeCLIAdapter()
 ```
 
 OpenAI's Python SDK can be injected without adding a hard dependency to the HLP

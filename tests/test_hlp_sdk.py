@@ -18,15 +18,18 @@ from loops.hlp import (
     HLPClient,
     HLPHost,
     InMemoryEventBus,
+    KimiCLIAdapter,
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
+    ProcessAgentAdapter,
     PythonCallableAgentAdapter,
     ProcessResult,
     SQLiteHumanLoopStore,
 )
 from examples.hlp_e2e_demo import run_demo
 from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
+from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
 
 
 def run(coro):
@@ -206,6 +209,7 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     crewai = CrewAIAdapter(handler)
     codex = CodexCLIAdapter(command=("codex", "exec"))
     claude = ClaudeCodeCLIAdapter(command=("claude", "-p"))
+    kimi = KimiCLIAdapter(command=("kimi", "-p"))
     herms = HermsCLIAdapter(command=("herms", "run"))
 
     run_id = run(python_adapter.delegate(
@@ -225,6 +229,7 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     assert run(crewai.healthcheck())["adapter"] == "crewai"
     assert run(codex.healthcheck())["command"] == ("codex", "exec")
     assert run(claude.healthcheck())["adapter"] == "claude-code-cli"
+    assert run(kimi.healthcheck())["adapter"] == "kimi-cli"
     assert HermesCLIAdapter is HermsCLIAdapter
     assert run(herms.healthcheck())["adapter"] == "herms-cli"
 
@@ -242,7 +247,12 @@ def test_process_agent_adapter_executes_json_runner_contract():
             stderr="",
         )
 
-    adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner, timeout=12.5)
+    adapter = ProcessAgentAdapter(
+        command=("codex", "exec", "--json"),
+        name="codex-json-process",
+        runner=runner,
+        timeout=12.5,
+    )
 
     run_id = run(adapter.delegate(
         task_id="task_proc",
@@ -271,7 +281,7 @@ def test_process_agent_adapter_executes_json_runner_contract():
         },
         "timeout": 12.5,
     }
-    assert health["adapter"] == "codex-cli"
+    assert health["adapter"] == "codex-json-process"
     assert health["executable"] == "codex"
 
 
@@ -297,6 +307,72 @@ def test_process_agent_adapter_accepts_jsonl_event_stream_stdout():
 
     assert run_id == "codex_run_1"
     assert adapter.process_results[run_id]["type"] == "turn.completed"
+
+
+def test_kimi_cli_adapter_executes_one_shot_prompt_and_extracts_json():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return ProcessResult(
+            exit_code=0,
+            stdout=(
+                "Kimi completed the task.\n"
+                '{"run_id": "kimi_run_1", "correlation_id": "task_kimi", "status": "ok"}\n'
+            ),
+            stderr="",
+        )
+
+    adapter = KimiCLIAdapter(command=("kimi", "-p"), runner=runner, timeout=9.0)
+
+    run_id = run(adapter.delegate(
+        task_id="task_kimi",
+        agent_id="agent_kimi",
+        capability="local-cli-smoke",
+        input={"goal": "Confirm HLP adapter compatibility"},
+    ))
+
+    assert run_id == "kimi_run_1"
+    assert adapter.task_of_run(run_id) == "task_kimi"
+    assert adapter.process_results[run_id]["status"] == "ok"
+    assert captured["command"][:2] == ("kimi", "-p")
+    assert captured["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert '"operation": "delegate"' in captured["command"][-1]
+    assert '"correlation_id": "task_kimi"' in captured["command"][-1]
+    assert captured["request"]["correlation_id"] == "task_kimi"
+    assert captured["timeout"] == 9.0
+
+
+def test_claude_cli_adapter_extracts_json_from_result_field():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "type": "result",
+                "result": (
+                    "Here is the HLP result:\n"
+                    '{"run_id": "claude_run_1", "correlation_id": "task_claude", "status": "ok"}'
+                ),
+            }),
+            stderr="",
+        )
+
+    adapter = ClaudeCodeCLIAdapter(
+        command=("claude", "-p", "--output-format", "json"),
+        runner=runner,
+    )
+
+    run_id = run(adapter.delegate(
+        task_id="task_claude",
+        agent_id="agent_claude",
+        capability="local-cli-smoke",
+        input={"goal": "Confirm HLP adapter compatibility"},
+    ))
+
+    assert run_id == "claude_run_1"
+    assert adapter.process_results[run_id]["status"] == "ok"
 
 
 def test_process_agent_adapter_rejects_mismatched_correlation_id():
@@ -902,3 +978,98 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
     assert result["codex_cli"]["run_id"] == "codex_demo"
     assert result["claude_code_cli"]["run_id"] == "claude_demo"
     assert result["herms_cli"]["run_id"] == "herms_demo"
+
+
+def test_hlp_local_cli_demo_runs_selected_adapters_with_injected_runners():
+    captured = {}
+
+    def make_runner(name):
+        async def runner(command, request, timeout):
+            captured[name] = {
+                "command": command,
+                "request": request,
+                "timeout": timeout,
+            }
+            return ProcessResult(
+                exit_code=0,
+                stdout=json.dumps({
+                    "run_id": f"{name}_run",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                    "summary": f"{name} smoke passed",
+                }),
+                stderr="",
+            )
+
+        return runner
+
+    result = run(run_local_cli_demo(
+        adapters=("codex", "kimi", "claude"),
+        runners={
+            "codex": make_runner("codex"),
+            "kimi": make_runner("kimi"),
+            "claude": make_runner("claude"),
+        },
+        timeout=7.0,
+    ))
+
+    assert set(result) == {"codex", "kimi", "claude"}
+    for name, entry in result.items():
+        assert entry["status"] == "ok", name
+        assert entry["task_id"].startswith("task_"), name
+        assert entry["run_id"] == f"{name}_run", name
+        assert entry["correlation_id"] == entry["task_id"], name
+        assert entry["returned_correlation_id"] == entry["task_id"], name
+        assert captured[name]["request"]["operation"] == "delegate"
+        assert captured[name]["request"]["correlation_id"] == entry["task_id"]
+        assert captured[name]["timeout"] == 7.0
+
+    assert captured["codex"]["command"][:2] == ("codex", "exec")
+    assert captured["kimi"]["command"][0] == "kimi"
+    assert "-p" in captured["kimi"]["command"]
+    assert captured["claude"]["command"][:2] == ("claude", "-p")
+
+
+def test_hlp_local_cli_demo_can_use_metaworker_kimi_config(tmp_path):
+    metaworker_config = tmp_path / "config.yaml"
+    metaworker_config.write_text(
+        """
+providers:
+  moonshot:
+    api_key: test-key
+    base_url: https://api.moonshot.cn/v1
+    model: kimi-k2.6
+    type: auto
+""".strip()
+    )
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        config_path = command[2]
+        captured["config_text"] = open(config_path).read()
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "run_id": "kimi_run",
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+            }),
+            stderr="",
+        )
+
+    result = run(run_local_cli_demo(
+        adapters=("kimi",),
+        runners={"kimi": runner},
+        metaworker_config=metaworker_config,
+        timeout=7.0,
+    ))
+
+    assert result["kimi"]["status"] == "ok"
+    assert result["kimi"]["returned_correlation_id"] == result["kimi"]["task_id"]
+    assert captured["command"][:2] == ("kimi-cli", "--config-file")
+    assert captured["command"][3:5] == ("--quiet", "-p")
+    assert 'default_model = "hlp-kimi"' in captured["config_text"]
+    assert 'type = "openai_legacy"' in captured["config_text"]
+    assert 'base_url = "https://api.moonshot.cn/v1"' in captured["config_text"]
+    assert 'model = "kimi-k2.6"' in captured["config_text"]

@@ -393,6 +393,86 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         return f"run_{self._run_counter:06d}"
 
 
+class PromptCLIAdapter(ProcessAgentAdapter):
+    """One-shot prompt adapter for local agent CLIs.
+
+    Codex, Kimi, and Claude Code expose non-interactive prompt modes rather
+    than HLP's generic JSON-over-stdin process contract. This adapter keeps the
+    HLP boundary structured by embedding the operation request in the prompt and
+    requiring the CLI to print a JSON result that carries the correlation id.
+    """
+
+    def __init__(
+        self,
+        command: tuple[str, ...],
+        *,
+        name: str = "prompt-cli",
+        runner: ProcessRunner | None = None,
+        timeout: float = 120.0,
+    ) -> None:
+        super().__init__(
+            command,
+            name=name,
+            runner=runner or _run_prompt_process,
+            timeout=timeout,
+        )
+
+    async def _execute(self, operation: str, request: dict[str, Any]) -> dict[str, Any]:
+        prompt = _cli_operation_prompt(request)
+        command = (*self.command, prompt)
+        try:
+            result = self.runner(command, request, self.timeout)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process runner raised an exception",
+                details={
+                    "command": command,
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc),
+                },
+            ) from exc
+        if result.exit_code != 0:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process command failed",
+                details={
+                    "command": command,
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                },
+            )
+        if not result.stdout.strip():
+            return {}
+        try:
+            payload = _parse_cli_stdout(result.stdout)
+        except ValueError as exc:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process stdout did not contain a JSON object",
+                details={"stdout": result.stdout, "stderr": result.stderr},
+            ) from exc
+        if not isinstance(payload, dict):
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process stdout JSON must be an object",
+                details={"stdout": result.stdout},
+            )
+        return payload
+
+    async def healthcheck(self) -> dict[str, Any]:
+        result = await super().healthcheck()
+        result["prompt_mode"] = True
+        return result
+
+
 InMemoryAgentAdapter = FakeAgentAdapter
 
 
@@ -797,10 +877,16 @@ class CrewAIAdapter(PythonCallableAgentAdapter):
         )
 
 
-class CodexCLIAdapter(ProcessAgentAdapter):
+class CodexCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
-        command: tuple[str, ...] = ("codex", "exec"),
+        command: tuple[str, ...] = (
+            "codex",
+            "exec",
+            "--sandbox",
+            "read-only",
+            "--ephemeral",
+        ),
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
@@ -808,15 +894,33 @@ class CodexCLIAdapter(ProcessAgentAdapter):
         super().__init__(command, name="codex-cli", runner=runner, timeout=timeout)
 
 
-class ClaudeCodeCLIAdapter(ProcessAgentAdapter):
+class ClaudeCodeCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
-        command: tuple[str, ...] = ("claude", "-p"),
+        command: tuple[str, ...] = (
+            "claude",
+            "-p",
+            "--output-format",
+            "json",
+            "--permission-mode",
+            "dontAsk",
+        ),
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
     ) -> None:
         super().__init__(command, name="claude-code-cli", runner=runner, timeout=timeout)
+
+
+class KimiCLIAdapter(PromptCLIAdapter):
+    def __init__(
+        self,
+        command: tuple[str, ...] = ("kimi", "--output-format", "text", "-p"),
+        *,
+        runner: ProcessRunner | None = None,
+        timeout: float = 120.0,
+    ) -> None:
+        super().__init__(command, name="kimi-cli", runner=runner, timeout=timeout)
 
 
 class HermsCLIAdapter(ProcessAgentAdapter):
@@ -865,6 +969,48 @@ async def _run_json_process(
     )
 
 
+async def _run_prompt_process(
+    command: tuple[str, ...],
+    request: dict[str, Any],
+    timeout: float,
+) -> ProcessResult:
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout,
+        )
+    except TimeoutError:
+        process.kill()
+        stdout, stderr = await process.communicate()
+        return ProcessResult(
+            exit_code=124,
+            stdout=stdout.decode(errors="replace"),
+            stderr=(stderr.decode(errors="replace") + "\nprocess timed out").strip(),
+        )
+    return ProcessResult(
+        exit_code=process.returncode or 0,
+        stdout=stdout.decode(errors="replace"),
+        stderr=stderr.decode(errors="replace"),
+    )
+
+
+def _cli_operation_prompt(request: dict[str, Any]) -> str:
+    return (
+        "You are executing an HLP adapter operation.\n"
+        "Return exactly one JSON object and no markdown. The JSON object must "
+        "include correlation_id exactly as provided. For delegate, include a "
+        "stable run_id string, status, and a short summary.\n\n"
+        "HLP request:\n"
+        f"{json.dumps(request, indent=2, sort_keys=True)}"
+    )
+
+
 def _prompt_from_input(input: dict[str, Any]) -> str:
     goal = input.get("goal")
     if goal is not None and set(input) == {"goal"}:
@@ -900,6 +1046,63 @@ def _parse_process_stdout(stdout: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("stdout JSON must be an object")
     return payload
+
+
+def _parse_cli_stdout(stdout: str) -> dict[str, Any]:
+    stripped = stdout.strip()
+    if not stripped:
+        return {}
+    try:
+        parsed = _parse_process_stdout(stripped)
+    except ValueError:
+        parsed = None
+    payload = _extract_hlp_json_payload(parsed)
+    if payload is not None:
+        return payload
+    payload = _extract_hlp_json_payload(stripped)
+    if payload is not None:
+        return payload
+    raise ValueError("stdout did not contain JSON object")
+
+
+def _extract_hlp_json_payload(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        for key in ("result", "output_text", "final_output", "raw", "message", "text", "content"):
+            nested = _extract_hlp_json_payload(value.get(key))
+            if nested is not None:
+                return nested
+        if _looks_like_hlp_payload(value):
+            return value
+        return None
+    if isinstance(value, list):
+        for item in reversed(value):
+            nested = _extract_hlp_json_payload(item)
+            if nested is not None:
+                return nested
+        return None
+    if isinstance(value, str):
+        return _extract_last_json_object(value)
+    return None
+
+
+def _looks_like_hlp_payload(value: dict[str, Any]) -> bool:
+    return any(key in value for key in ("run_id", "correlation_id", "status", "summary"))
+
+
+def _extract_last_json_object(text: str) -> dict[str, Any] | None:
+    decoder = json.JSONDecoder()
+    candidates: list[dict[str, Any]] = []
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            nested = _extract_hlp_json_payload(value)
+            candidates.append(nested or value)
+    return candidates[-1] if candidates else None
 
 
 def _validate_correlation(
