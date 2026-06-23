@@ -36,6 +36,9 @@ export default defineConfig({
           'Human Loop Protocol,HLP,human-agent work,human loop,A2A,MCP,Agent Skills',
       },
     ],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['link', { rel: 'apple-touch-icon', href: '/favicon.svg' }],
+    ['link', { rel: 'mask-icon', href: '/favicon.svg', color: '#8B5CF6' }],
   ],
 
   sitemap: {

@@ -1,10 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
   <title id="title">Human Loop Protocol</title>
   <desc id="desc">Open graph image for Human Loop Protocol with routes to existing agent and capability ecosystems.</desc>
+  <defs>
+    <linearGradient id="og-ring" x1="16" y1="16" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA"/>
+      <stop offset="0.55" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
   <rect width="1200" height="630" fill="#101014"/>
   <rect x="64" y="64" width="1072" height="502" rx="18" fill="#15151b" stroke="#2f2f38" stroke-width="2"/>
-  <text x="104" y="138" fill="#f4f4f5" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="58" font-weight="760">Human Loop Protocol</text>
-  <text x="106" y="188" fill="#a1a1aa" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="25">Accountable human-agent work, routed to existing AI ecosystems</text>
+
+  <!-- Loops mark -->
+  <g transform="translate(104 92) scale(1.125)">
+    <rect x="6" y="6" width="52" height="52" rx="14" fill="#101014"/>
+    <path d="M37.5 17 A16 16 0 1 1 26.5 17" stroke="url(#og-ring)" stroke-width="5" stroke-linecap="round"/>
+    <rect x="28.8" y="9.8" width="6.4" height="6.4" rx="1.2" transform="rotate(45 32 13)" fill="#22D3EE"/>
+    <circle cx="32" cy="32" r="3.4" fill="#F97316"/>
+  </g>
+
+  <text x="200" y="138" fill="#f4f4f5" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="58" font-weight="760">Human Loop Protocol</text>
+  <text x="202" y="188" fill="#a1a1aa" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="25">Accountable human-agent work, routed to existing AI ecosystems</text>
 
   <g transform="translate(104 246)">
     <rect width="310" height="190" rx="14" fill="#211a34" stroke="#8b5cf6" stroke-width="3"/>
