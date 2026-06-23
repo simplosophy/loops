@@ -18,6 +18,7 @@
   --vp-c-brand-soft: rgba(139, 92, 246, 0.16);
   --vp-c-bg: #101014;
   --vp-c-bg-alt: #15151b;
+  --vp-c-bg-elv: #1b1b23;
   --vp-c-bg-soft: #1b1b23;
   --vp-c-text-1: #f4f4f5;
   --vp-c-text-2: #c4c4cc;
@@ -44,6 +45,7 @@
 .dark {
   --vp-c-bg: #101014;
   --vp-c-bg-alt: #15151b;
+  --vp-c-bg-elv: #1b1b23;
   --vp-c-bg-soft: #1b1b23;
   --vp-c-brand-1: #a78bfa;
   --vp-c-brand-2: #8b5cf6;

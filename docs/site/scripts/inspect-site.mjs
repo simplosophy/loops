@@ -76,11 +76,15 @@ async function waitForPageReady(route) {
       expression: `
 (() => {
   const h1Count = document.querySelectorAll('h1').length
+  const label = ${JSON.stringify(route.label)}
+  const routeReady = label === 'home'
+    ? !!document.querySelector('.VPHero') && !!document.querySelector('.stack-art')
+    : h1Count > 0
   return {
     readyState: document.readyState,
     hasApp: !!document.querySelector('#app'),
     h1Count,
-    ok: document.readyState === 'complete' && !!document.querySelector('#app') && (${JSON.stringify(route.label)} === 'home' || h1Count > 0),
+    ok: document.readyState === 'complete' && !!document.querySelector('#app') && routeReady,
   }
 })()
 `,
@@ -233,6 +237,64 @@ for (const label of specPages) {
     fail(`[${label}/desktop] sidebar has no items — sidebar config may not apply on spec routes`)
   }
 }
+
+async function inspectNavMenuTheme() {
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  })
+  await send('Page.navigate', { url: `${baseUrl}/specs/cap` })
+  await waitForPageReady({ label: 'nav-menu' })
+  const result = await send('Runtime.evaluate', {
+    expression: `
+new Promise((resolve) => {
+  const buttons = Array.from(document.querySelectorAll('.VPNavBarMenu button'))
+  const button = buttons.find((el) => (el.textContent || '').includes('Implement'))
+  if (!button) {
+    resolve({ found: false, reason: 'Implement nav button missing' })
+    return
+  }
+  button.click()
+  setTimeout(() => {
+    const menu = document.querySelector('.VPMenu')
+    if (!menu) {
+      resolve({ found: false, reason: 'VPMenu missing after click' })
+      return
+    }
+    const menuStyle = getComputedStyle(menu)
+    const items = Array.from(menu.querySelectorAll('a')).map((item) => {
+      const style = getComputedStyle(item)
+      return {
+        text: (item.textContent || '').trim(),
+        color: style.color,
+      }
+    })
+    resolve({
+      found: true,
+      backgroundColor: menuStyle.backgroundColor,
+      color: menuStyle.color,
+      borderColor: menuStyle.borderColor,
+      itemColors: items,
+    })
+  }, 100)
+})
+`,
+    awaitPromise: true,
+    returnByValue: true,
+  })
+  const value = result?.result?.value
+  if (!value?.found) {
+    fail(`[nav-menu] ${value?.reason || 'menu probe failed'}`)
+    return
+  }
+  if (value.backgroundColor === 'rgb(255, 255, 255)') {
+    fail('[nav-menu] dropdown background is white on the dark site')
+  }
+}
+
+await inspectNavMenuTheme()
 
 // Summary table
 console.log('\nInspection summary')
