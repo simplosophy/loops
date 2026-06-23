@@ -57,8 +57,8 @@ hero:
     <span>Map HLP task identity and checkpoints into existing agent and capability protocols.</span>
   </a>
   <a class="route-card" href="./reading-routes">
-    <strong>Choose a route</strong>
-    <span>Start with HLP, then pick the L1/L0 ecosystem adapters your host already uses.</span>
+    <strong>Use the SDK</strong>
+    <span>Start from the HLP host, then wire the agent adapters your platform already uses.</span>
   </a>
 </section>
 
@@ -119,6 +119,37 @@ hero:
       <li>Agent runtimes remain free to choose models, prompts, tools, and execution loops.</li>
     </ul>
   </article>
+</section>
+
+<section class="sdk-strip" aria-label="HLP SDK surface">
+  <div class="section-heading">
+    <p class="eyebrow">SDK surface</p>
+    <h2>Applications embed HLP through a host, not through the internal loop layers.</h2>
+  </div>
+  <div class="sdk-grid">
+    <div>
+      <strong>Public entry point</strong>
+      <span><code>loops</code> and <code>loops.hlp</code> expose HLP protocol objects, <code>HLPClient</code>, <code>HLPHost</code>, stores, events, and adapters.</span>
+    </div>
+    <div>
+      <strong>Runtime boundary</strong>
+      <span><code>AgentAdapter</code> is the only required downlink from HLP to an agent runtime: delegate, block, resume, handoff, and cancel.</span>
+    </div>
+    <div>
+      <strong>Internal layers</strong>
+      <span><code>loops.loop0</code>, <code>loops.loop1</code>, and <code>loops.loop2</code> remain implementation paths, not the product API.</span>
+    </div>
+  </div>
+  <div class="sdk-code" aria-label="HLP host quickstart">
+    <span>from loops import FakeAgentAdapter, HLPHost</span>
+    <span></span>
+    <span>host = HLPHost.in_memory(adapter=FakeAgentAdapter())</span>
+    <span>task = await host.client.create_task(</span>
+    <span>    principal="user_alice",</span>
+    <span>    goal="Review PR #1234",</span>
+    <span>)</span>
+    <span>run = await host.client.delegate(task.id, "agent_reviewer")</span>
+  </div>
 </section>
 
 <section class="contract-band" aria-label="Integration contracts">

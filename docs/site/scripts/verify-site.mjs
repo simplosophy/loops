@@ -101,6 +101,8 @@ if (existsSync(distDir)) {
   assert(!homeHtml.includes('rel="preload stylesheet"'), 'Home page uses preload stylesheet links that are not stable in static screenshot tools.')
   assert(!homeHtml.includes('as="style"'), 'Home page stylesheet links should not retain preload-only as="style" attributes.')
   assert(homeHtml.includes('class="stack-art"'), 'Home page is missing the HLP integration visual.')
+  assert(homeHtml.includes('HLPHost'), 'Home page is missing the HLPHost SDK entry point.')
+  assert(homeHtml.includes('AgentAdapter'), 'Home page is missing the AgentAdapter boundary.')
   assert(!homeHtml.includes('&lt;rect'), 'Home page appears to render an SVG as escaped code.')
 
   const protocolMapHtmlPath = join(distDir, 'protocol-map.html')

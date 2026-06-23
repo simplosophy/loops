@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Loops Protocol Stack documentation site",
+  "description": "Human Loop Protocol documentation site",
   "scripts": {
     "dev": "vitepress dev docs/site",
     "build": "vitepress build docs/site",

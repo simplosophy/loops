@@ -68,6 +68,31 @@ function send(method, params = {}) {
   })
 }
 
+async function waitForPageReady(route) {
+  const deadline = Date.now() + 5000
+  let lastValue
+  while (Date.now() < deadline) {
+    const result = await send('Runtime.evaluate', {
+      expression: `
+(() => {
+  const h1Count = document.querySelectorAll('h1').length
+  return {
+    readyState: document.readyState,
+    hasApp: !!document.querySelector('#app'),
+    h1Count,
+    ok: document.readyState === 'complete' && !!document.querySelector('#app') && (${JSON.stringify(route.label)} === 'home' || h1Count > 0),
+  }
+})()
+`,
+      returnByValue: true,
+    })
+    lastValue = result?.result?.value
+    if (lastValue?.ok) return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  fail(`[${route.label}] route did not become ready before inspection: ${JSON.stringify(lastValue)}`)
+}
+
 const failures = []
 function fail(message) {
   failures.push(message)
@@ -103,7 +128,7 @@ async function inspectRoute(route, viewport) {
   await send('Network.enable')
   // Drain any prior buffered messages before navigating
   await send('Page.navigate', { url })
-  await new Promise((resolve) => setTimeout(resolve, 900))
+  await waitForPageReady(route)
 
   const probe = `
 (() => {

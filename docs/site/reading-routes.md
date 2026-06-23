@@ -12,6 +12,23 @@ for integrating with existing agent and capability ecosystems.
 | [Integration Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and adapter boundary map. |
 | [Contracts](./specs/contracts) | Cross-layer reference | The narrow contracts HLP expects adapters to preserve. |
 
+## Path 0: Embed the HLP SDK
+
+Start from the public Python surface when you are building an application or
+host process:
+
+```python
+from loops import FakeAgentAdapter, HLPHost
+
+host = HLPHost.in_memory(adapter=FakeAgentAdapter())
+client = host.client
+```
+
+Use `HLPHost` to wire store, event bus, and agent adapter. Use `HLPClient` for
+task, checkpoint, artifact, review, ledger, and audit operations. Internal
+packages such as `loops.loop0`, `loops.loop1`, and `loops.loop2` are explicit
+implementation paths; they are not the public product entry point.
+
 ## Path 1: Build a Human Loop Platform
 
 Read [HLP](./specs/hlp) first.
@@ -87,6 +104,7 @@ Read in this order:
 Build from the human-loop boundary outward:
 
 - Implement HLP objects and operations.
+- Embed through `HLPHost` or an equivalent host process.
 - Connect your agent runtime through a narrow adapter.
 - Connect capability sources through the agent runtime or host platform.
 - Verify that HLP task identity survives every runtime and capability boundary.
