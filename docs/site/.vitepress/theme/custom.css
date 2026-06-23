@@ -135,6 +135,22 @@ body {
 .vp-doc div[class*='language-'] {
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: #111116;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+html:not(.dark) .vp-code span {
+  color: var(--shiki-dark, inherit);
+}
+
+.vp-doc div[class*='language-'] > button.copy {
+  border-color: var(--line-strong);
+  background-color: rgba(255, 255, 255, 0.055);
+}
+
+.vp-doc div[class*='language-'] > button.copy:hover {
+  border-color: rgba(6, 182, 212, 0.42);
+  background-color: rgba(6, 182, 212, 0.1);
 }
 
 .overview-hero {

@@ -296,6 +296,55 @@ new Promise((resolve) => {
 
 await inspectNavMenuTheme()
 
+async function inspectCodeTheme() {
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  })
+  await send('Page.navigate', { url: `${baseUrl}/specs/hlp` })
+  await waitForPageReady({ label: 'code-theme' })
+  const result = await send('Runtime.evaluate', {
+    expression: `
+(() => {
+  const block = Array.from(document.querySelectorAll('.vp-doc div[class*="language-"]'))
+    .find((el) => (el.textContent || '').includes('Task:'))
+  if (!block) return { found: false, reason: 'Task code block missing' }
+  const style = getComputedStyle(block)
+  const tokenColors = Array.from(block.querySelectorAll('span[style]'))
+    .slice(0, 24)
+    .map((span) => getComputedStyle(span).color)
+  return {
+    found: true,
+    backgroundColor: style.backgroundColor,
+    tokenColors,
+  }
+})()
+`,
+    returnByValue: true,
+  })
+  const value = result?.result?.value
+  if (!value?.found) {
+    fail(`[code-theme] ${value?.reason || 'code probe failed'}`)
+    return
+  }
+  const lightOnlyColors = new Set([
+    'rgb(3, 47, 98)',
+    'rgb(34, 134, 58)',
+    'rgb(36, 41, 46)',
+  ])
+  const badColors = value.tokenColors.filter((color) => lightOnlyColors.has(color))
+  if (badColors.length > 0) {
+    fail(`[code-theme] code block is using light-theme token colors on the dark site: ${badColors.join(', ')}`)
+  }
+  if (value.backgroundColor === 'rgb(255, 255, 255)') {
+    fail('[code-theme] code block background is white on the dark site')
+  }
+}
+
+await inspectCodeTheme()
+
 // Summary table
 console.log('\nInspection summary')
 console.log('-'.repeat(72))
