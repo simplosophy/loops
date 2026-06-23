@@ -1,22 +1,16 @@
 # loops
 
-Minimal agent runtime SDK with a Human Loop Protocol (HLP) control plane.
-
-loops models an agent as:
-
-```text
-AgentSpec + AgentState + AgentRuntime
-```
-
-The core runtime includes one built-in tool, `shell`. Other capabilities such
-as skills, MCP, memory backends, app-specific I/O, and knowledge systems
-are intended to be added as components or integrations.
+Human Loop Protocol (HLP) SDK, adapters, and host for responsible human-agent
+workflows.
 
 HLP is the public SDK surface for human responsibility loops: task delegation,
 checkpoint decisions, artifact review, ledger writes, and audit replay. It is
 not a new agent framework. OpenAI Agents SDK, OpenAI Python SDK, Codex CLI,
 Claude Code CLI, LangGraph, CrewAI, and similar runtimes connect through
 adapters.
+
+The internal `loops.loop0` runtime remains available for experiments and local
+agent execution, but the top-level `loops` package is HLP-first.
 
 ## Quick Start
 
@@ -32,12 +26,13 @@ Run the dependency-free adapter compatibility demo:
 uv run loops-hlp-adapters-demo
 ```
 
-Use the HLP SDK directly:
+Use the HLP host directly:
 
 ```python
-from loops.hlp import ArtifactPayload, FakeAgentAdapter, HLPClient
+from loops import ArtifactPayload, FakeAgentAdapter, HLPHost
 
-client = HLPClient(adapter=FakeAgentAdapter())
+host = HLPHost.in_memory(adapter=FakeAgentAdapter())
+client = host.client
 
 task = await client.create_task(
     principal="user_alice",
@@ -67,7 +62,7 @@ artifact = await client.commit_artifact(
 Adapter entry points are optional-dependency friendly:
 
 ```python
-from loops.hlp import (
+from loops import (
     ClaudeCodeCLIAdapter,
     CodexCLIAdapter,
     CrewAIAdapter,
@@ -82,7 +77,7 @@ event-stream stdout, and can be tested with an injected runner before wiring a
 real binary:
 
 ```python
-from loops.hlp import CodexCLIAdapter
+from loops import CodexCLIAdapter
 
 codex = CodexCLIAdapter(command=("codex", "exec", "--json"))
 ```
@@ -92,7 +87,7 @@ core package:
 
 ```python
 from openai import AsyncOpenAI
-from loops.hlp import OpenAIPythonSDKAdapter
+from loops import OpenAIPythonSDKAdapter
 
 adapter = OpenAIPythonSDKAdapter(
     client=AsyncOpenAI(),
@@ -104,7 +99,7 @@ Framework adapters accept native framework objects without adding those packages
 to `loops` core dependencies:
 
 ```python
-from loops.hlp import CrewAIAdapter, LangGraphAdapter, OpenAIAgentsSDKAdapter
+from loops import CrewAIAdapter, LangGraphAdapter, OpenAIAgentsSDKAdapter
 
 openai_agents = OpenAIAgentsSDKAdapter(agent=agent, runner=Runner)
 langgraph = LangGraphAdapter(
@@ -114,7 +109,9 @@ langgraph = LangGraphAdapter(
 crew = CrewAIAdapter(crew=my_crew)
 ```
 
-Run the sample agent with DeepSeek's OpenAI-compatible API:
+## Optional loop0 Runtime
+
+Run the sample loop0 agent with DeepSeek's OpenAI-compatible API:
 
 ```bash
 export LOOPS_DEEPSEEK_API_KEY="..."
@@ -123,9 +120,9 @@ uv run loops-demo
 
 The sample defaults to `base_url=https://api.deepseek.com`,
 `model=deepseek-v4-pro`, `disable_verify_ssl=false`, the default `shell` tool,
-and a small console loop implemented outside loop0. With no positional message
-it starts an interactive loop and reuses the same thread id; pass a message to
-run one turn:
+and a small console loop implemented outside `loops.loop0`. With no positional
+message it starts an interactive loop and reuses the same thread id; pass a
+message to run one turn:
 
 ```bash
 uv run loops-demo "inspect the workspace"
@@ -163,10 +160,10 @@ uv run loops-loop0 --config examples/loop0.config.json
 environment variables still take precedence; use `--env-file path/to/env` for a
 different dotenv file.
 
-Use the SDK directly:
+Use the loop0 runtime explicitly:
 
 ```python
-from loops import AgentPolicy, PromptTemplate, agent, get_logger
+from loops.loop0 import AgentPolicy, PromptTemplate, agent, get_logger
 from loops.loop0.providers import OpenAICompatibleProvider
 
 provider = OpenAICompatibleProvider(

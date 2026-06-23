@@ -26,7 +26,6 @@ from .adapters import (
     PythonCallableAgentAdapter,
 )
 from .audit import AuditEvent, AuditLog
-from .contracts import AAPBridge, InMemoryAAPBridge
 from .events import EventBus, HLPEvent, InMemoryEventBus
 from .objects import (
     Artifact,
@@ -87,8 +86,6 @@ __all__ = [
     "ProcessResult",
     "ProcessAgentAdapter",
     "PythonCallableAgentAdapter",
-    "AAPBridge",
-    "InMemoryAAPBridge",
     # 事件
     "EventBus",
     "HLPEvent",

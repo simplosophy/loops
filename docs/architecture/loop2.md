@@ -30,7 +30,6 @@ loops/loop2/
   events.py            # HLPEvent + InMemoryEventBus
   operations.py        # 21 个操作 (spec §4)
   audit.py             # AuditEvent + AuditLog (append-only)
-  contracts.py         # AAPBridge/InMemoryAAPBridge 兼容别名
 ```
 
 ## 7 个一等对象
@@ -72,7 +71,7 @@ run = await client.delegate(task.id, "agent_reviewer", capability="code-review")
 
 ## 集成契约（spec §5.1）
 
-loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。`AAPBridge` / `InMemoryAAPBridge` 作为历史兼容别名保留，语义上已经收敛为 HLP→agent adapter：
+loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。历史上的 `AAPBridge` / `InMemoryAAPBridge` 兼容别名已经移除；HLP 只公开一个下行边界：HLP→agent adapter。
 
 | HLP 操作 | L1 adapter 联动 | 铁律 |
 |----------|---------|------|
@@ -128,7 +127,7 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 ## 验证
 
 - `uv run pytest tests/test_hlp_sdk.py -q`：SDK facade、adapter、event、SQLite、demo
-- `uv run pytest tests/test_loop2_hlp.py -q`：39 passed
+- `uv run pytest tests/test_loop2_hlp.py -q`
 - `uv run loops-hlp-demo`：无外部依赖端到端 demo
 - `uv run loops-hlp-adapters-demo`：无外部依赖 adapter compatibility demo
 - 端到端闭环覆盖 spec 附录 A "Review PR #1234" 全时序

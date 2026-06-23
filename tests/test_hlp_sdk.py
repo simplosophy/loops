@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 
 from loops.hlp import (
@@ -15,6 +16,7 @@ from loops.hlp import (
     HermesCLIAdapter,
     HermsCLIAdapter,
     HLPClient,
+    HLPHost,
     InMemoryEventBus,
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
@@ -37,6 +39,42 @@ class PublishOnlyEventBus:
 
     async def publish(self, event: HLPEvent) -> None:
         self.events.append(event)
+
+
+def test_top_level_loops_is_hlp_first_public_surface():
+    import loops
+
+    assert loops.HLPClient is HLPClient
+    assert loops.HLPHost is HLPHost
+    assert "HLPClient" in loops.__all__
+    assert "HLPHost" in loops.__all__
+    assert "agent" not in loops.__all__
+    assert not hasattr(loops, "agent")
+
+    for legacy_alias in ("agent", "providers", "tools", "types"):
+        try:
+            importlib.import_module(f"loops.{legacy_alias}")
+        except ModuleNotFoundError:
+            continue
+        raise AssertionError(f"loops.{legacy_alias} should not be a public compat alias")
+
+
+def test_hlp_host_wires_client_adapter_store_and_events():
+    adapter = FakeAgentAdapter()
+    host = HLPHost.in_memory(adapter=adapter)
+
+    task = run(host.client.create_task(
+        principal="user_alice",
+        goal="Host HLP work",
+    ))
+    run_handle = run(host.client.delegate(task.id, "agent_reviewer"))
+
+    assert isinstance(host.client, HLPClient)
+    assert adapter.task_of_run(run_handle.run_id) == task.id
+    assert [event.action for event in host.events] == [
+        "task.created",
+        "task.delegated",
+    ]
 
 
 def test_hlp_client_runs_human_loop_without_low_level_operations():

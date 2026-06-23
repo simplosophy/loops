@@ -51,7 +51,7 @@ handoff(task_id, from_assignee, to_assignee, context) -> run_id
 events(task_id) -> correlated run events
 ```
 
-参考实现中的 `AAPBridge` 命名保留历史连续性，但语义上它是 **HLP→L1 adapter**，不是 Loops 新定义的独立 L1 协议。
+参考实现的公开边界是 `AgentAdapter`。HLP 不定义新的独立 L1 协议，也不保留历史 AAP 兼容 API。
 
 ---
 

@@ -40,8 +40,9 @@ HLP should route through that implementation.
 
 ## Required Adapter Shape
 
-The HLP reference implementation names the boundary `AAPBridge` for historical
-continuity, but the boundary is intentionally small:
+The HLP reference implementation names the boundary `AgentAdapter`. It is an
+HLP-to-agent-runtime adapter, not a new L1 protocol, and historical AAP
+compatibility aliases are not part of the public API:
 
 ```text
 delegate(task_id, assignee, payload) -> run_id

@@ -33,7 +33,7 @@ class HLPClient:
     _event_seq: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.operations = HumanLoopOperations(store=self.store, aap=self.adapter)
+        self.operations = HumanLoopOperations(store=self.store, adapter=self.adapter)
 
     async def create_task(
         self,

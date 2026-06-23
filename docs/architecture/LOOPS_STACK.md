@@ -30,7 +30,7 @@ loops 的核心贡献是 HLP：定义人和自主 agent 围绕 Task 的责任闭
 
 ## 既有软件分层
 
-本文定义 `loops/loop0/loop1/loop2` 三层架构的目标边界、状态所有权和扩展点。当前代码已经将单 Agent runtime 收敛到 `loops/loop0/`；`loop2` 当前实现 HLP 参考实现，`loop1` 仍是后续交互容器演进目标。
+本文定义 `loops/loop0/loop1/loop2` 三层内部实现边界、状态所有权和扩展点。对外产品主线不是三层框架，而是 HLP 协议、SDK、adapters 和 host。当前代码已经将单 Agent runtime 收敛到 `loops/loop0/`；HLP 参考实现暂由 `loops/loop2/` 承载并通过 `loops.hlp` / 顶层 `loops` 暴露，后续可以在不改变 public API 的前提下继续迁移内部目录。
 
 ## 总体分层
 
@@ -277,6 +277,11 @@ ChannelMessage
 
 ```text
 loops/
+  hlp/
+    __init__.py
+    host.py
+    # public HLP SDK surface: protocol objects, client, adapters, host
+
   loop0/
     agent.py
     runtime.py
@@ -312,19 +317,18 @@ loops/
     control_plane.py
 ```
 
-顶层 `loops/__init__.py` 可以继续 re-export 稳定公共 API，以便包内部迁移不破坏用户导入路径。
+顶层 `loops/__init__.py` 只 re-export 稳定 HLP 公共 API。loop0/loop1/loop2 仍可被内部代码和高级用户显式导入，但不再作为顶层产品入口或兼容别名暴露。
 
 ## 演进顺序
 
 建议按以下顺序落地：
 
-1. 已完成：将当前单 Agent runtime 收敛为 `loops/loop0/`。
-2. 已完成：移除 loop0 channel 层，改为 `InteractionContext` + `EventSink`。
-3. 引入 loop1 的协议对象：`ChannelMessage`、`ChannelOutput`、`SessionState`、`Storage`、`LoopContainer`。
-4. 用内存 storage 和 TUI channel 实现最小 loop1，支持单用户多 Agent。
-5. 增加 WebUI/IM channel 和持久化 storage adapter。
-6. 引入 loop2 的 project/runtime 协议，但先只做控制面和 project state，不直接做复杂调度。
-7. 在 loop2 上增加跨用户 task/handoff/shared artifact 协作。
+1. 已完成：将外部产品入口翻转为 HLP-first：`loops` / `loops.hlp` 暴露 HLP objects、SDK、adapters、host。
+2. 已完成：将当前单 Agent runtime 收敛为显式内部路径 `loops.loop0`，并移除顶层 loop0 兼容别名。
+3. 已完成：移除 loop0 channel 层，改为 `InteractionContext` + `EventSink`。
+4. 下一步：把 HLP reference implementation 从 `loops.loop2` 逐步物理迁移到 `loops.hlp` 内部模块，保持 public API 不变。
+5. 后续：按需引入 loop1 的 channel/session/storage 实现，作为 HLP host 的下层 adapter，不作为新的对外协议。
+6. 后续：在 HLP 上增加 project/runtime 编排能力，但只通过 Task、Ownership、Artifact、Ledger、Audit 等 HLP 对象暴露。
 
 ## 待确认问题
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .host import HLPHost
 from loops.loop2 import (
     AgentAdapter,
     AgentAdapterError,
@@ -74,6 +75,7 @@ __all__ = [
     "HermesCLIAdapter",
     "HermsCLIAdapter",
     "HLPClient",
+    "HLPHost",
     "HLPEvent",
     "HumanLoopOperations",
     "HumanLoopStore",

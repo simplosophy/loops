@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from loops import (
+from loops.loop0 import (
     AgentEvent,
     AgentPolicy,
     InMemoryEventLogger,
@@ -205,16 +205,16 @@ def test_prompt_template_injects_interaction_tool_provider_profiles(tmp_path: Pa
     assert "interactive=true" in system_prompt
 
 
-def test_top_level_imports_remain_compatible():
-    from loops.providers.adapter import AdapterBackedProvider as CompatAdapterBackedProvider
-    from loops.providers.openai import OpenAICompatibleProvider as CompatOpenAICompatibleProvider
-    from loops.tools import ShellTool as CompatShellTool
-    from loops.types import Message as CompatMessage
+def test_loop0_runtime_is_explicit_internal_surface():
+    from loops.loop0.providers.adapter import AdapterBackedProvider as Loop0AdapterBackedProvider
+    from loops.loop0.providers.openai import OpenAICompatibleProvider as Loop0OpenAICompatibleProvider
+    from loops.loop0.tools import ShellTool as Loop0ShellTool
+    from loops.loop0.types import Message as Loop0Message
 
-    assert CompatAdapterBackedProvider is AdapterBackedProvider
-    assert CompatOpenAICompatibleProvider is OpenAICompatibleProvider
-    assert CompatShellTool is ShellTool
-    assert CompatMessage is Message
+    assert Loop0AdapterBackedProvider is AdapterBackedProvider
+    assert Loop0OpenAICompatibleProvider is OpenAICompatibleProvider
+    assert Loop0ShellTool is ShellTool
+    assert Loop0Message is Message
 
 
 def test_top_level_channel_alias_is_removed():

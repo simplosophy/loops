@@ -411,7 +411,7 @@ HLP 是本项目定义的核心协议。它向下接入既有 agent runtime 和 
 | `checkpoint.resolve` | `resume` | 对应 agent run **MUST** 恢复执行 |
 | `ownership.delegate` | `delegate`（子 agent） | 同 task.assign，但 parent 可追 |
 
-> 参考实现中的 `AAPBridge` 命名保留历史连续性，语义上是 HLP→L1 adapter，不表示 Loops 新定义了完整 L1 协议。
+参考实现的公开边界命名为 `AgentAdapter`。HLP 不定义新的 L1 agent-to-agent 协议，也不暴露历史 AAP 兼容别名。
 
 ### 5.2 HLP → Channel（→ loop1）
 

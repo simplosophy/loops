@@ -1,6 +1,6 @@
 # loop0 Architecture Overview
 
-本文定义 `loops.loop0` 的当前目标架构。`loop0` 是单个 Agent 的运行时内核，只负责一次 Agent run 的执行；`loop1` 才负责 TUI、WebUI、IM、scheduler 等 channel 协议，`loop2` 负责组织级项目协作和云端运行时编排。
+本文定义 `loops.loop0` 的当前目标架构。`loop0` 是单个 Agent 的内部运行时内核，只负责一次 Agent run 的执行；`loop1` 才负责 TUI、WebUI、IM、scheduler 等 channel 协议，`loop2` 负责组织级项目协作和云端运行时编排。对外产品入口是 HLP（`loops` / `loops.hlp`），不是 loop0 runtime。
 
 ## 设计边界
 

@@ -24,7 +24,6 @@ from loops.loop2 import (
     AgentAdapterError,
     FakeAgentAdapter,
     HumanLoopOperations,
-    InMemoryAAPBridge,
     ProtocolError,
     TaskSpec,
     ArtifactPayload,
@@ -80,6 +79,8 @@ def test_human_loop_public_api_names_are_primary():
     assert l2.HumanLoopStore is l2.store.HumanLoopStore
     assert "HumanLoopOperations" in l2.__all__
     assert "HumanLoopStore" in l2.__all__
+    assert "AAPBridge" not in l2.__all__
+    assert "InMemoryAAPBridge" not in l2.__all__
     assert "H" + "ACPOperations" not in l2.__all__
     assert "H" + "ACPStore" not in l2.__all__
 
@@ -151,7 +152,7 @@ def test_assign_requires_created_state():
 
 def test_task_assign_adapter_failure_does_not_advance_state_or_audit():
     adapter = FailableAdapter("delegate")
-    ops = HumanLoopOperations(aap=adapter)
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops.task_create(principal="alice", goal="g"))
 
     with pytest.raises(AgentAdapterError):
@@ -187,7 +188,7 @@ def test_choice_checkpoint_requires_options():
 
 def test_checkpoint_raise_adapter_failure_does_not_create_pending_checkpoint():
     adapter = FailableAdapter("block")
-    ops = HumanLoopOperations(aap=adapter)
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     audit_before = [event.action for event in ops.store.audit_log.all()]
 
@@ -221,7 +222,7 @@ def test_checkpoint_resolve_requires_pending():
 
 def test_checkpoint_resolve_adapter_failure_does_not_resolve_checkpoint():
     adapter = FailableAdapter("resume")
-    ops = HumanLoopOperations(aap=adapter)
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     ckpt = run(ops.checkpoint_raise(
         task_id=task.id,
@@ -488,55 +489,55 @@ def test_audit_replay_reconstructs_history():
 
 
 # ════════════════════════════════════════════════════════════
-# §5 层间契约 (spec §5.1) — HLP↔AAP
+# §5 层间契约 (spec §5.1) — HLP↔agent adapter
 # ════════════════════════════════════════════════════════════
 
 
-def test_task_assign_triggers_aap_delegate():
-    """task.assign 必须触发 AAP delegate (spec §5.1)。"""
-    bridge = InMemoryAAPBridge()
-    ops = HumanLoopOperations(aap=bridge)
+def test_task_assign_triggers_adapter_delegate():
+    """task.assign 必须触发 agent adapter delegate (spec §5.1)。"""
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops.task_create(principal="alice", goal="review PR"))
     run(ops.task_assign(task.id, "agent_devin"))
 
-    delegates = bridge.calls_of("delegate")
+    delegates = adapter.calls_of("delegate")
     assert len(delegates) == 1
     # 铁律: TaskID 贯穿 (spec §5.1)
     assert delegates[0][1]["task_id"] == task.id
     run_id = delegates[0][1]["run_id"]
-    assert bridge.task_of_run(run_id) == task.id
+    assert adapter.task_of_run(run_id) == task.id
 
 
-def test_checkpoint_raises_aap_block():
-    """checkpoint.raise 必须触发 AAP block (spec §5.1)。"""
-    bridge = InMemoryAAPBridge()
-    ops = HumanLoopOperations(aap=bridge)
+def test_checkpoint_raises_adapter_block():
+    """checkpoint.raise 必须触发 agent adapter block (spec §5.1)。"""
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     ckpt = run(ops.checkpoint_raise(
         task_id=task.id, kind="approval", prompt="ok?", raised_by="agent"
     ))
-    blocks = bridge.calls_of("block")
+    blocks = adapter.calls_of("block")
     assert len(blocks) == 1
     assert blocks[0][1]["checkpoint_id"] == ckpt.id
 
 
-def test_checkpoint_resolve_triggers_aap_resume():
-    """checkpoint.resolve 必须触发 AAP resume (spec §5.1)。"""
-    bridge = InMemoryAAPBridge()
-    ops = HumanLoopOperations(aap=bridge)
+def test_checkpoint_resolve_triggers_adapter_resume():
+    """checkpoint.resolve 必须触发 agent adapter resume (spec §5.1)。"""
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     ckpt = run(ops.checkpoint_raise(
         task_id=task.id, kind="approval", prompt="ok?", raised_by="agent"
     ))
     run(ops.checkpoint_resolve(ckpt.id, by="alice", action="approve"))
-    resumes = bridge.calls_of("resume")
+    resumes = adapter.calls_of("resume")
     assert len(resumes) == 1
 
 
 def test_checkpoint_resolve_passes_full_resolution_payload_to_adapter():
     """resume payload 必须包含完整 resolution，而不只传 action/choice。"""
-    bridge = InMemoryAAPBridge()
-    ops = HumanLoopOperations(aap=bridge)
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     ckpt = run(ops.checkpoint_raise(
         task_id=task.id, kind="input", prompt="Need details", raised_by="agent"
@@ -550,7 +551,7 @@ def test_checkpoint_resolve_passes_full_resolution_payload_to_adapter():
         comment="Keep blast radius small.",
     ))
 
-    resumes = bridge.calls_of("resume")
+    resumes = adapter.calls_of("resume")
     assert resumes[-1][1]["resolution"] == {
         "by": "alice",
         "action": "provide",
@@ -584,17 +585,17 @@ def test_checkpoint_resolve_returns_ownership_to_blocked_agent():
 
 def test_taskid_threads_to_run():
     """TaskID 必须全栈贯穿到 Run (spec §5.1 铁律)。"""
-    bridge = InMemoryAAPBridge()
-    ops = HumanLoopOperations(aap=bridge)
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     run_id = ops.store.run_of_task(task.id)
     assert run_id is not None
-    assert bridge.task_of_run(run_id) == task.id
+    assert adapter.task_of_run(run_id) == task.id
 
 
 def test_task_cancel_calls_adapter_before_completing_task():
     adapter = FailableAdapter("cancel")
-    ops = HumanLoopOperations(aap=adapter)
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
 
     with pytest.raises(AgentAdapterError):
@@ -607,7 +608,7 @@ def test_task_cancel_calls_adapter_before_completing_task():
 
 def test_ownership_transfer_handoff_updates_active_run_binding():
     adapter = FakeAgentAdapter()
-    ops = HumanLoopOperations(aap=adapter)
+    ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
     original_run = ops.store.run_of_task(task.id)
 
@@ -650,7 +651,7 @@ def test_end_to_end_pr_review_scenario():
     assert task.ownership.principal == alice
     assert task.ownership.assignee == alice
 
-    # 2. task.assign (ownership alice→devin, AAP delegate)
+    # 2. task.assign (ownership alice→devin, adapter delegate)
     run(ops.task_assign(task.id, devin))
     assert task.state == "assigned"
     assert task.ownership.assignee == devin

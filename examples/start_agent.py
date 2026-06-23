@@ -24,7 +24,7 @@ import logging
 import os
 import sys
 
-from loops import AgentEvent, AgentPolicy, InteractionContext, PromptTemplate, agent, get_logger
+from loops.loop0 import AgentEvent, AgentPolicy, InteractionContext, PromptTemplate, agent, get_logger
 from loops.loop0.providers import OpenAICompatibleProvider
 from loops.loop0.types import UserInput
 

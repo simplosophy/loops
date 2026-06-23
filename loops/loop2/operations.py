@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .contracts import AAPBridge, InMemoryAAPBridge
+from .adapters import AgentAdapter, FakeAgentAdapter
 from .objects import (
     Artifact,
     ArtifactPayload,
@@ -46,7 +46,7 @@ def _now() -> datetime:
 #   1. 前置条件校验 (spec §4.3) → 失败抛 ProtocolError
 #   2. 状态转移 (spec §3.3)
 #   3. audit 记录 (spec §4.2)
-#   4. 层间契约调用 (spec §5.1, 如涉及 AAP)
+#   4. 层间契约调用 (spec §5.1, 如涉及 agent adapter)
 #
 # 全部操作都是 async——为未来 transport 留口子 (spec §7.1)。
 # ════════════════════════════════════════════════════════════
@@ -56,12 +56,12 @@ def _now() -> datetime:
 class HumanLoopOperations:
     """HLP 协议操作入口 (spec §4.1, 共 21 个)。
 
-    持有 store + audit + aap_bridge，是协议层的 facade。
+    持有 store + audit + agent adapter，是协议层的 facade。
     上层 (transport/CLI) 调用这里；本类不感知 transport。
     """
 
     store: HumanLoopStore = field(default_factory=HumanLoopStore)
-    aap: AAPBridge = field(default_factory=InMemoryAAPBridge)
+    adapter: AgentAdapter = field(default_factory=FakeAgentAdapter)
 
     # ────────────────── Task (spec §4.1) ──────────────────
 
@@ -113,7 +113,7 @@ class HumanLoopOperations:
         task = self.store._get_task_for_update(task_id)
         self._require_state(task, "created")
 
-        run_id = await self.aap.delegate(
+        run_id = await self.adapter.delegate(
             task_id=task_id,
             agent_id=agent_id,
             capability=capability,
@@ -163,7 +163,7 @@ class HumanLoopOperations:
             )
         run_id = self.store.run_of_task(task_id)
         if run_id is not None:
-            await self.aap.cancel(run_id, f"cancelled by {by}")
+            await self.adapter.cancel(run_id, f"cancelled by {by}")
         check_transition(task.state, "completed")
         task.state = "completed"
         self._audit(
@@ -211,7 +211,7 @@ class HumanLoopOperations:
         ckpt_raised_by = raised_by
         run_id = self.store.run_of_task(task_id)
         if run_id is not None:
-            await self.aap.block(run_id, ckpt.id, prompt)
+            await self.adapter.block(run_id, ckpt.id, prompt)
 
         self.store.put_checkpoint(ckpt)
         task.checkpoints.append(ckpt.id)
@@ -273,7 +273,7 @@ class HumanLoopOperations:
         resume_payload = self._resolution_payload(resolution)
         run_id = self.store.run_of_task(task.id)
         if run_id is not None:
-            await self.aap.resume(run_id, resume_payload)
+            await self.adapter.resume(run_id, resume_payload)
 
         ckpt.resolution = resolution
         ckpt.state = "resolved"
@@ -342,7 +342,7 @@ class HumanLoopOperations:
         run_id = self.store.run_of_task(task_id)
         new_run_id: str | None = None
         if via == "handoff" and run_id is not None and to != task.ownership.assignee:
-            new_run_id = await self.aap.handoff(
+            new_run_id = await self.adapter.handoff(
                 run_id,
                 to,
                 {
@@ -384,7 +384,7 @@ class HumanLoopOperations:
                 "cannot delegate terminal task",
             )
         parent_run = self.store.run_of_task(task_id)
-        run_id = await self.aap.delegate(
+        run_id = await self.adapter.delegate(
             task_id=task_id,
             agent_id=to_agent,
             capability="",

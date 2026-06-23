@@ -129,7 +129,7 @@ NewRun:
 | Boundary | Emits | Consumed by |
 | --- | --- | --- |
 | Capability route | Capability invocation results and capability errors | Agent runtime or host platform |
-| Agent route | Run events with HLP task correlation | HLP bridge and host platform |
+| Agent route | Run events with HLP task correlation | HLP adapter and host platform |
 | HLP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
 
 HLP produces events, but it does not define how those events are rendered in
