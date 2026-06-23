@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .audit import AuditLog
 from .contracts import AAPBridge, InMemoryAAPBridge
 from .objects import (
     Artifact,
@@ -78,6 +77,7 @@ class HumanLoopOperations:
         """task.create (spec §4.1)。state=created."""
         if not principal:
             raise ProtocolError("INVALID_SPEC", "principal is required")
+        self._require_human_actor(principal, "principal")
         if not goal:
             raise ProtocolError("INVALID_SPEC", "goal is required")
 
@@ -110,8 +110,15 @@ class HumanLoopOperations:
         input: dict[str, Any] | None = None,
     ) -> Task:
         """task.assign (spec §4.1)。created→assigned，ownership 转 agent。"""
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         self._require_state(task, "created")
+
+        run_id = await self.aap.delegate(
+            task_id=task_id,
+            agent_id=agent_id,
+            capability=capability,
+            input=input or {"goal": task.spec.goal},
+        )
 
         # ownership 转移 (spec §3.5)
         task.ownership = task.ownership.transfer(agent_id, via="assign")
@@ -125,13 +132,6 @@ class HumanLoopOperations:
             task_id=task.id,
             after={"assignee": agent_id},
         )
-        # 层间契约：触发 AAP delegate (spec §5.1)
-        run_id = await self.aap.delegate(
-            task_id=task_id,
-            agent_id=agent_id,
-            capability=capability,
-            input=input or {"goal": task.spec.goal},
-        )
         self.store.bind_run(task_id, run_id)
         return task
 
@@ -141,7 +141,7 @@ class HumanLoopOperations:
         spec §3.3 隐含转移（agent runtime 启动）。非 spec §4.1 显式操作，
         但状态机需要它。参考实现暴露此方法。
         """
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         self._require_state(task, "assigned")
         check_transition(task.state, "in_progress")
         task.state = "in_progress"
@@ -155,12 +155,15 @@ class HumanLoopOperations:
 
     async def task_cancel(self, task_id: str, by: str) -> Task:
         """task.cancel (spec §4.1)。→completed (中止)。"""
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         if task.state in ("completed", "rejected"):
             raise ProtocolError(
                 "PRECONDITION_FAILED",
                 f"cannot cancel terminal task in state {task.state!r}",
             )
+        run_id = self.store.run_of_task(task_id)
+        if run_id is not None:
+            await self.aap.cancel(run_id, f"cancelled by {by}")
         check_transition(task.state, "completed")
         task.state = "completed"
         self._audit(
@@ -192,7 +195,7 @@ class HumanLoopOperations:
         raised_by: str,
     ) -> Checkpoint:
         """checkpoint.raise (spec §4.1)。in_progress→blocked。"""
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         self._require_state(task, "in_progress")
         if kind == "choice" and not options:
             raise ProtocolError("INVALID_SPEC", "choice checkpoint requires options")
@@ -206,6 +209,10 @@ class HumanLoopOperations:
             state="pending",
         )
         ckpt_raised_by = raised_by
+        run_id = self.store.run_of_task(task_id)
+        if run_id is not None:
+            await self.aap.block(run_id, ckpt.id, prompt)
+
         self.store.put_checkpoint(ckpt)
         task.checkpoints.append(ckpt.id)
 
@@ -223,10 +230,6 @@ class HumanLoopOperations:
             subject=("checkpoint", ckpt.id),
             task_id=task_id,
         )
-        # 层间契约：通知 AAP block (spec §5.1)
-        run_id = self.store.run_of_task(task_id)
-        if run_id is not None:
-            await self.aap.block(run_id, ckpt.id, prompt)
         return ckpt
 
     async def checkpoint_resolve(
@@ -242,14 +245,22 @@ class HumanLoopOperations:
     ) -> Checkpoint:
         """checkpoint.resolve (spec §4.1)。blocked→in_progress (approve/provide)
         或 blocked→completed (reject)。"""
-        ckpt = self.store.get_checkpoint(ckpt_id)
+        ckpt = self.store._get_checkpoint_for_update(ckpt_id)
         if ckpt.state != "pending":
             raise ProtocolError(
                 "PRECONDITION_FAILED",
                 f"cannot resolve checkpoint in state {ckpt.state!r}",
             )
-        task = self.store.get_task(ckpt.task_id)
+        task = self.store._get_task_for_update(ckpt.task_id)
         self._require_state(task, "blocked")
+        self._require_human_actor(by, "checkpoint resolver")
+        self._validate_checkpoint_resolution(
+            ckpt,
+            action=action,
+            choice=choice,
+            input=input,
+            reassign_to=reassign_to,
+        )
 
         resolution = CheckpointResolution(
             by=by,
@@ -259,6 +270,11 @@ class HumanLoopOperations:
             reassign_to=reassign_to,
             comment=comment,
         )
+        resume_payload = self._resolution_payload(resolution)
+        run_id = self.store.run_of_task(task.id)
+        if run_id is not None:
+            await self.aap.resume(run_id, resume_payload)
+
         ckpt.resolution = resolution
         ckpt.state = "resolved"
 
@@ -283,24 +299,20 @@ class HumanLoopOperations:
             action="task.checkpoint.resolved",
             subject=("checkpoint", ckpt.id),
             task_id=task.id,
-            after={"action": action, "choice": choice},
+            after=resume_payload,
         )
-        # 层间契约：通知 AAP resume (spec §5.1)
-        run_id = self.store.run_of_task(task.id)
-        if run_id is not None:
-            await self.aap.resume(run_id, {"action": action, "choice": choice})
         return ckpt
 
     async def checkpoint_expire(self, ckpt_id: str) -> Checkpoint:
         """checkpoint.expire (spec §4.1, §7.2)。超时自动失效。"""
-        ckpt = self.store.get_checkpoint(ckpt_id)
+        ckpt = self.store._get_checkpoint_for_update(ckpt_id)
         if ckpt.state != "pending":
             raise ProtocolError(
                 "PRECONDITION_FAILED",
                 f"cannot expire checkpoint in state {ckpt.state!r}",
             )
         ckpt.state = "expired"
-        task = self.store.get_task(ckpt.task_id)
+        task = self.store._get_task_for_update(ckpt.task_id)
         # 超时后 task 保持 blocked (spec §7.2 开放议题，参考实现选纯挂起)
         self._audit(
             actor="system",
@@ -321,13 +333,28 @@ class HumanLoopOperations:
         actor: str = "system",
     ) -> Task:
         """ownership.transfer (spec §4.1, §3.5)。内部转移 assignee。"""
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         if task.is_terminal:
             raise ProtocolError(
                 "PRECONDITION_FAILED",
                 "cannot transfer ownership of terminal task",
             )
+        run_id = self.store.run_of_task(task_id)
+        new_run_id: str | None = None
+        if via == "handoff" and run_id is not None and to != task.ownership.assignee:
+            new_run_id = await self.aap.handoff(
+                run_id,
+                to,
+                {
+                    "task_id": task.id,
+                    "from": task.ownership.assignee,
+                    "to": to,
+                    "via": via,
+                },
+            )
         task.ownership = task.ownership.transfer(to, via=via)  # type: ignore[arg-type]
+        if new_run_id is not None:
+            self.store.bind_run(task_id, new_run_id)
         self._audit(
             actor=actor,
             action="ownership.transferred",
@@ -345,7 +372,7 @@ class HumanLoopOperations:
         actor: str,
     ) -> Task:
         """ownership.delegate (spec §4.1, §3.5)。agent 向下委派，需 delegable。"""
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         if not task.ownership.delegable:
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -356,23 +383,23 @@ class HumanLoopOperations:
                 "PRECONDITION_FAILED",
                 "cannot delegate terminal task",
             )
+        parent_run = self.store.run_of_task(task_id)
+        run_id = await self.aap.delegate(
+            task_id=task_id,
+            agent_id=to_agent,
+            capability="",
+            input={"goal": task.spec.goal},
+            parent_run=parent_run,
+        )
         # 链式委派：记录到 chain (spec §7.3)
         task.ownership = task.ownership.transfer(to_agent, via="assign")
+        self.store.bind_run(task_id, run_id)
         self._audit(
             actor=actor,
             action="ownership.delegated",
             subject=("task", task.id),
             task_id=task.id,
             after={"delegatee": to_agent},
-        )
-        # 层间契约：触发子 agent delegate (spec §5.1)
-        parent_run = self.store.run_of_task(task_id)
-        await self.aap.delegate(
-            task_id=task_id,
-            agent_id=to_agent,
-            capability="",
-            input={"goal": task.spec.goal},
-            parent_run=parent_run,
         )
         return task
 
@@ -394,7 +421,7 @@ class HumanLoopOperations:
         - review_ready/under_review → in_progress (changes_requested, 返工)
         - review_ready/under_review → rejected (rejected)
         """
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         if task.state not in ("review_ready", "under_review"):
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -404,6 +431,12 @@ class HumanLoopOperations:
             raise ProtocolError(
                 "INVALID_SPEC",
                 "changes_requested verdict requires requested_changes",
+            )
+        self._require_human_actor(reviewer, "reviewer")
+        if artifact_id not in task.artifacts:
+            raise ProtocolError(
+                "PRECONDITION_FAILED",
+                f"artifact {artifact_id} is not an output of task {task_id}",
             )
         # 确保 artifact 存在
         self.store.get_artifact(artifact_id)
@@ -427,6 +460,8 @@ class HumanLoopOperations:
         if verdict == "approved":
             check_transition(task.state, "accepted")
             task.state = "accepted"
+            check_transition(task.state, "completed")
+            task.state = "completed"
         elif verdict == "changes_requested":
             check_transition(task.state, "in_progress")
             task.state = "in_progress"
@@ -448,6 +483,14 @@ class HumanLoopOperations:
             task_id=task_id,
             after={"verdict": verdict},
         )
+        if verdict == "approved":
+            self._audit(
+                actor="system",
+                action="task.completed",
+                subject=("task", task.id),
+                task_id=task_id,
+                after={"review_id": review.id},
+            )
         return review
 
     async def review_comment(
@@ -462,7 +505,7 @@ class HumanLoopOperations:
         注意：spec §2.3 说 Review 提交后不可变——这里"追加批注"指
         产生新记录而非改原 review。参考实现存新 Review。
         """
-        original = self.store.get_review(review_id)
+        original = self.store._get_review_for_update(review_id)
         new_review = Review(
             id=gen_review_id(),
             task_id=original.task_id,
@@ -498,7 +541,7 @@ class HumanLoopOperations:
         under_review→in_progress 不在此处理（review 状态机管）。
         参考：in_progress 状态下 commit 触发 review_ready。
         """
-        task = self.store.get_task(task_id)
+        task = self.store._get_task_for_update(task_id)
         # spec §4.3: artifact.commit 要求 in_progress 或返工态
         if task.state not in ("in_progress",):
             raise ProtocolError(
@@ -560,7 +603,7 @@ class HumanLoopOperations:
 
     async def ledger_read(self, scope: str, key: str) -> Any | None:
         """ledger.read (spec §4.1, §3.8)。"""
-        ledger = self.store.find_ledger_by_scope(scope)
+        ledger = self.store._find_ledger_by_scope_for_update(scope)
         if ledger is None:
             return None
         return ledger.read(key)
@@ -587,7 +630,7 @@ class HumanLoopOperations:
 
     async def ledger_history(self, scope: str, key: str) -> list[LedgerEntry]:
         """ledger.history (spec §4.1)。"""
-        ledger = self.store.find_ledger_by_scope(scope)
+        ledger = self.store._find_ledger_by_scope_for_update(scope)
         if ledger is None:
             return []
         return ledger.history(key)
@@ -637,6 +680,58 @@ class HumanLoopOperations:
             before=before,
             after=after,
         )
+
+    @staticmethod
+    def _is_human(actor: str) -> bool:
+        return bool(actor) and not actor.startswith("agent_")
+
+    @staticmethod
+    def _is_agent(actor: str) -> bool:
+        return actor.startswith("agent_")
+
+    def _require_human_actor(self, actor: str, role: str) -> None:
+        if not self._is_human(actor):
+            raise ProtocolError("UNAUTHORIZED", f"{role} must be a human actor")
+
+    def _validate_checkpoint_resolution(
+        self,
+        ckpt: Checkpoint,
+        *,
+        action: CheckpointResolutionAction,
+        choice: str | None,
+        input: str | None,
+        reassign_to: str | None,
+    ) -> None:
+        if action == "choose":
+            option_ids = {option.id for option in ckpt.options}
+            if not choice or choice not in option_ids:
+                raise ProtocolError(
+                    "INVALID_SPEC",
+                    "choose resolution requires a choice from checkpoint options",
+                )
+        elif action == "provide":
+            if not input:
+                raise ProtocolError(
+                    "INVALID_SPEC",
+                    "provide resolution requires input",
+                )
+        elif action == "reassign":
+            if not reassign_to or not self._is_agent(reassign_to):
+                raise ProtocolError(
+                    "INVALID_SPEC",
+                    "reassign resolution requires an agent assignee",
+                )
+
+    @staticmethod
+    def _resolution_payload(resolution: CheckpointResolution) -> dict[str, Any]:
+        return {
+            "by": resolution.by,
+            "action": resolution.action,
+            "choice": resolution.choice,
+            "input": resolution.input,
+            "reassign_to": resolution.reassign_to,
+            "comment": resolution.comment,
+        }
 
     @staticmethod
     def _last_assignee_before(

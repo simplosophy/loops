@@ -34,7 +34,7 @@ async def run_demo() -> dict[str, Any]:
         ),
         raised_by="agent_reviewer",
     )
-    await client.resolve_checkpoint(
+    checkpoint = await client.resolve_checkpoint(
         checkpoint.id,
         by="user_alice",
         action="choose",
@@ -85,4 +85,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -58,7 +58,7 @@ _DATACLASS_TYPES = {
 
 
 class SQLiteHumanLoopStore(HumanLoopStore):
-    """SQLite-backed snapshot store for local durable HLP SDK use."""
+    """SQLite-backed snapshot store for local HLP SDK use."""
 
     def __init__(self, path: str | Path) -> None:
         super().__init__()
@@ -164,4 +164,3 @@ def _unpack(value: Any) -> Any:
         field_name: _unpack(field_value)
         for field_name, field_value in value["fields"].items()
     })
-

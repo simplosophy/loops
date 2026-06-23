@@ -64,6 +64,6 @@ docs/notes/2026-06-19.md
 
 实现过程中暴露的真实约束：
 - **checkpoint 并发**（spec §7.x）：参考实现假设单 pending checkpoint，`pending_checkpoint_of` 返回第一个。多并发需补充。
-- **accepted→completed 自动化**：参考实现需外部触发，spec §3.3 说"自动"。后续考虑加内部触发。
+- **accepted→completed 自动化**：已在 2026-06-23 hardening pass 中实现，`review.approved` 会推进 `accepted → completed` 并写入 `task.completed` audit。
 - **artifact 版本号**：用 task 的 artifacts 列表长度 +1，简单但非全局唯一。跨 task 同 artifact 需补逻辑。
 - **ownership 转回 agent**：checkpoint resolve 时把 assignee 转回 principal 作占位（真实应转回原 agent）。后续需记录 original assignee。

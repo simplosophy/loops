@@ -136,19 +136,21 @@ class FakeAgentAdapter:
         return run_id
 
     async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
+        self._require_run(run_id, "block")
         self.calls.append((
             "block",
             {"run_id": run_id, "checkpoint_id": checkpoint_id, "reason": reason},
         ))
 
     async def resume(self, run_id: str, resolution: Any) -> None:
+        self._require_run(run_id, "resume")
         self.calls.append((
             "resume",
             {"run_id": run_id, "resolution": resolution},
         ))
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
-        current = self._runs[run_id]
+        current = self._require_run(run_id, "handoff")
         self._run_counter += 1
         new_run_id = f"run_{self._run_counter:06d}"
         self._runs[new_run_id] = AgentRunHandle(
@@ -171,6 +173,7 @@ class FakeAgentAdapter:
         return new_run_id
 
     async def cancel(self, run_id: str, reason: str) -> None:
+        self._require_run(run_id, "cancel")
         self.calls.append((
             "cancel",
             {"run_id": run_id, "reason": reason},
@@ -190,6 +193,17 @@ class FakeAgentAdapter:
 
     def calls_of(self, method: str) -> list[tuple[str, dict[str, Any]]]:
         return [call for call in self.calls if call[0] == method]
+
+    def _require_run(self, run_id: str, operation: str) -> AgentRunHandle:
+        handle = self._runs.get(run_id)
+        if handle is None:
+            raise AgentAdapterError(
+                self.__class__.__name__,
+                operation,
+                "unknown run id",
+                details={"run_id": run_id},
+            )
+        return handle
 
 
 class ProcessAgentAdapter(FakeAgentAdapter):
@@ -228,6 +242,7 @@ class ProcessAgentAdapter(FakeAgentAdapter):
             "correlation_id": task_id,
         }
         payload = await self._execute("delegate", request)
+        _validate_correlation(payload, task_id, self.name, "delegate")
         run_id = str(payload.get("run_id") or self._next_run_id())
         self._runs[run_id] = AgentRunHandle(
             run_id=run_id,
@@ -252,33 +267,36 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         return run_id
 
     async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
+        handle = self._require_run(run_id, "block")
         await self._execute("block", {
             "operation": "block",
             "run_id": run_id,
             "checkpoint_id": checkpoint_id,
             "reason": reason,
-            "correlation_id": self.task_of_run(run_id),
+            "correlation_id": handle.correlation_id,
         })
         await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason)
 
     async def resume(self, run_id: str, resolution: Any) -> None:
+        handle = self._require_run(run_id, "resume")
         await self._execute("resume", {
             "operation": "resume",
             "run_id": run_id,
             "resolution": resolution,
-            "correlation_id": self.task_of_run(run_id),
+            "correlation_id": handle.correlation_id,
         })
         await FakeAgentAdapter.resume(self, run_id, resolution)
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
+        current = self._require_run(run_id, "handoff")
         payload = await self._execute("handoff", {
             "operation": "handoff",
             "run_id": run_id,
             "to_agent": to_agent,
             "context": context,
-            "correlation_id": self.task_of_run(run_id),
+            "correlation_id": current.correlation_id,
         })
-        current = self._runs[run_id]
+        _validate_correlation(payload, current.correlation_id, self.name, "handoff")
         new_run_id = str(payload.get("run_id") or payload.get("to_run") or self._next_run_id())
         self._runs[new_run_id] = AgentRunHandle(
             run_id=new_run_id,
@@ -301,11 +319,12 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         return new_run_id
 
     async def cancel(self, run_id: str, reason: str) -> None:
+        handle = self._require_run(run_id, "cancel")
         await self._execute("cancel", {
             "operation": "cancel",
             "run_id": run_id,
             "reason": reason,
-            "correlation_id": self.task_of_run(run_id),
+            "correlation_id": handle.correlation_id,
         })
         await FakeAgentAdapter.cancel(self, run_id, reason)
 
@@ -352,8 +371,8 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         if not result.stdout.strip():
             return {}
         try:
-            payload = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
+            payload = _parse_process_stdout(result.stdout)
+        except ValueError as exc:
             raise AgentAdapterError(
                 self.name,
                 operation,
@@ -402,13 +421,8 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
         input: dict[str, Any],
         parent_run: str | None = None,
     ) -> str:
-        run_id = await super().delegate(
-            task_id=task_id,
-            agent_id=agent_id,
-            capability=capability,
-            input=input,
-            parent_run=parent_run,
-        )
+        self._run_counter += 1
+        run_id = f"run_{self._run_counter:06d}"
         if self.handler is not None:
             request = {
                 "run_id": run_id,
@@ -418,10 +432,40 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
                 "input": input,
                 "parent_run": parent_run,
             }
-            result = self.handler(request)
-            if inspect.isawaitable(result):
-                result = await result
+            try:
+                result = self.handler(request)
+                if inspect.isawaitable(result):
+                    result = await result
+            except Exception as exc:
+                raise AgentAdapterError(
+                    self.name,
+                    "delegate",
+                    "Python callable handler failed",
+                    details={
+                        "error_type": exc.__class__.__name__,
+                        "error": str(exc),
+                    },
+                ) from exc
             self.results[run_id] = result
+        self._runs[run_id] = AgentRunHandle(
+            run_id=run_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            correlation_id=task_id,
+            capability=capability,
+            parent_run=parent_run,
+        )
+        self.calls.append((
+            "delegate",
+            {
+                "run_id": run_id,
+                "task_id": task_id,
+                "agent_id": agent_id,
+                "capability": capability,
+                "input": input,
+                "parent_run": parent_run,
+            },
+        ))
         return run_id
 
     async def healthcheck(self) -> dict[str, Any]:
@@ -446,6 +490,7 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
         parent_run: str | None,
     ) -> str:
         payload = _response_to_dict(result)
+        _validate_correlation(payload, task_id, self.name, "delegate")
         run_id = str(
             payload.get("id")
             or payload.get("run_id")
@@ -596,6 +641,7 @@ class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
                 },
             ) from exc
         result = _response_to_dict(response)
+        _validate_correlation(result, task_id, self.name, "delegate")
         run_id = str(result.get("id") or self._next_response_run_id())
         self._runs[run_id] = AgentRunHandle(
             run_id=run_id,
@@ -658,7 +704,7 @@ class LangGraphAdapter(PythonCallableAgentAdapter):
         }
         if isinstance(input.get("state"), dict):
             graph_input["state"] = input["state"]
-        config = dict(self.config)
+        config = _normalize_langgraph_config(self.config)
         config["metadata"] = {
             **dict(config.get("metadata", {})),
             **_hlp_metadata(task_id, agent_id, capability, parent_run),
@@ -821,9 +867,55 @@ async def _run_json_process(
 
 def _prompt_from_input(input: dict[str, Any]) -> str:
     goal = input.get("goal")
-    if goal is not None:
+    if goal is not None and set(input) == {"goal"}:
         return str(goal)
     return json.dumps(input, sort_keys=True)
+
+
+def _parse_process_stdout(stdout: str) -> dict[str, Any]:
+    stripped = stdout.strip()
+    if not stripped:
+        return {}
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        events: list[dict[str, Any]] = []
+        for line in stripped.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError("stdout line was not valid JSON") from exc
+            if not isinstance(event, dict):
+                raise ValueError("stdout JSONL lines must be objects")
+            events.append(event)
+        if not events:
+            return {}
+        for event in reversed(events):
+            if "run_id" in event:
+                return event
+        return events[-1]
+    if not isinstance(payload, dict):
+        raise ValueError("stdout JSON must be an object")
+    return payload
+
+
+def _validate_correlation(
+    payload: dict[str, Any],
+    expected: str,
+    adapter: str,
+    operation: str,
+) -> None:
+    actual = payload.get("correlation_id")
+    if actual is not None and actual != expected:
+        raise AgentAdapterError(
+            adapter,
+            operation,
+            "runtime returned mismatched correlation_id",
+            details={"expected": expected, "actual": actual},
+        )
 
 
 def _hlp_payload(
@@ -852,6 +944,17 @@ def _hlp_metadata(
         "hlp_capability": capability,
         "hlp_parent_run": parent_run or "",
     }
+
+
+def _normalize_langgraph_config(config: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(config)
+    thread_id = normalized.pop("thread_id", None)
+    configurable = dict(normalized.get("configurable", {}))
+    if thread_id is not None and "thread_id" not in configurable:
+        configurable["thread_id"] = thread_id
+    if configurable:
+        normalized["configurable"] = configurable
+    return normalized
 
 
 def _response_to_dict(response: Any) -> dict[str, Any]:

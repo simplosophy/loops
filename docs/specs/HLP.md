@@ -456,6 +456,8 @@ CapabilityRef:
 
 - 实现记录 audit event 与业务操作 **SHOULD** 是原子的（audit 失败则业务回滚）。
 - 实现对 Task 状态转移 **MUST** 是原子的（状态、ownership、audit 三者一致）。
+- 当协议操作依赖外部 agent runtime adapter 时，adapter 调用失败 **MUST NOT** 让 HLP 状态、ownership、checkpoint、audit 或 run binding 进入成功状态。生产实现 **SHOULD** 使用事务 outbox 与幂等 key；嵌入式实现 **MAY** 先调用 adapter，成功后再提交本地状态。
+- SDK/read API **SHOULD** 返回 read snapshot，避免调用方绕过状态机和 audit 直接修改内部 aggregate。
 
 ---
 

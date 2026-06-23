@@ -24,7 +24,7 @@ loops/loop2/
   objects.py           # 7 个一等对象 dataclass
   state_machine.py     # Task 状态机：合法转移表 + 校验
   store.py             # HumanLoopStore：内存存储
-  sqlite_store.py      # SQLiteHumanLoopStore：本地 durable snapshot store
+  sqlite_store.py      # SQLiteHumanLoopStore：本地 snapshot store（非生产并发后端）
   sdk.py               # HLPClient：稳定 SDK facade
   adapters.py          # AgentAdapter + fake/process/framework adapter entry points
   events.py            # HLPEvent + InMemoryEventBus
@@ -60,6 +60,8 @@ created → assigned → in_progress → blocked → (resolve) → in_progress
 
 应用侧优先使用 `loops.hlp.HLPClient`。`HumanLoopOperations` 仍是协议操作层，负责状态机、前置条件、audit 和 adapter 联动；`HLPClient` 负责稳定 SDK 命名、事件发射、持久化 flush 和 demo-friendly workflow。
 
+SDK 与 store 的读 API 返回 snapshot，调用方不能通过返回对象直接修改内部 aggregate。协议状态只能通过 operation 前进。`HumanLoopOperations` 内部使用 store 的 update path 修改 aggregate，以保持 read model 与 write model 分离。
+
 ```python
 from loops.hlp import HLPClient, SQLiteHumanLoopStore
 
@@ -81,6 +83,19 @@ loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。`AAPBri
 
 参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`OpenAIAgentsSDKAdapter` 可通过注入 `runner + agent` 调用 OpenAI Agents SDK 的 `run/run_sync` 形态；`LangGraphAdapter` 可通过注入 compiled graph 调用 `ainvoke/invoke`；`CrewAIAdapter` 可通过注入 crew 调用 `akickoff/kickoff_async/kickoff`；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖 Codex CLI、Claude Code CLI、herms 等 CLI/process 形态。
 
+adapter-coupled 操作遵循 fail-before-commit：如果 `delegate` / `block` / `resume` / `handoff` / `cancel` 失败，HLP Task、Checkpoint、Ownership、audit 和 run binding 不推进到假成功状态。当前参考实现用同步调用保证本地一致性；生产服务端应演进为 transaction + durable outbox + idempotency key。
+
+Adapter capability baseline:
+
+| Adapter | start/delegate | block/resume | handoff/cancel | correlation |
+|---------|----------------|--------------|----------------|-------------|
+| `FakeAgentAdapter` | yes | records contract calls | records contract calls | in-memory handle |
+| `ProcessAgentAdapter` | JSON object or JSONL stdout | JSON command wrapper | JSON command wrapper | validates returned `correlation_id` when present |
+| `OpenAIPythonSDKAdapter` | `client.responses.create(...)` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
+| `OpenAIAgentsSDKAdapter` | injected `runner.run/run_sync` | local contract recording, not real runtime pause yet | local contract recording | local handle |
+| `LangGraphAdapter` | `ainvoke/invoke` with `configurable.thread_id` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
+| `CrewAIAdapter` | `akickoff/kickoff_async/kickoff` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
+
 `ProcessAgentAdapter` 约定所有操作都向 runner 传入结构化请求：
 
 ```json
@@ -95,7 +110,7 @@ loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。`AAPBri
 }
 ```
 
-runner 返回 JSON object，`delegate` 至少应返回 `run_id`。非零退出码、非法 JSON、runner exception 和 SDK client exception 都包装为 `AgentAdapterError`。
+runner 返回 JSON object 或 JSONL event stream，`delegate` 至少应返回 `run_id`。如果返回 `correlation_id`，必须等于 HLP `task_id`。非零退出码、非法 JSON、runner exception、未知 run 和 SDK client exception 都包装为 `AgentAdapterError`。
 
 ## 分层纪律
 
@@ -105,7 +120,7 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 
 - transport 绑定（HTTP/gRPC/WebSocket）— 当前纯内存 async API
 - vendor package 直接依赖 — 当前通过对象注入提供框架级契约，不强依赖第三方包
-- 服务端数据库后端 — 当前提供内存 store + SQLite 本地 durable store
+- 服务端数据库后端 — 当前提供内存 store + SQLite 本地 snapshot store；生产级对象表、CAS、schema migration、audit hash chain 和 outbox/recovery 是后续 hardening 项
 - HLP server/CLI 管理面 — 当前只提供 SDK 和 demo console script
 - HLP→channel 通知 — stub
 - 开放议题定论（checkpoint 超时、委派深度、Ledger 并发等）— 实现后待收敛

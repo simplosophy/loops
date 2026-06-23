@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .adapters import AgentAdapter, AgentRunHandle, FakeAgentAdapter
-from .events import InMemoryEventBus
+from .events import EventBus, HLPEvent, InMemoryEventBus
 from .objects import (
     Artifact,
     ArtifactPayload,
@@ -28,8 +28,9 @@ class HLPClient:
 
     store: HumanLoopStore = field(default_factory=HumanLoopStore)
     adapter: AgentAdapter = field(default_factory=FakeAgentAdapter)
-    event_bus: InMemoryEventBus = field(default_factory=InMemoryEventBus)
+    event_bus: EventBus = field(default_factory=InMemoryEventBus)
     operations: HumanLoopOperations = field(init=False)
+    _event_seq: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.operations = HumanLoopOperations(store=self.store, aap=self.adapter)
@@ -56,7 +57,7 @@ class HLPClient:
             subject=("task", task.id),
             payload={"principal": principal, "goal": goal},
         )
-        return task
+        return self.store.get_task(task.id)
 
     async def delegate(
         self,
@@ -98,7 +99,7 @@ class HLPClient:
             subject=("task", task.id),
             payload={"assignee": task.ownership.assignee},
         )
-        return task
+        return self.store.get_task(task.id)
 
     async def get_task(self, task_id: str) -> Task:
         return await self.operations.task_get(task_id)
@@ -127,7 +128,7 @@ class HLPClient:
             subject=("checkpoint", checkpoint.id),
             payload={"kind": kind, "raised_by": raised_by},
         )
-        return checkpoint
+        return self.store.get_checkpoint(checkpoint.id)
 
     async def resolve_checkpoint(
         self,
@@ -155,7 +156,7 @@ class HLPClient:
             subject=("checkpoint", checkpoint.id),
             payload={"by": by, "action": action, "choice": choice},
         )
-        return checkpoint
+        return self.store.get_checkpoint(checkpoint.id)
 
     async def commit_artifact(
         self,
@@ -179,7 +180,7 @@ class HLPClient:
             subject=("artifact", artifact.id),
             payload={"version": artifact.version, "produced_by": produced_by},
         )
-        return artifact
+        return self.store.get_artifact(artifact.id, artifact.version)
 
     async def submit_review(
         self,
@@ -205,7 +206,7 @@ class HLPClient:
             subject=("review", review.id),
             payload={"verdict": verdict, "reviewer": reviewer},
         )
-        return review
+        return self.store.get_review(review.id)
 
     async def write_ledger(
         self,
@@ -229,8 +230,8 @@ class HLPClient:
 
     async def replay_audit(self, task_id: str) -> list:
         events = await self.operations.audit_replay(task_id)
-        await self.event_bus.emit(
-            action="audit.replayed",
+        await self._publish_event(
+            "audit.replayed",
             task_id=task_id,
             subject=("audit", task_id),
             payload={"count": len(events)},
@@ -248,9 +249,28 @@ class HLPClient:
         flush = getattr(self.store, "flush", None)
         if flush is not None:
             flush()
-        await self.event_bus.emit(
-            action=action,
+        await self._publish_event(
+            action,
             task_id=task_id,
             subject=subject,
             payload=payload,
         )
+
+    async def _publish_event(
+        self,
+        action: str,
+        *,
+        task_id: str,
+        subject: tuple[str, str],
+        payload: dict[str, Any] | None = None,
+    ) -> HLPEvent:
+        self._event_seq += 1
+        event = HLPEvent(
+            seq=self._event_seq,
+            action=action,
+            task_id=task_id,
+            subject=subject,
+            payload=payload or {},
+        )
+        await self.event_bus.publish(event)
+        return event

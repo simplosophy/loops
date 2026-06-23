@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from loops.hlp import (
     AgentAdapterError,
@@ -10,6 +11,7 @@ from loops.hlp import (
     CodexCLIAdapter,
     CrewAIAdapter,
     FakeAgentAdapter,
+    HLPEvent,
     HermesCLIAdapter,
     HermsCLIAdapter,
     HLPClient,
@@ -27,6 +29,14 @@ from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
 
 def run(coro):
     return asyncio.run(coro)
+
+
+class PublishOnlyEventBus:
+    def __init__(self):
+        self.events = []
+
+    async def publish(self, event: HLPEvent) -> None:
+        self.events.append(event)
 
 
 def test_hlp_client_runs_human_loop_without_low_level_operations():
@@ -110,6 +120,7 @@ def test_hlp_client_runs_human_loop_without_low_level_operations():
         "task.checkpoint.resolved",
         "artifact.committed",
         "review.submitted",
+        "task.completed",
         "ledger.written",
     ]
 
@@ -226,6 +237,69 @@ def test_process_agent_adapter_executes_json_runner_contract():
     assert health["executable"] == "codex"
 
 
+def test_process_agent_adapter_accepts_jsonl_event_stream_stdout():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=(
+                '{"type":"thread.started","id":"thread_1"}\n'
+                '{"type":"turn.completed","run_id":"codex_run_1","correlation_id":"task_proc"}\n'
+            ),
+            stderr="",
+        )
+
+    adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner)
+
+    run_id = run(adapter.delegate(
+        task_id="task_proc",
+        agent_id="agent_codex",
+        capability="code-review",
+        input={"goal": "review"},
+    ))
+
+    assert run_id == "codex_run_1"
+    assert adapter.process_results[run_id]["type"] == "turn.completed"
+
+
+def test_process_agent_adapter_rejects_mismatched_correlation_id():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout='{"run_id": "external_run_1", "correlation_id": "task_other"}',
+            stderr="",
+        )
+
+    adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner)
+
+    try:
+        run(adapter.delegate(
+            task_id="task_proc",
+            agent_id="agent_codex",
+            capability="code-review",
+            input={"goal": "review"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_process_agent_adapter_wraps_unknown_run_for_resume():
+    async def runner(command, request, timeout):
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner)
+
+    try:
+        run(adapter.resume("missing_run", {"action": "approve"}))
+    except AgentAdapterError as exc:
+        assert exc.operation == "resume"
+        assert exc.details["run_id"] == "missing_run"
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
 def test_process_agent_adapter_raises_structured_error_on_failure():
     async def runner(command, request, timeout):
         return ProcessResult(exit_code=2, stdout="", stderr="boom")
@@ -312,6 +386,35 @@ def test_openai_python_sdk_adapter_uses_responses_client():
             "hlp_parent_run": "",
         },
     }]
+
+
+def test_openai_python_sdk_adapter_preserves_context_when_goal_has_siblings():
+    class FakeResponses:
+        def __init__(self):
+            self.requests = []
+
+        async def create(self, **kwargs):
+            self.requests.append(kwargs)
+            return {"id": "resp_123"}
+
+    class FakeClient:
+        def __init__(self):
+            self.responses = FakeResponses()
+
+    client = FakeClient()
+    adapter = OpenAIPythonSDKAdapter(client=client, model="gpt-test")
+
+    run(adapter.delegate(
+        task_id="task_openai",
+        agent_id="agent_openai",
+        capability="analysis",
+        input={"goal": "summarize", "repository": "web"},
+    ))
+
+    assert json.loads(client.responses.requests[0]["input"]) == {
+        "goal": "summarize",
+        "repository": "web",
+    }
 
 
 def test_openai_python_sdk_adapter_wraps_client_exception():
@@ -430,7 +533,10 @@ def test_langgraph_adapter_invokes_compiled_graph():
     assert adapter.results[run_id] == {"messages": ["done"], "run_id": "graph_run_123"}
     assert graph.calls == [{
         "input": {
-            "messages": [{"role": "user", "content": "run graph"}],
+            "messages": [{
+                "role": "user",
+                "content": '{"goal": "run graph", "state": {"foo": "bar"}}',
+            }],
             "hlp": {
                 "task_id": "task_graph",
                 "agent_id": "agent_langgraph",
@@ -440,7 +546,7 @@ def test_langgraph_adapter_invokes_compiled_graph():
             "state": {"foo": "bar"},
         },
         "config": {
-            "thread_id": "thread-1",
+            "configurable": {"thread_id": "thread-1"},
             "metadata": {
                 "hlp_task_id": "task_graph",
                 "hlp_agent_id": "agent_langgraph",
@@ -559,7 +665,14 @@ def test_hlp_client_drives_process_adapter_block_and_resume():
         "resume",
     ]
     assert requests[1]["checkpoint_id"] == checkpoint.id
-    assert requests[2]["resolution"] == {"action": "approve", "choice": None}
+    assert requests[2]["resolution"] == {
+        "by": "user_alice",
+        "action": "approve",
+        "choice": None,
+        "input": None,
+        "reassign_to": None,
+        "comment": None,
+    }
 
 
 def test_hlp_client_emits_lifecycle_events_in_order():
@@ -610,6 +723,39 @@ def test_hlp_client_emits_lifecycle_events_in_order():
     assert all(event.task_id == task.id for event in bus.events)
 
 
+def test_hlp_client_accepts_event_bus_publish_protocol_without_emit():
+    bus = PublishOnlyEventBus()
+    client = HLPClient(adapter=FakeAgentAdapter(), event_bus=bus)
+
+    task = run(client.create_task(principal="user_alice", goal="Publish via protocol"))
+
+    assert [event.action for event in bus.events] == ["task.created"]
+    assert bus.events[0].task_id == task.id
+
+
+def test_hlp_client_returns_snapshots_that_cannot_mutate_store():
+    client = HLPClient(adapter=FakeAgentAdapter())
+
+    task = run(client.create_task(principal="user_alice", goal="Protect state"))
+    task.state = "completed"
+    task.ownership = task.ownership.transfer("agent_intruder", via="handoff")
+
+    restored = run(client.get_task(task.id))
+    assert restored.state == "created"
+    assert restored.ownership.assignee == "user_alice"
+
+
+def test_store_read_api_returns_snapshots_that_cannot_mutate_internal_state():
+    client = HLPClient(adapter=FakeAgentAdapter())
+
+    task = run(client.create_task(principal="user_alice", goal="Store snapshot"))
+    stored = client.store.get_task(task.id)
+    stored.state = "completed"
+
+    restored = client.store.get_task(task.id)
+    assert restored.state == "created"
+
+
 def test_sqlite_store_persists_hlp_state_across_restart(tmp_path):
     db_path = tmp_path / "hlp.db"
     first = HLPClient(
@@ -658,14 +804,15 @@ def test_sqlite_store_persists_hlp_state_across_restart(tmp_path):
     restored_history = run(second.replay_audit(task.id))
 
     assert restored_task.id == task.id
-    assert restored_task.state == "accepted"
+    assert restored_task.state == "completed"
     assert restored_checkpoint.state == "resolved"
     assert restored_artifact.version == "v1"
     assert restored_review.verdict == "approved"
     assert restored_ledger_value == "approved"
-    assert [event.action for event in restored_history][-3:] == [
+    assert [event.action for event in restored_history][-4:] == [
         "artifact.committed",
         "review.submitted",
+        "task.completed",
         "ledger.written",
     ]
 
@@ -687,6 +834,7 @@ def test_hlp_e2e_demo_runs_without_external_services():
         "task.checkpoint.resolved",
         "artifact.committed",
         "review.submitted",
+        "task.completed",
         "ledger.written",
     ]
 

@@ -21,6 +21,8 @@ import asyncio
 import pytest
 
 from loops.loop2 import (
+    AgentAdapterError,
+    FakeAgentAdapter,
     HumanLoopOperations,
     InMemoryAAPBridge,
     ProtocolError,
@@ -38,6 +40,37 @@ from loops.loop2 import (
 def run(coro):
     """同步驱动 async 操作（仓库约定，见 tests/test_loops_core.py）。"""
     return asyncio.run(coro)
+
+
+class FailableAdapter(FakeAgentAdapter):
+    def __init__(self, fail_operation: str) -> None:
+        super().__init__()
+        self.fail_operation = fail_operation
+
+    async def delegate(self, *args, **kwargs):
+        if self.fail_operation == "delegate":
+            raise AgentAdapterError("test", "delegate", "delegate failed")
+        return await super().delegate(*args, **kwargs)
+
+    async def block(self, *args, **kwargs):
+        if self.fail_operation == "block":
+            raise AgentAdapterError("test", "block", "block failed")
+        return await super().block(*args, **kwargs)
+
+    async def resume(self, *args, **kwargs):
+        if self.fail_operation == "resume":
+            raise AgentAdapterError("test", "resume", "resume failed")
+        return await super().resume(*args, **kwargs)
+
+    async def handoff(self, *args, **kwargs):
+        if self.fail_operation == "handoff":
+            raise AgentAdapterError("test", "handoff", "handoff failed")
+        return await super().handoff(*args, **kwargs)
+
+    async def cancel(self, *args, **kwargs):
+        if self.fail_operation == "cancel":
+            raise AgentAdapterError("test", "cancel", "cancel failed")
+        return await super().cancel(*args, **kwargs)
 
 
 def test_human_loop_public_api_names_are_primary():
@@ -116,6 +149,21 @@ def test_assign_requires_created_state():
     assert e.value.code == "PRECONDITION_FAILED"
 
 
+def test_task_assign_adapter_failure_does_not_advance_state_or_audit():
+    adapter = FailableAdapter("delegate")
+    ops = HumanLoopOperations(aap=adapter)
+    task = run(ops.task_create(principal="alice", goal="g"))
+
+    with pytest.raises(AgentAdapterError):
+        run(ops.task_assign(task.id, "agent_devin"))
+
+    restored = run(ops.task_get(task.id))
+    assert restored.state == "created"
+    assert restored.ownership.assignee == "alice"
+    assert ops.store.run_of_task(task.id) is None
+    assert [event.action for event in ops.store.audit_log.all()] == ["task.created"]
+
+
 def test_checkpoint_raise_requires_in_progress():
     ops = HumanLoopOperations()
     task = run(ops.task_create(principal="alice", goal="g"))
@@ -137,6 +185,27 @@ def test_choice_checkpoint_requires_options():
     assert e.value.code == "INVALID_SPEC"
 
 
+def test_checkpoint_raise_adapter_failure_does_not_create_pending_checkpoint():
+    adapter = FailableAdapter("block")
+    ops = HumanLoopOperations(aap=adapter)
+    task = run(ops._seed_to_in_progress())
+    audit_before = [event.action for event in ops.store.audit_log.all()]
+
+    with pytest.raises(AgentAdapterError):
+        run(ops.checkpoint_raise(
+            task_id=task.id,
+            kind="approval",
+            prompt="ok?",
+            raised_by="agent_test",
+        ))
+
+    restored = run(ops.task_get(task.id))
+    assert restored.state == "in_progress"
+    assert restored.checkpoints == []
+    assert ops.store.pending_checkpoint_of(task.id) is None
+    assert [event.action for event in ops.store.audit_log.all()] == audit_before
+
+
 def test_checkpoint_resolve_requires_pending():
     ops = HumanLoopOperations()
     task = run(ops._seed_to_in_progress())
@@ -148,6 +217,65 @@ def test_checkpoint_resolve_requires_pending():
     with pytest.raises(ProtocolError) as e:
         run(ops.checkpoint_resolve(ckpt.id, by="alice", action="approve"))
     assert e.value.code == "PRECONDITION_FAILED"
+
+
+def test_checkpoint_resolve_adapter_failure_does_not_resolve_checkpoint():
+    adapter = FailableAdapter("resume")
+    ops = HumanLoopOperations(aap=adapter)
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="ok?",
+        raised_by="agent_test",
+    ))
+    audit_before = [event.action for event in ops.store.audit_log.all()]
+
+    with pytest.raises(AgentAdapterError):
+        run(ops.checkpoint_resolve(ckpt.id, by="alice", action="approve"))
+
+    restored_task = run(ops.task_get(task.id))
+    restored_ckpt = ops.store.get_checkpoint(ckpt.id)
+    assert restored_task.state == "blocked"
+    assert restored_ckpt.state == "pending"
+    assert restored_ckpt.resolution is None
+    assert [event.action for event in ops.store.audit_log.all()] == audit_before
+
+
+def test_checkpoint_resolve_requires_human_principal_or_reviewer():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="ok?",
+        raised_by="agent_test",
+    ))
+
+    with pytest.raises(ProtocolError) as e:
+        run(ops.checkpoint_resolve(ckpt.id, by="agent_intruder", action="approve"))
+
+    assert e.value.code == "UNAUTHORIZED"
+
+
+def test_checkpoint_resolve_validates_action_payload():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="choice",
+        prompt="pick",
+        options=(
+            CheckpointOption(id="safe", label="Safe", risk="low"),
+            CheckpointOption(id="fast", label="Fast", risk="high"),
+        ),
+        raised_by="agent_test",
+    ))
+
+    with pytest.raises(ProtocolError) as e:
+        run(ops.checkpoint_resolve(ckpt.id, by="alice", action="choose", choice="bad"))
+
+    assert e.value.code == "INVALID_SPEC"
 
 
 def test_review_requires_review_ready_state():
@@ -405,6 +533,34 @@ def test_checkpoint_resolve_triggers_aap_resume():
     assert len(resumes) == 1
 
 
+def test_checkpoint_resolve_passes_full_resolution_payload_to_adapter():
+    """resume payload 必须包含完整 resolution，而不只传 action/choice。"""
+    bridge = InMemoryAAPBridge()
+    ops = HumanLoopOperations(aap=bridge)
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id, kind="input", prompt="Need details", raised_by="agent"
+    ))
+
+    run(ops.checkpoint_resolve(
+        ckpt.id,
+        by="alice",
+        action="provide",
+        input="Use the conservative rollout plan.",
+        comment="Keep blast radius small.",
+    ))
+
+    resumes = bridge.calls_of("resume")
+    assert resumes[-1][1]["resolution"] == {
+        "by": "alice",
+        "action": "provide",
+        "choice": None,
+        "input": "Use the conservative rollout plan.",
+        "reassign_to": None,
+        "comment": "Keep blast radius small.",
+    }
+
+
 def test_checkpoint_resolve_returns_ownership_to_blocked_agent():
     """checkpoint.resolve 后 Task 回到 in_progress，ownership 也必须回到原 agent。"""
     ops = HumanLoopOperations()
@@ -434,6 +590,40 @@ def test_taskid_threads_to_run():
     run_id = ops.store.run_of_task(task.id)
     assert run_id is not None
     assert bridge.task_of_run(run_id) == task.id
+
+
+def test_task_cancel_calls_adapter_before_completing_task():
+    adapter = FailableAdapter("cancel")
+    ops = HumanLoopOperations(aap=adapter)
+    task = run(ops._seed_to_in_progress())
+
+    with pytest.raises(AgentAdapterError):
+        run(ops.task_cancel(task.id, by="alice"))
+
+    restored = run(ops.task_get(task.id))
+    assert restored.state == "in_progress"
+    assert not adapter.calls_of("cancel")
+
+
+def test_ownership_transfer_handoff_updates_active_run_binding():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(aap=adapter)
+    task = run(ops._seed_to_in_progress())
+    original_run = ops.store.run_of_task(task.id)
+
+    run(ops.ownership_transfer(
+        task.id,
+        "agent_writer",
+        "handoff",
+        actor="agent_test",
+    ))
+
+    new_run = ops.store.run_of_task(task.id)
+    assert original_run is not None
+    assert new_run is not None
+    assert new_run != original_run
+    assert adapter.calls_of("handoff")[-1][1]["from_run"] == original_run
+    assert adapter.task_of_run(new_run) == task.id
 
 
 # ════════════════════════════════════════════════════════════
@@ -517,12 +707,13 @@ def test_end_to_end_pr_review_scenario():
     assert art2.version == "v2"
     assert task.state == "review_ready"
 
-    # 9. review.submit (approved → accepted)
+    # 9. review.submit (approved → accepted → completed)
     run(ops.review_submit(
         task_id=task.id, artifact_id=art2.id, reviewer=bob,
         verdict="approved",
     ))
-    assert task.state == "accepted"
+    task = run(ops.task_get(task.id))
+    assert task.state == "completed"
 
     # 10. ledger.write (沉淀"PR#1234 已通过")
     entry = run(ops.ledger_write(
@@ -543,6 +734,26 @@ def test_end_to_end_pr_review_scenario():
     assert "artifact.committed" in actions
     assert "review.submitted" in actions
     assert "ledger.written" in actions
+
+
+def test_approved_review_auto_completes_task_and_audits_completion():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_review_ready())
+
+    run(ops.review_submit(
+        task_id=task.id,
+        artifact_id=task.artifacts[0],
+        reviewer="bob",
+        verdict="approved",
+    ))
+
+    restored = run(ops.task_get(task.id))
+    history = run(ops.audit_replay(task.id))
+    assert restored.state == "completed"
+    assert [event.action for event in history][-2:] == [
+        "review.submitted",
+        "task.completed",
+    ]
 
 
 # ════════════════════════════════════════════════════════════

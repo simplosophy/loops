@@ -77,8 +77,9 @@ from loops.hlp import (
 )
 ```
 
-CLI adapters use a JSON-over-stdin/stdout contract and can be tested with an
-injected runner before wiring a real binary:
+CLI adapters use a JSON-over-stdin/stdout contract, accept JSON object or JSONL
+event-stream stdout, and can be tested with an injected runner before wiring a
+real binary:
 
 ```python
 from loops.hlp import CodexCLIAdapter
@@ -106,7 +107,10 @@ to `loops` core dependencies:
 from loops.hlp import CrewAIAdapter, LangGraphAdapter, OpenAIAgentsSDKAdapter
 
 openai_agents = OpenAIAgentsSDKAdapter(agent=agent, runner=Runner)
-langgraph = LangGraphAdapter(graph=compiled_graph, config={"thread_id": "t1"})
+langgraph = LangGraphAdapter(
+    graph=compiled_graph,
+    config={"configurable": {"thread_id": "t1"}},
+)
 crew = CrewAIAdapter(crew=my_crew)
 ```
 
