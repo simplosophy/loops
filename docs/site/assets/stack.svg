@@ -76,7 +76,7 @@
   <text class="st-code" x="84" y="342" dominant-baseline="central">L0</text>
   <text class="st-name" x="110" y="342" dominant-baseline="central">L0 · Capability Protocol Routes</text>
   <text class="st-tag-p" x="884" y="342" text-anchor="end" dominant-baseline="central">◇ MCP · Agent Skills · local tools</text>
-  <text class="st-objs" x="110" y="372" dominant-baseline="central">capability.list · capability.describe · capability.invoke</text>
+  <text class="st-objs" x="110" y="372" dominant-baseline="central">manifest · schema · invocation evidence · provenance</text>
 
   <!-- arrow + Tool/Skill -->
   <line class="st-arrow" x1="480" y1="394" x2="480" y2="422" marker-end="url(#st-arrow)"/>

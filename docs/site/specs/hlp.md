@@ -367,6 +367,7 @@ HLP operation names follow `<object>.<verb>`. A conforming implementation
 | --- | --- | --- | --- |
 | Task | `task.create` | principal | Create task in `created` state |
 | Task | `task.assign` | principal | Assign to agent and transfer ownership |
+| Task | `task.start` | agent or adapter | Mark the correlated harness run as started |
 | Task | `task.cancel` | principal | End an active task |
 | Task | `task.get` | any authorized actor | Fetch one task |
 | Task | `task.list` | any authorized actor | Query tasks |
@@ -393,6 +394,7 @@ Violations **MUST** return `PRECONDITION_FAILED`.
 | Operation | Required precondition |
 | --- | --- |
 | `task.assign` | Task state is `created` |
+| `task.start` | Task state is `assigned` |
 | `task.cancel` | Task state is `created`, `assigned`, `in_progress`, or `blocked` |
 | `checkpoint.raise` | Task state is `in_progress` |
 | `checkpoint.resolve` | Checkpoint is pending and caller is authorized |
@@ -408,6 +410,7 @@ State-changing operations **MUST** map to audit actions.
 | --- | --- |
 | `task.create` | `task.created` |
 | `task.assign` | `task.assigned` |
+| `task.start` | `task.started` |
 | `task.cancel` | `task.cancelled` |
 | `checkpoint.raise` | `task.checkpoint.raised` |
 | `checkpoint.resolve` | `task.checkpoint.resolved` |
@@ -425,6 +428,7 @@ HLP communicates downward through explicit adapter contracts:
 | HLP event | L1 route action | Contract |
 | --- | --- | --- |
 | `task.assign` | `delegate` | TaskID **MUST** become `Run.correlation_id` |
+| `task.start` | `observe run.started` | The correlated run start **MUST** move the HLP task into progress |
 | `checkpoint.raise` | `agent.block` | The corresponding run **MUST** enter `blocked` |
 | `checkpoint.resolve` | `agent.resume` | Resolution **MUST** be passed to the run |
 | `ownership.delegate` | `delegate` | Parent run **SHOULD** remain traceable |

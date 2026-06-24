@@ -136,11 +136,7 @@ class HumanLoopOperations:
         return task
 
     async def task_start(self, task_id: str) -> Task:
-        """agent 开始执行：assigned→in_progress。
-
-        spec §3.3 隐含转移（外部 harness 启动）。非 spec §4.1 显式操作，
-        但状态机需要它。参考实现暴露此方法。
-        """
+        """task.start (spec §4.1)：agent 开始执行，assigned→in_progress。"""
         task = self.store._get_task_for_update(task_id)
         self._require_state(task, "assigned")
         check_transition(task.state, "in_progress")

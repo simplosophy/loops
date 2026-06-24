@@ -83,10 +83,10 @@ automation, retrieval functions, or other agent-callable capabilities.
 
 Implementation checklist:
 
-- Provide `capability.list`, `capability.describe`, and `capability.invoke`.
-- Give every capability a globally unique `(capability_id, version)`.
-- Publish an input schema for every capability.
-- Return a structured `InvokeResult`.
+- Map your existing discovery mechanism into stable capability ids.
+- Give every HLP-visible capability a globally unique `(capability_id, version)`.
+- Publish enough manifest or schema data for humans to understand task constraints.
+- Preserve invocation results and errors as harness or host-platform evidence.
 - Hide transport details from HLP and agent-level planning.
 
 Expected work: minimal for MCP servers and Skills runtimes; moderate for plain

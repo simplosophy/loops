@@ -26,12 +26,13 @@ objects.
 | Concern | HLP operation | Adapter expectation |
 | --- | --- | --- |
 | Start human-owned work | `task.create`, `task.assign` | Delegate to an agent run and return a correlated run handle. |
+| Observe harness start | `task.start` | Mark the HLP task in progress only for the correlated run. |
 | Pause for human decision | `checkpoint.raise` | Block the corresponding agent run. |
 | Resume after decision | `checkpoint.resolve` | Resume the run with the resolution payload. |
 | Transfer responsibility | `ownership.transfer` | Handoff execution while preserving task correlation. |
 | Project harness events | `checkpoint.raise`, `artifact.commit` | Convert approval, input, choice, and artifact events into HLP objects. |
 | Produce output | `artifact.commit` | Preserve provenance from agent and capability use. |
-| Review output | `review.open`, `review.submit` | Feed human verdicts back to the agent route when changes are requested. |
+| Review output | `review.submit`, `review.comment` | Feed human verdicts back to the agent route when changes are requested. |
 | Audit | `audit.query`, `audit.replay` | Keep enough correlated run/capability evidence to replay the task. |
 
 ## Identity Map
@@ -63,6 +64,7 @@ Human principal
   -> HLP task.assign
   -> Harness delegate(correlation_id = TaskID)
   -> Harness run.started
+  -> HLP task.start
   -> L0 capability invoked by the harness
   -> Harness emits needs_approval
   -> HLP checkpoint.raise

@@ -85,7 +85,7 @@ HLP 与外部 agent harness 的缝合点分成两个方向：
 - `HarnessAdapter`：harness→HLP，投影 needs_approval / needs_choice / needs_input / artifact 等 human-facing event。
 
 历史上的 `AAPBridge` / `InMemoryAAPBridge` 兼容别名已经移除；HLP 不定义新的
-agent-to-agent runtime 协议。
+agent-to-agent 协议或 harness mesh。
 
 | HLP 操作 | Adapter 联动 | 铁律 |
 |----------|---------|------|

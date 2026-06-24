@@ -35,6 +35,15 @@ function readText(path) {
   return readFileSync(path, 'utf8')
 }
 
+function countOperationRows(markdown) {
+  const start = markdown.indexOf('| Object | Operation')
+  const end = markdown.indexOf('## Operation Preconditions')
+  if (start === -1 || end === -1 || end <= start) return 0
+  const table = markdown.slice(start, end)
+  const matches = table.match(/`[a-z]+\.[a-z]+`/g)
+  return matches ? matches.length : 0
+}
+
 function walkFiles(dir, shouldSkip = () => false) {
   const files = []
 
@@ -103,7 +112,12 @@ if (existsSync(distDir)) {
   assert(homeHtml.includes('class="stack-art"'), 'Home page is missing the HLP integration visual.')
   assert(homeHtml.includes('HLPHost'), 'Home page is missing the HLPHost SDK entry point.')
   assert(homeHtml.includes('AgentAdapter'), 'Home page is missing the AgentAdapter boundary.')
+  assert(homeHtml.includes('wrapping existing agent harnesses'), 'Home page does not position HLP around existing harnesses.')
+  assert(homeHtml.includes('HLP owns human interaction semantics'), 'Home page is missing the human-interaction ownership claim.')
+  assert(homeHtml.includes('Existing harnesses keep execution'), 'Home page is missing the lower-layer execution boundary.')
+  assert(homeHtml.includes('Applications embed HLP as an SDK, not as an execution harness'), 'Home page is missing the SDK-only boundary.')
   assert(!homeHtml.includes('&lt;rect'), 'Home page appears to render an SVG as escaped code.')
+  assert(!homeHtml.includes('simplosophy/loop0'), 'Home page links to the retired loop0 repository.')
 
   const protocolMapHtmlPath = join(distDir, 'protocol-map.html')
   if (existsSync(protocolMapHtmlPath)) {
@@ -111,6 +125,33 @@ if (existsSync(distDir)) {
     assert(protocolMapHtml.includes('Integration Contracts'), 'Protocol map is missing the integration contracts section.')
     assert(protocolMapHtml.includes('CapabilityRef'), 'Protocol map is missing the CapabilityRef contract.')
     assert(protocolMapHtml.includes('TaskID'), 'Protocol map is missing the TaskID correlation contract.')
+    assert(protocolMapHtml.includes('task.start'), 'Protocol map is missing the task.start operation.')
+    assert(!protocolMapHtml.includes('review.open'), 'Protocol map references a non-existent review.open operation.')
+  }
+
+  const hlpSpecSource = readText(join(siteDir, 'specs/hlp.md'))
+  assert(countOperationRows(hlpSpecSource) === 21, 'HLP spec must list exactly 21 operations.')
+
+  const hlpSpecHtml = readText(join(distDir, 'specs/hlp.html'))
+  assert(hlpSpecHtml.includes('task.start'), 'HLP spec is missing task.start.')
+  assert(hlpSpecHtml.includes('How an agent harness internally executes a run'), 'HLP spec is missing the harness execution non-goal.')
+
+  const aapHtml = readText(join(distDir, 'specs/aap.html'))
+  assert(aapHtml.includes('does not define a new agent-to-agent protocol'), 'L1 route page must not define a new agent protocol.')
+  assert(aapHtml.includes('existing agent harness'), 'L1 route page must reference existing harnesses.')
+
+  const capHtml = readText(join(distDir, 'specs/cap.html'))
+  assert(capHtml.includes('does not define a new tool or capability protocol'), 'L0 route page must not define a new capability protocol.')
+  assert(capHtml.includes('Actual invocation remains owned by'), 'L0 route page must leave invocation below HLP.')
+  assert(!capHtml.includes('capability.list'), 'L0 route page must not define a capability.list API.')
+  assert(!capHtml.includes('capability.describe'), 'L0 route page must not define a capability.describe API.')
+  assert(!capHtml.includes('capability.invoke'), 'L0 route page must not define a capability.invoke API.')
+
+  for (const builtHtml of builtHtmlFiles) {
+    const html = readText(builtHtml)
+    assert(!html.includes('HACP'), `Rendered HTML contains retired HACP naming: ${relative(rootDir, builtHtml)}`)
+    assert(!html.includes('loops.loop2'), `Rendered HTML contains retired loop2 import path: ${relative(rootDir, builtHtml)}`)
+    assert(!html.includes('loops.loop0'), `Rendered HTML contains retired loop0 import path: ${relative(rootDir, builtHtml)}`)
   }
 
   const robotsPath = join(distDir, 'robots.txt')

@@ -351,6 +351,7 @@ AuditEvent:
 |------|------|--------|------|
 | **Task** | `task.create` | principal | 创建 Task（state=created） |
 | | `task.assign` | principal | 委派给 agent（→assigned，ownership 转移） |
+| | `task.start` | agent / adapter | 记录关联 harness run 已开始（→in_progress） |
 | | `task.cancel` | principal | 中止（→completed） |
 | | `task.get` | any | 查询单个 |
 | | `task.list` | any | 列表查询 |
@@ -378,6 +379,7 @@ AuditEvent:
 |------|--------------|
 | task.create | `task.created` |
 | task.assign | `task.assigned` |
+| task.start | `task.started` |
 | task.cancel | `task.cancelled` |
 | checkpoint.raise | `task.checkpoint.raised` |
 | checkpoint.resolve | `task.checkpoint.resolved` |
@@ -395,6 +397,7 @@ AuditEvent:
 | 操作 | 前置条件 |
 |------|---------|
 | `task.assign` | Task.state == created |
+| `task.start` | Task.state == assigned |
 | `task.cancel` | Task.state ∈ {created, assigned, in_progress, blocked} |
 | `checkpoint.raise` | Task.state == in_progress |
 | `checkpoint.resolve` | 存在 pending Checkpoint 且调用方为授权人 |

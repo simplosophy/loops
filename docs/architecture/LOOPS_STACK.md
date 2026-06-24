@@ -71,7 +71,7 @@ Current rule:
 | Invariant | Reason |
 | --- | --- |
 | `Task.id == Run.correlation_id` | Audit replay must connect human work to harness runs. |
-| Checkpoints map to runtime block/resume | Human decisions must be authoritative. |
+| Checkpoints map to harness block/resume | Human decisions must be authoritative. |
 | Artifacts enter HLP review flow | Delivery and acceptance must be independent of harness internals. |
 | Adapter failure is fail-before-commit | HLP state must not claim work moved when the harness rejected it. |
 | Capability references hide transport | HLP should not know whether a capability came from MCP, Skills, local tools, or APIs. |
@@ -81,7 +81,7 @@ Current rule:
 `loops.hlp` is the current implementation directory for HLP objects,
 operations, store, adapters, host, and SDK facade.
 
-There is intentionally no `loops.loop0` runtime in the current architecture.
+There is intentionally no `loops.loop0` harness in the current architecture.
 Projects that need execution should connect an existing harness through
 `AgentAdapter` or `HarnessAdapter`.
 
