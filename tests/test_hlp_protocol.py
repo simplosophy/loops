@@ -12,7 +12,7 @@
 端到端闭环覆盖 spec 附录 A 的 "Review PR #1234" 时序。
 
 测试风格遵循仓库现有约定：同步 def test_* + asyncio.run() 驱动 async 操作
-（与 tests/test_loops_core.py 一致，不引入 pytest-asyncio）。
+不引入 pytest-asyncio。
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import asyncio
 
 import pytest
 
-from loops.loop2 import (
+from loops.hlp import (
     AgentAdapterError,
     FakeAgentAdapter,
     HumanLoopOperations,
@@ -37,7 +37,7 @@ from loops.loop2 import (
 
 
 def run(coro):
-    """同步驱动 async 操作（仓库约定，见 tests/test_loops_core.py）。"""
+    """同步驱动 async 操作。"""
     return asyncio.run(coro)
 
 
@@ -73,16 +73,16 @@ class FailableAdapter(FakeAgentAdapter):
 
 
 def test_human_loop_public_api_names_are_primary():
-    import loops.loop2 as l2
+    import loops.hlp as hlp
 
-    assert l2.HumanLoopOperations is l2.operations.HumanLoopOperations
-    assert l2.HumanLoopStore is l2.store.HumanLoopStore
-    assert "HumanLoopOperations" in l2.__all__
-    assert "HumanLoopStore" in l2.__all__
-    assert "AAPBridge" not in l2.__all__
-    assert "InMemoryAAPBridge" not in l2.__all__
-    assert "H" + "ACPOperations" not in l2.__all__
-    assert "H" + "ACPStore" not in l2.__all__
+    assert hlp.HumanLoopOperations is hlp.operations.HumanLoopOperations
+    assert hlp.HumanLoopStore is hlp.store.HumanLoopStore
+    assert "HumanLoopOperations" in hlp.__all__
+    assert "HumanLoopStore" in hlp.__all__
+    assert "AAPBridge" not in hlp.__all__
+    assert "InMemoryAAPBridge" not in hlp.__all__
+    assert "H" + "ACPOperations" not in hlp.__all__
+    assert "H" + "ACPStore" not in hlp.__all__
 
 
 # ════════════════════════════════════════════════════════════
@@ -887,12 +887,12 @@ def test_ledger_history_is_append_only():
 # ════════════════════════════════════════════════════════════
 
 
-def test_loop2_does_not_import_lower_layers():
+def test_hlp_does_not_import_lower_layers():
     """HLP 参考实现不应感知自研下层 runtime。
 
     注: HLP 只通过 adapter 接入外部 harness，证明协议层可以独立存在。
     这是 spec §1.2 适用范围的体现。
     """
-    import loops.loop2 as l2
-    assert not hasattr(l2, "loop0")
-    assert not hasattr(l2, "loop1")
+    import loops.hlp as hlp
+    assert not hasattr(hlp, "loop0")
+    assert not hasattr(hlp, "loop1")

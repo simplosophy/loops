@@ -89,5 +89,5 @@ Loops 当前聚焦 **Human Loop Protocol (HLP)**：定义人和自主 agent harn
 | 文档 | 作用 |
 |------|------|
 | [`docs/architecture/LOOPS_STACK.md`](../architecture/LOOPS_STACK.md) | 架构定位：HLP 为核心，L1/L0 为集成路由 |
-| [`docs/architecture/loop2.md`](../architecture/loop2.md) | HLP 参考实现架构 |
+| [`docs/architecture/hlp.md`](../architecture/hlp.md) | HLP 参考实现架构 |
 | [`docs/plans/2026-06-22-hlp-first-site-positioning.md`](../plans/2026-06-22-hlp-first-site-positioning.md) | 本次 HLP-first 定位调整计划 |

@@ -1,7 +1,7 @@
 # HLP SDK Stack Architecture
 
-> **2026-06-24 定位更新**：Loops 不再维护自研 `loop0` agent harness，也不再把
-> `loop0/loop1/loop2` 作为要落地的三层运行时框架。项目聚焦 HLP SDK：
+> **2026-06-24 定位更新**：Loops 不再维护自研 agent harness，也不再把
+> 历史三层运行时命名作为要落地的框架。项目聚焦 HLP SDK：
 > 统一人类交互语义，包裹既有 harness，复用既有 agent/capability 协议栈。
 
 ## Stack Model
@@ -78,9 +78,8 @@ Current rule:
 
 ## Internal Package Notes
 
-`loops.loop2` remains the current implementation directory for HLP objects,
-operations, store, adapters, and SDK facade. This is an implementation detail.
-It may be migrated under `loops.hlp` later without changing public imports.
+`loops.hlp` is the current implementation directory for HLP objects,
+operations, store, adapters, host, and SDK facade.
 
 There is intentionally no `loops.loop0` runtime in the current architecture.
 Projects that need execution should connect an existing harness through

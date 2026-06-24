@@ -52,7 +52,6 @@ loops/
   hlp/
     __init__.py        # stable HLP SDK namespace
     host.py            # app embedding host
-  loop2/
     _ids.py            # typed ULID helpers
     types.py           # ProtocolError + Literal aliases
     objects.py         # HLP objects and value objects
@@ -66,9 +65,8 @@ loops/
     audit.py           # append-only audit log
 ```
 
-`loops.loop2` 当前承载 HLP 参考实现，这是内部目录选择，不是产品叙事。
-稳定公共入口是 `loops` 和 `loops.hlp`。后续可以把内部模块迁移到
-`loops.hlp` 下，只要 public API 不变。
+`loops.hlp` 当前承载 HLP 参考实现和稳定 SDK namespace。`loops` 顶层只
+re-export 稳定公共 API。
 
 ## Adapter Boundary
 

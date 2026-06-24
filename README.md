@@ -187,7 +187,7 @@ inbox = await client.human_inbox("user_alice")
 
 - HLP spec: [docs/specs/HLP.md](docs/specs/HLP.md)
 - Architecture overview: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md)
-- HLP implementation notes: [docs/architecture/loop2.md](docs/architecture/loop2.md)
+- HLP implementation notes: [docs/architecture/hlp.md](docs/architecture/hlp.md)
 - Website source: [docs/site](docs/site)
 
 ## Verification

@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from loops.loop2.adapters import AgentAdapter, FakeAgentAdapter
-from loops.loop2.events import HLPEvent, InMemoryEventBus
-from loops.loop2.sdk import HLPClient
-from loops.loop2.sqlite_store import SQLiteHumanLoopStore
-from loops.loop2.store import HumanLoopStore
+from .adapters import AgentAdapter, FakeAgentAdapter
+from .events import HLPEvent, InMemoryEventBus
+from .sdk import HLPClient
+from .sqlite_store import SQLiteHumanLoopStore
+from .store import HumanLoopStore
 
 
 @dataclass

@@ -41,17 +41,22 @@ HLP does not own:
    - Delete loop0 demos/configs/prompts and console scripts.
    - Keep HLP tests focused on adapter contracts and protocol state.
 
-2. Add a `HarnessAdapter` protocol and `HarnessEvent` value object.
+2. Collapse the implementation package into `loops.hlp`.
+   - Move the HLP reference implementation out of `loops/loop2`.
+   - Keep `loops` and `loops.hlp` as the only public import surfaces.
+   - Rename current tests and architecture docs away from loop2 terminology.
+
+3. Add a `HarnessAdapter` protocol and `HarnessEvent` value object.
    - `AgentAdapter` remains the command boundary.
    - `HarnessAdapter` adds capability metadata and optional event observation.
    - Harness events project into HLP objects but do not change harness execution.
 
-3. Add a unified human interaction query API.
+4. Add a unified human interaction query API.
    - `HLPClient.human_inbox(principal)` returns pending human actions.
    - Checkpoints appear as decision items.
    - Review-ready artifacts appear as review items.
 
-4. Add a deterministic fake harness demo.
+5. Add a deterministic fake harness demo.
    - Fake harness delegates a task.
    - It emits a human approval event.
    - HLP raises a checkpoint.
@@ -60,7 +65,7 @@ HLP does not own:
    - HLP commits the artifact and exposes it in the review inbox.
    - Human review completes the task.
 
-5. Update docs and site positioning.
+6. Update docs and site positioning.
    - HLP is a harness human-interaction control plane.
    - Adapter conformance is capability-based.
    - UI remains host application responsibility.
@@ -70,9 +75,11 @@ HLP does not own:
 
 - `from loops import HarnessAdapter, HarnessEvent, FakeHarnessAdapter` works.
 - `loops.loop0`, `loops-loop0`, `loops-demo`, and old loop0 examples are gone.
+- `loops/loop2` is gone; implementation modules live directly under
+  `loops/hlp`.
 - Harness events can be projected into HLP checkpoints and artifacts.
 - `HLPClient.human_inbox(principal)` returns unified checkpoint/review items.
 - A dependency-free harness wrap demo runs end to end.
 - README, HLP spec, architecture docs, and site copy consistently state the new
   positioning.
-- Existing SDK, adapter, loop2, and site verification tests still pass.
+- Existing SDK, adapter, protocol, and site verification tests still pass.
