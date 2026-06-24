@@ -46,6 +46,12 @@ Run a dependency-free harness wrapping demo:
 uv run loops-hlp-harness-demo
 ```
 
+Run the dependency-free Codex harness adapter demo:
+
+```bash
+uv run loops-hlp-codex-harness-demo
+```
+
 Run the local CLI smoke test against installed Codex, Kimi, and Claude Code:
 
 ```bash
@@ -112,12 +118,17 @@ Named local coding-agent adapters use one-shot prompt mode so they match the
 real CLIs installed on a developer machine:
 
 ```python
-from loops import ClaudeCodeCLIAdapter, CodexCLIAdapter, KimiCLIAdapter
+from loops import ClaudeCodeCLIAdapter, CodexCLIAdapter, CodexHarnessAdapter, KimiCLIAdapter
 
 codex = CodexCLIAdapter()
+codex_harness = CodexHarnessAdapter()
 kimi = KimiCLIAdapter()
 claude = ClaudeCodeCLIAdapter()
 ```
+
+Use `CodexCLIAdapter` when HLP only needs to delegate a one-shot Codex task.
+Use `CodexHarnessAdapter` when Codex JSONL output should also project
+human-facing events back into HLP checkpoints and artifacts.
 
 `ProcessAgentAdapter` is still available for custom JSON-over-stdin/stdout
 processes:
@@ -183,6 +194,11 @@ await client.project_harness_events(run.run_id)
 inbox = await client.human_inbox("user_alice")
 ```
 
+`CodexHarnessAdapter` applies the same `HarnessAdapter` semantics to
+`codex exec --json` output. It preserves HLP `task_id` as the run correlation
+id and maps explicit Codex HLP events such as `needs_approval`, `needs_input`,
+`needs_choice`, and `artifact` into the common HLP objects.
+
 ## Documentation
 
 - HLP spec: [docs/specs/HLP.md](docs/specs/HLP.md)
@@ -197,5 +213,6 @@ uv run pytest -q
 uv run loops-hlp-demo
 uv run loops-hlp-adapters-demo
 uv run loops-hlp-harness-demo
+uv run loops-hlp-codex-harness-demo
 uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
 ```

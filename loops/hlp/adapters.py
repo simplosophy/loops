@@ -40,6 +40,8 @@ ProcessRunner = Callable[
     Awaitable[ProcessResult] | ProcessResult,
 ]
 
+_CODEX_EVENTS_KEY = "_codex_events"
+
 
 @dataclass(frozen=True)
 class AgentRunHandle:
@@ -965,6 +967,245 @@ class CodexCLIAdapter(PromptCLIAdapter):
         super().__init__(command, name="codex-cli", runner=runner, timeout=timeout)
 
 
+class CodexHarnessAdapter(PromptCLIAdapter):
+    """Codex CLI adapter with HLP harness event projection.
+
+    Codex keeps its own execution model. This adapter only provides the HLP
+    boundary: prompt-mode command execution plus projection of explicit
+    human-loop events from Codex JSONL stdout.
+    """
+
+    def __init__(
+        self,
+        command: tuple[str, ...] = (
+            "codex",
+            "exec",
+            "--json",
+            "--sandbox",
+            "read-only",
+            "--ephemeral",
+        ),
+        *,
+        runner: ProcessRunner | None = None,
+        timeout: float = 120.0,
+        capabilities: HarnessCapabilities | None = None,
+    ) -> None:
+        super().__init__(
+            command,
+            name="codex-harness",
+            runner=runner or _run_prompt_process,
+            timeout=timeout,
+        )
+        self._capabilities = capabilities or HarnessCapabilities(
+            name="codex",
+            conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
+            description="Projects Codex CLI JSON events into HLP human-loop objects.",
+        )
+        self._codex_events: dict[str, list[dict[str, Any]]] = {}
+
+    def harness_capabilities(self) -> HarnessCapabilities:
+        return self._capabilities
+
+    async def delegate(
+        self,
+        task_id: str,
+        agent_id: str,
+        capability: str,
+        input: dict[str, Any],
+        parent_run: str | None = None,
+    ) -> str:
+        request = {
+            "operation": "delegate",
+            "task_id": task_id,
+            "agent_id": agent_id,
+            "capability": capability,
+            "input": input,
+            "parent_run": parent_run,
+            "correlation_id": task_id,
+        }
+        payload = await self._execute("delegate", request)
+        events = _pop_codex_events(payload)
+        _validate_correlation(payload, task_id, self.name, "delegate")
+        run_id = str(payload.get("run_id") or _codex_run_id_from_events(events) or self._next_run_id())
+        self._runs[run_id] = AgentRunHandle(
+            run_id=run_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            correlation_id=task_id,
+            capability=capability,
+            parent_run=parent_run,
+        )
+        self.process_results[run_id] = payload
+        self._queue_codex_events(run_id, events)
+        self.calls.append((
+            "delegate",
+            {
+                "run_id": run_id,
+                "task_id": task_id,
+                "agent_id": agent_id,
+                "capability": capability,
+                "input": input,
+                "parent_run": parent_run,
+            },
+        ))
+        return run_id
+
+    async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
+        handle = self._require_run(run_id, "block")
+        payload = await self._execute("block", {
+            "operation": "block",
+            "run_id": run_id,
+            "checkpoint_id": checkpoint_id,
+            "reason": reason,
+            "correlation_id": handle.correlation_id,
+        })
+        events = _pop_codex_events(payload)
+        _validate_correlation(payload, handle.correlation_id, self.name, "block")
+        self._queue_codex_events(run_id, events)
+        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason)
+
+    async def resume(self, run_id: str, resolution: Any) -> None:
+        handle = self._require_run(run_id, "resume")
+        payload = await self._execute("resume", {
+            "operation": "resume",
+            "run_id": run_id,
+            "resolution": resolution,
+            "correlation_id": handle.correlation_id,
+        })
+        events = _pop_codex_events(payload)
+        _validate_correlation(payload, handle.correlation_id, self.name, "resume")
+        self._queue_codex_events(run_id, events)
+        await FakeAgentAdapter.resume(self, run_id, resolution)
+
+    async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
+        current = self._require_run(run_id, "handoff")
+        payload = await self._execute("handoff", {
+            "operation": "handoff",
+            "run_id": run_id,
+            "to_agent": to_agent,
+            "context": context,
+            "correlation_id": current.correlation_id,
+        })
+        events = _pop_codex_events(payload)
+        _validate_correlation(payload, current.correlation_id, self.name, "handoff")
+        new_run_id = str(
+            payload.get("run_id")
+            or payload.get("to_run")
+            or _codex_run_id_from_events(events)
+            or self._next_run_id()
+        )
+        self._runs[new_run_id] = AgentRunHandle(
+            run_id=new_run_id,
+            task_id=current.task_id,
+            agent_id=to_agent,
+            correlation_id=current.correlation_id,
+            capability=current.capability,
+            parent_run=run_id,
+        )
+        self.process_results[new_run_id] = payload
+        self._queue_codex_events(new_run_id, events)
+        self.calls.append((
+            "handoff",
+            {
+                "from_run": run_id,
+                "to_run": new_run_id,
+                "to_agent": to_agent,
+                "context": context,
+            },
+        ))
+        return new_run_id
+
+    async def cancel(self, run_id: str, reason: str) -> None:
+        handle = self._require_run(run_id, "cancel")
+        payload = await self._execute("cancel", {
+            "operation": "cancel",
+            "run_id": run_id,
+            "reason": reason,
+            "correlation_id": handle.correlation_id,
+        })
+        events = _pop_codex_events(payload)
+        _validate_correlation(payload, handle.correlation_id, self.name, "cancel")
+        self._queue_codex_events(run_id, events)
+        await FakeAgentAdapter.cancel(self, run_id, reason)
+
+    async def observe(self, run_id: str) -> tuple[HarnessEvent, ...]:
+        handle = self._require_run(run_id, "observe")
+        raw_events = tuple(self._codex_events.pop(run_id, ()))
+        projected = tuple(
+            event
+            for raw in raw_events
+            if (event := _codex_event_to_harness_event(raw, handle)) is not None
+        )
+        self.calls.append((
+            "observe",
+            {
+                "run_id": run_id,
+                "raw_events": len(raw_events),
+                "events": len(projected),
+            },
+        ))
+        return projected
+
+    async def _execute(self, operation: str, request: dict[str, Any]) -> dict[str, Any]:
+        prompt = _cli_operation_prompt(request)
+        command = (*self.command, prompt)
+        try:
+            result = self.runner(command, request, self.timeout)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process runner raised an exception",
+                details={
+                    "command": command,
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc),
+                },
+            ) from exc
+        if result.exit_code != 0:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process command failed",
+                details={
+                    "command": command,
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                },
+            )
+        if not result.stdout.strip():
+            return {}
+        try:
+            payload, events = _parse_codex_stdout(result.stdout)
+            _validate_codex_event_correlations(
+                events,
+                str(request.get("correlation_id") or ""),
+                self.name,
+                operation,
+            )
+        except ValueError as exc:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process stdout did not contain Codex JSON events",
+                details={"stdout": result.stdout, "stderr": result.stderr},
+            ) from exc
+        payload[_CODEX_EVENTS_KEY] = events
+        return payload
+
+    def _queue_codex_events(
+        self,
+        fallback_run_id: str,
+        events: tuple[dict[str, Any], ...],
+    ) -> None:
+        for event in events:
+            run_id = _codex_event_run_id(event) or fallback_run_id
+            self._codex_events.setdefault(run_id, []).append(event)
+
+
 class ClaudeCodeCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
@@ -1174,6 +1415,204 @@ def _extract_last_json_object(text: str) -> dict[str, Any] | None:
             nested = _extract_hlp_json_payload(value)
             candidates.append(nested or value)
     return candidates[-1] if candidates else None
+
+
+def _parse_codex_stdout(stdout: str) -> tuple[dict[str, Any], tuple[dict[str, Any], ...]]:
+    events: list[dict[str, Any]] = []
+    for line in stdout.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            if line.startswith(("{", "[")):
+                raise ValueError("Codex JSON event line was invalid") from exc
+            continue
+        if not isinstance(event, dict):
+            raise ValueError("Codex JSONL events must be objects")
+        events.append(event)
+
+    if not events:
+        payload = _parse_cli_stdout(stdout)
+        events = [payload]
+
+    payload = _codex_result_payload(tuple(events))
+    return payload, tuple(events)
+
+
+def _codex_result_payload(events: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    for event in reversed(events):
+        if "run_id" in event:
+            return dict(event)
+        payload = _extract_hlp_json_payload(event)
+        if payload is not None and ("run_id" in payload or "correlation_id" in payload):
+            return dict(payload)
+    return dict(events[-1]) if events else {}
+
+
+def _pop_codex_events(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    raw_events = payload.pop(_CODEX_EVENTS_KEY, ())
+    if isinstance(raw_events, tuple):
+        return tuple(event for event in raw_events if isinstance(event, dict))
+    if isinstance(raw_events, list):
+        return tuple(event for event in raw_events if isinstance(event, dict))
+    return ()
+
+
+def _codex_run_id_from_events(events: tuple[dict[str, Any], ...]) -> str | None:
+    for event in reversed(events):
+        run_id = _codex_event_run_id(event)
+        if run_id is not None:
+            return run_id
+    return None
+
+
+def _codex_event_run_id(event: dict[str, Any]) -> str | None:
+    payload = _codex_hlp_payload(event)
+    for value in (
+        event.get("run_id"),
+        event.get("id") if str(event.get("type", "")).endswith("run") else None,
+        payload.get("run_id") if payload is not None else None,
+    ):
+        if value:
+            return str(value)
+    return None
+
+
+def _validate_codex_event_correlations(
+    events: tuple[dict[str, Any], ...],
+    expected: str,
+    adapter: str,
+    operation: str,
+) -> None:
+    if not expected:
+        return
+    for event in events:
+        actual = _codex_event_correlation(event)
+        if actual is not None and actual != expected:
+            raise AgentAdapterError(
+                adapter,
+                operation,
+                "runtime returned mismatched correlation_id",
+                details={"expected": expected, "actual": actual},
+            )
+
+
+def _codex_event_correlation(event: dict[str, Any]) -> str | None:
+    payload = _codex_hlp_payload(event)
+    for value in (
+        event.get("correlation_id"),
+        event.get("hlp_task_id"),
+        payload.get("correlation_id") if payload is not None else None,
+        payload.get("task_id") if payload is not None else None,
+        payload.get("hlp_task_id") if payload is not None else None,
+    ):
+        if value:
+            return str(value)
+    return None
+
+
+def _codex_event_to_harness_event(
+    event: dict[str, Any],
+    handle: AgentRunHandle,
+) -> HarnessEvent | None:
+    payload = _codex_hlp_payload(event)
+    if payload is not None:
+        kind = _normalize_codex_hlp_kind(payload.get("kind") or event.get("kind") or event.get("type"))
+        if kind is None:
+            return None
+        return HarnessEvent(
+            kind=kind,
+            task_id=str(
+                payload.get("task_id")
+                or event.get("correlation_id")
+                or handle.task_id
+            ),
+            run_id=str(payload.get("run_id") or event.get("run_id") or handle.run_id),
+            agent_id=str(payload.get("agent_id") or event.get("agent_id") or handle.agent_id),
+            prompt=str(payload.get("prompt") or event.get("message") or ""),
+            options=_tuple_value(payload.get("options")),
+            context=_tuple_value(payload.get("context")),
+            artifact_type=str(payload.get("artifact_type") or payload.get("type") or "artifact"),
+            artifact_uri=str(payload.get("artifact_uri") or payload.get("uri") or ""),
+            artifact_checksum=str(payload.get("artifact_checksum") or payload.get("checksum") or ""),
+            artifact_size=_int_value(payload.get("artifact_size") or payload.get("size")),
+        )
+
+    artifact_uri = (
+        event.get("artifact_uri")
+        or event.get("patch_uri")
+        or event.get("diff_uri")
+    )
+    if artifact_uri:
+        return HarnessEvent(
+            kind="artifact",
+            task_id=str(event.get("correlation_id") or handle.task_id),
+            run_id=str(event.get("run_id") or handle.run_id),
+            agent_id=str(event.get("agent_id") or handle.agent_id),
+            artifact_type=str(event.get("artifact_type") or "artifact"),
+            artifact_uri=str(artifact_uri),
+            artifact_checksum=str(event.get("artifact_checksum") or event.get("checksum") or ""),
+            artifact_size=_int_value(event.get("artifact_size") or event.get("size")),
+        )
+    return None
+
+
+def _codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
+    for key in ("hlp", "human_loop", "humanLoop"):
+        payload = event.get(key)
+        if isinstance(payload, dict):
+            return payload
+    event_type = str(event.get("type") or "")
+    if event_type.startswith("hlp.") or event_type in {
+        "needs_approval",
+        "needs_choice",
+        "needs_input",
+        "artifact",
+    }:
+        return event
+    return None
+
+
+def _normalize_codex_hlp_kind(value: Any) -> HarnessEventKind | None:
+    aliases = {
+        "approval": "needs_approval",
+        "approval_required": "needs_approval",
+        "needs_approval": "needs_approval",
+        "choice": "needs_choice",
+        "choice_required": "needs_choice",
+        "needs_choice": "needs_choice",
+        "input": "needs_input",
+        "input_required": "needs_input",
+        "needs_input": "needs_input",
+        "artifact": "artifact",
+        "artifact_ready": "artifact",
+        "patch": "artifact",
+    }
+    normalized = aliases.get(str(value or ""))
+    if normalized in {"needs_approval", "needs_choice", "needs_input", "artifact"}:
+        return normalized  # type: ignore[return-value]
+    return None
+
+
+def _tuple_value(value: Any) -> tuple[Any, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, tuple):
+        return value
+    if isinstance(value, list):
+        return tuple(value)
+    return (value,)
+
+
+def _int_value(value: Any) -> int:
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _validate_correlation(

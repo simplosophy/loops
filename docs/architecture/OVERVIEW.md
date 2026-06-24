@@ -111,4 +111,5 @@ channel 进行渲染和送达。
 - `loops-hlp-demo` 验证无外部依赖的人机闭环。
 - `loops-hlp-adapters-demo` 验证 adapter contract。
 - `loops-hlp-harness-demo` 验证外部 harness human-facing 事件投影。
+- `loops-hlp-codex-harness-demo` 验证 Codex JSONL harness adapter 的端到端投影。
 - 站点验证确保文档定位保持 HLP-first、SDK-only。

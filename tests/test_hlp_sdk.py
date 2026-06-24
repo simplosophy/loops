@@ -10,6 +10,7 @@ from loops.hlp import (
     ClaudeCodeCLIAdapter,
     CheckpointOption,
     CodexCLIAdapter,
+    CodexHarnessAdapter,
     CrewAIAdapter,
     FakeAgentAdapter,
     FakeHarnessAdapter,
@@ -32,6 +33,7 @@ from loops.hlp import (
 )
 from examples.hlp_e2e_demo import run_demo
 from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
+from examples.hlp_codex_harness_demo import run_demo as run_codex_harness_demo
 from examples.hlp_harness_wrap_demo import run_demo as run_harness_wrap_demo
 from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
 
@@ -271,6 +273,7 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     langgraph = LangGraphAdapter(handler)
     crewai = CrewAIAdapter(handler)
     codex = CodexCLIAdapter(command=("codex", "exec"))
+    codex_harness = CodexHarnessAdapter(command=("codex", "exec", "--json"))
     claude = ClaudeCodeCLIAdapter(command=("claude", "-p"))
     kimi = KimiCLIAdapter(command=("kimi", "-p"))
     herms = HermsCLIAdapter(command=("herms", "run"))
@@ -291,6 +294,12 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     assert run(langgraph.healthcheck())["adapter"] == "langgraph"
     assert run(crewai.healthcheck())["adapter"] == "crewai"
     assert run(codex.healthcheck())["command"] == ("codex", "exec")
+    assert run(codex_harness.healthcheck())["adapter"] == "codex-harness"
+    assert codex_harness.harness_capabilities().conformance == (
+        "checkpoint-capable",
+        "artifact-aware",
+        "event-streaming",
+    )
     assert run(claude.healthcheck())["adapter"] == "claude-code-cli"
     assert run(kimi.healthcheck())["adapter"] == "kimi-cli"
     assert HermesCLIAdapter is HermsCLIAdapter
@@ -370,6 +379,148 @@ def test_process_agent_adapter_accepts_jsonl_event_stream_stdout():
 
     assert run_id == "codex_run_1"
     assert adapter.process_results[run_id]["type"] == "turn.completed"
+
+
+def test_codex_harness_adapter_projects_jsonl_events_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({"type": "session.started", "session_id": "codex_session_1"}),
+                    json.dumps({
+                        "type": "hlp.event",
+                        "run_id": "codex_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "hlp": {
+                            "kind": "needs_approval",
+                            "agent_id": "agent_codex",
+                            "prompt": "Apply the Codex patch?",
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": "codex_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "status": "ok",
+                    }),
+                )),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({
+                        "type": "hlp.event",
+                        "run_id": "codex_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "hlp": {
+                            "kind": "artifact",
+                            "agent_id": "agent_codex",
+                            "artifact_type": "patch",
+                            "artifact_uri": "mem://codex.patch",
+                            "artifact_checksum": "sha256:codex.patch",
+                            "artifact_size": 42,
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": "codex_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "status": "ok",
+                    }),
+                )),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = CodexHarnessAdapter(
+        command=("codex", "exec", "--json"),
+        runner=runner,
+        timeout=8.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Review a Codex generated patch",
+        type="codex-harness",
+    ))
+    handle = run(client.delegate(
+        task.id,
+        "agent_codex",
+        capability="code-edit",
+        input={"goal": task.spec.goal},
+    ))
+    run(client.start(task.id))
+
+    checkpoint = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert handle.run_id == "codex_run_1"
+    assert handle.correlation_id == task.id
+    assert checkpoint.prompt == "Apply the Codex patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:3] == ("codex", "exec", "--json")
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 8.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://codex.patch"
+    assert artifact.payload.checksum == "sha256:codex.patch"
+    assert artifact.payload.size == 42
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_codex_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=(
+                '{"type":"hlp.event","run_id":"codex_run_1","correlation_id":"task_other",'
+                '"hlp":{"kind":"needs_input","agent_id":"agent_codex",'
+                '"prompt":"Need more context"}}\n'
+                '{"type":"turn.completed","run_id":"codex_run_1","status":"ok"}\n'
+            ),
+            stderr="",
+        )
+
+    adapter = CodexHarnessAdapter(
+        command=("codex", "exec", "--json"),
+        runner=runner,
+    )
+
+    try:
+        run(adapter.delegate(
+            task_id="task_codex",
+            agent_id="agent_codex",
+            capability="code-edit",
+            input={"goal": "edit"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "codex-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_codex", "actual": "task_other"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
 
 
 def test_kimi_cli_adapter_executes_one_shot_prompt_and_extracts_json():
@@ -1025,6 +1176,7 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
         "langgraph",
         "crewai",
         "codex_cli",
+        "codex_harness",
         "claude_code_cli",
         "herms_cli",
     }
@@ -1039,6 +1191,7 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
     assert result["langgraph"]["run_id"] == "graph_demo"
     assert result["crewai"]["run_id"] == "crew_demo"
     assert result["codex_cli"]["run_id"] == "codex_demo"
+    assert result["codex_harness"]["run_id"] == "codex_harness_demo"
     assert result["claude_code_cli"]["run_id"] == "claude_demo"
     assert result["herms_cli"]["run_id"] == "herms_demo"
 
@@ -1058,6 +1211,27 @@ def test_hlp_harness_wrap_demo_runs_without_external_services():
         "checkpoint-capable",
         "artifact-aware",
     ]
+
+
+def test_hlp_codex_harness_demo_runs_without_external_services():
+    result = run(run_codex_harness_demo())
+
+    assert result["task_id"].startswith("task_")
+    assert result["run_id"] == "codex_demo_run"
+    assert result["adapter"] == "codex-harness"
+    assert result["harness_conformance"] == [
+        "checkpoint-capable",
+        "artifact-aware",
+        "event-streaming",
+    ]
+    assert result["checkpoint_prompt"] == "Apply the Codex patch?"
+    assert result["checkpoint_decision"] == "approve"
+    assert result["artifact_version"] == "v1"
+    assert result["artifact_uri"] == "mem://codex-demo.patch"
+    assert result["review_verdict"] == "approved"
+    assert result["final_task_state"] == "completed"
+    assert result["inbox_after_checkpoint"] == ["resolve_checkpoint"]
+    assert result["inbox_after_artifact"] == ["submit_review"]
 
 
 def test_hlp_local_cli_demo_runs_selected_adapters_with_injected_runners():

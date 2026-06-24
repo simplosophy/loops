@@ -13,6 +13,7 @@ dependencies = [
 [project.scripts]
 loops-hlp-demo = "examples.hlp_e2e_demo:main"
 loops-hlp-adapters-demo = "examples.hlp_adapter_compat_demo:main"
+loops-hlp-codex-harness-demo = "examples.hlp_codex_harness_demo:main"
 loops-hlp-harness-demo = "examples.hlp_harness_wrap_demo:main"
 loops-hlp-local-cli-demo = "examples.hlp_local_cli_e2e:main"
 

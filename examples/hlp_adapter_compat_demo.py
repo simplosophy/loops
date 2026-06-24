@@ -7,6 +7,7 @@ from typing import Any
 from loops.hlp import (
     ClaudeCodeCLIAdapter,
     CodexCLIAdapter,
+    CodexHarnessAdapter,
     CrewAIAdapter,
     HLPClient,
     HermsCLIAdapter,
@@ -34,6 +35,10 @@ async def run_demo() -> dict[str, dict[str, str]]:
         "codex_cli": CodexCLIAdapter(
             command=("codex", "exec", "--json"),
             runner=_process_runner("codex_demo"),
+        ),
+        "codex_harness": CodexHarnessAdapter(
+            command=("codex", "exec", "--json"),
+            runner=_process_runner("codex_harness_demo"),
         ),
         "claude_code_cli": ClaudeCodeCLIAdapter(
             command=("claude", "-p"),
@@ -130,4 +135,3 @@ def _process_runner(run_id: str):
 
 if __name__ == "__main__":
     main()
-
