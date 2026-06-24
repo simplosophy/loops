@@ -1,383 +1,116 @@
-# loop0 Architecture Overview
+# HLP SDK Architecture Overview
 
-本文定义 `loops.loop0` 的当前目标架构。`loop0` 是单个 Agent 的内部运行时内核，只负责一次 Agent run 的执行；`loop1` 才负责 TUI、WebUI、IM、scheduler 等 channel 协议，`loop2` 负责组织级项目协作和云端运行时编排。对外产品入口是 HLP（`loops` / `loops.hlp`），不是 loop0 runtime。
+本文定义当前项目的架构边界：Loops 只提供 Human Loop Protocol
+(HLP) SDK，不再提供自研 agent harness。外部 harness 继续拥有模型调用、
+工具执行、规划循环、memory、channel 和运行时生命周期；HLP 只统一这些
+harness 暴露给人的交互语义。
 
-## 设计边界
+## 核心定位
 
-`loop0` 的职责是把一次输入变成一次可观测、可提交状态的 Agent run：
-
-```text
-UserInput + AgentSpec + AgentState
-  -> AgentRuntime
-  -> AgentEvent* + AgentResult
-```
-
-`loop0` 不拥有用户、channel、session、storage backend、项目空间或组织协作语义。embedding host 可以是 CLI、测试、loop1 container 或其他服务，但 host 只能通过显式输入、事件输出和状态接口嵌入 loop0。
-
-## 核心原则
-
-- 极简：核心只内置一个默认 tool：`shell`。skills、MCP、memory backend、业务系统连接都通过 component、tool、provider 或上层容器扩展。
-- 正交：provider 只负责模型，tool 只负责可调用能力，prompt 只负责上下文组装，runtime 只负责执行循环和事件。
-- 分层：loop0 不能 import 或感知 loop1/loop2。跨层通信通过 `UserInput`、`InteractionContext`、`EventSink`、`AgentEvent` 和 `AgentResult`。
-- Fail Fast：spec 校验、provider/tool 错误、policy 拒绝应快速暴露，不在 runtime 内长时间阻塞。
-- 约定优先：默认 state、workspace、shell tool 和 prompt renderer 可直接使用，高级 host 再按需注入替代实现。
-
-## 运行时模型
+HLP 是 agent harness 的 human-interaction control plane：
 
 ```text
-AgentSpec
-  prompt: PromptTemplate
-  provider: Provider
-  tools: tuple[BaseTool, ...]
-  components: tuple[Component, ...]
-  policy: AgentPolicy
-  metadata: dict
-  logger: EventLogger
-
-Agent
-  spec: AgentSpec
-  state: AgentState
-  runtime: AgentRuntime
-
-Run
-  run_id
-  thread_id
-  input: UserInput
-  interaction: InteractionContext
-  event_sink: EventSink
-  stream: bool
-  messages
-  tool_registry
-  contributions
-  events
-  pending_state_messages
+Human principal / reviewer
+  -> HLP SDK: Task, Checkpoint, Artifact, Review, Ledger, Audit
+  -> AgentAdapter / HarnessAdapter
+  -> existing harness: Codex, Kimi, Claude Code, LangGraph, CrewAI, custom runtime
 ```
 
-`AgentSpec` 是 Agent 的不可变定义。`AgentState` 是长生命周期状态。`Run` 是单次执行态，只在一次 `Agent.run()` 内存在。
+HLP 的目标不是再造一个执行框架，而是让不同 harness 在人类委派、审批、
+验收、审计这些语义上有一致的对象模型和操作顺序。
 
-## Public API
+## HLP 拥有
 
-```python
-result = await agent0.run(
-    "inspect the workspace",
-    thread_id="default",
-    event_sink=sink,
-    stream=True,
-)
-```
+- `Task`：人交给 agent 的有边界工作单元。
+- `Ownership`：principal 不变、assignee 可流转的责任凭证。
+- `Checkpoint`：agent 或 harness 需要人决策时形成的阻塞点。
+- `Artifact` / `Review`：交付物及人的验收记录。
+- `Ledger` / `Audit`：可累积、可重放、可审计的状态和事件。
+- `HLPClient` / `HLPHost`：应用嵌入 HLP 的 SDK facade。
+- `AgentAdapter`：HLP 向外部 harness 下发 delegate/block/resume/handoff/cancel。
+- `HarnessAdapter`：外部 harness 将 human-facing 事件投影回 HLP。
+- Store / EventBus：本地参考实现所需的状态和事件抽象。
 
-`Agent.run()` 的核心参数：
+## HLP 不拥有
 
-- `input`: `str | UserInput`，一次运行的用户输入。
-- `thread_id`: 可选 thread 选择器，优先级高于 `InteractionContext.thread_id`。
-- `event_sink`: 可选事件输出端，实现 `async send(AgentEvent)` 或传入 callback。
-- `stream`: 是否请求 provider streaming，并向 `event_sink` 发送 `provider_delta`。
+- 模型 provider 抽象。
+- tool/function/MCP/Skills 调用。
+- agent planning loop。
+- agent memory / RAG / prompt 组装。
+- agent-to-agent runtime 协议。
+- Web、IM、CLI、TUI 等 UI/channel 渲染与送达。
+- 组织级身份、RBAC、计费、调度平台。
 
-`Agent.stream()` 是便利 API：它以 `stream=True` 执行一次 run，并回放该 run 的事件。
+这些能力应由现有 harness、host application 或已有协议栈承担。HLP 只通过
+窄 adapter contract 接入。
 
-## UserInput 与 InteractionContext
-
-`UserInput` 只描述输入内容和输入附带的元信息：
-
-```python
-UserInput(
-    text="hello",
-    attachments=[],
-    metadata={},
-    interaction_context=InteractionContext(source="console", session_id="s1"),
-)
-```
-
-`InteractionContext` 是 loop0 接收的最小交互上下文，不是 channel：
-
-- `source`: 输入来源名称，例如 `direct`、`console`、`web`、`im`、`scheduled`。
-- `session_id`: 上层 session id，可用于默认 thread 选择。
-- `thread_id`: 目标 Agent thread。
-- `actor_id`: 上层用户或系统 actor 标识。
-- `reply_to`: 上层消息 id 或回包目标。
-- `audience`: `user`、`group` 或 `system`。
-- `interactive`: 这次输入是否允许交互式追问或审批。
-- `stream`: 当前 run 是否请求 streaming。
-- `locale`: 语言区域。
-- `raw`: 上层保留的原始协议字段。
-
-loop0 可以把这些字段注入 prompt，也可以把它们写入事件 payload，但不能根据具体 channel 类型分支。
-
-## Prompt Context
-
-Prompt 使用 Jinja2 渲染，模板可以访问稳定的结构化上下文：
-
-- `agent`
-- `provider`
-- `interaction`
-- `tools`
-- `components`
-- `state`
-- `input`
-- `run`
-- `policy`
-
-示例：
-
-```jinja2
-You are {{ agent.name }}.
-Input source: {{ interaction.source }}
-Streaming: {{ interaction.stream | json }}
-
-Available tools:
-{% for tool in tools %}
-- {{ tool.name }}: {{ tool.description }}
-{% endfor %}
-```
-
-prompt 层不应依赖上层 channel 对象。需要上层协议信息时，由 loop1 映射成 `InteractionContext` 或 `UserInput.metadata`。
-
-## EventSink
-
-`EventSink` 是 loop0 的最小输出端口：
-
-```python
-class EventSink(Protocol):
-    async def send(self, event: AgentEvent) -> None:
-        ...
-```
-
-内置实现：
-
-- `NullEventSink`: 默认 sink，丢弃事件。
-- `InMemoryEventSink`: 收集事件，适合测试和 embedding。
-- `CallableEventSink`: 包装 sync/async callback。
-
-runtime 对所有事件执行同一条路径：
+## 包结构
 
 ```text
-emit AgentEvent
-  -> append run.events
-  -> EventLogger.log_event
-  -> EventSink.send
-  -> Component.handle_event
+loops/
+  __init__.py          # HLP public API re-export
+  hlp/
+    __init__.py        # stable HLP SDK namespace
+    host.py            # app embedding host
+  loop2/
+    _ids.py            # typed ULID helpers
+    types.py           # ProtocolError + Literal aliases
+    objects.py         # HLP objects and value objects
+    state_machine.py   # Task transition table
+    store.py           # in-memory reference store
+    sqlite_store.py    # local snapshot store
+    operations.py      # protocol operation layer
+    sdk.py             # HLPClient facade
+    adapters.py        # AgentAdapter / HarnessAdapter implementations
+    events.py          # event bus abstractions
+    audit.py           # append-only audit log
 ```
 
-`EventSink` 不做 channel 协议、ack、retry、message id 映射或 UI 格式化。这些都属于 loop1。
+`loops.loop2` 当前承载 HLP 参考实现，这是内部目录选择，不是产品叙事。
+稳定公共入口是 `loops` 和 `loops.hlp`。后续可以把内部模块迁移到
+`loops.hlp` 下，只要 public API 不变。
 
-## Provider
+## Adapter Boundary
 
-`Provider` 是模型后端接口：
+HLP 有两个方向的 adapter：
 
-```python
-async def generate(request: ProviderRequest) -> ProviderResponse
-async def stream(request: ProviderRequest) -> AsyncIterator[ProviderEvent]
-```
+| Adapter | 方向 | 作用 |
+| --- | --- | --- |
+| `AgentAdapter` | HLP -> harness | 委派任务、阻塞运行、恢复运行、handoff、取消运行 |
+| `HarnessAdapter` | harness -> HLP | 把 harness 的人工审批、选择、输入、交付物事件投影为 HLP 对象 |
 
-`ProviderRequest` 包含：
+关键 invariant：
 
-- `messages`
-- `tools`
-- `stream`
-- `parallel_tool_calls`
-- `metadata`
+- `Task.id` 必须作为 runtime run 的 `correlation_id` 保留。
+- `checkpoint.raise` 必须对应 harness 的 block/pause 语义。
+- `checkpoint.resolve` 必须把人的决策传回 harness。
+- harness 产出的 artifact 必须进入 HLP artifact/review 流程。
+- adapter 失败必须 fail-before-commit，不能让 HLP 状态进入假成功。
 
-`ProviderResponse` 包含：
+## Human Inbox
 
-- `content`
-- `tool_calls`
-- `usage`
-- `stop_reason`
-- `message_metadata`
-- `raw`
-
-Provider adapter 层把不同模型 API 统一成 loop0 的 provider 协议：
-
-- `ProviderModel`: provider、model、api、capabilities、limits、metadata。
-- `ProviderOptions`: api_key、base_url、headers、timeout、metadata。
-- `ProviderAdapter`: 具体 API 协议适配器。
-- `AdapterBackedProvider`: loop0 runtime 使用的 provider 包装。
-
-OpenAI-compatible API 由 `OpenAIChatAdapter` 实现，`OpenAICompatibleProvider` 是便利用法。
-
-## Tool
-
-`Tool` 是模型可调用能力。每个 tool 必须提供 `ToolProfile`：
-
-- `name`
-- `description`
-- `input_schema`
-- `effects`
-- `risk`
-- `source`
-- `requires_approval`
-- `metadata`
-
-runtime 只通过 `ToolRegistry` 找到 tool 并调用：
-
-```python
-await tool.execute(ctx, args)
-```
-
-`ToolContext` 提供 run_id、workspace、policy、state、metadata 和 `emit` callback。tool 可以发出自定义 `AgentEvent`，但不能直接依赖 channel、session 或 loop1 storage。
-
-## Component
-
-`Component` 是 loop0 的组合扩展点：
-
-- `setup(agent)`
-- `contribute(run_context) -> Contribution`
-- `handle_event(event)`
-- `teardown()`
-
-`Contribution` 当前可以贡献：
-
-- `prompt_blocks`
-- `tools`
-- `metadata`
-
-component 可以观察事件、注入工具、注入 prompt block，但不拥有 runtime 主循环。
-
-## AgentPolicy
-
-`AgentPolicy` 管理单 run 的执行约束：
-
-- `max_turns`
-- `allow_tool_errors`
-- `approval_handler`
-- `parallel_tool_calls`
-- `max_parallel_tool_calls`
-- `metadata`
-
-审批函数属于 policy，但真正的用户交互通道属于上层 host。loop0 只调用 handler 并处理允许/拒绝结果。
-
-## State
-
-`AgentState` 维护单 Agent 的状态模型：
-
-- threads/history
-- memories
-- artifacts
-- component_state
-- checkpoints
-
-runtime 只在 run 成功结束后提交 pending messages。持久化 backend 不在 loop0 内硬编码；loop1 后续可以通过 state adapter 或 agent factory 注入持久化状态。
-
-## Streaming
-
-Streaming 由 `Agent.run(stream=True)` 显式请求，而不是由 channel profile 隐式决定。
+HLP 只定义人需要处理什么，不定义 UI 长什么样：
 
 ```text
-stream=True
-  -> ProviderRequest.stream=True
-  -> provider.stream(...)
-  -> provider_delta events
-  -> EventSink.send(...)
+pending checkpoint -> HumanInboxItem(resolve_checkpoint)
+review-ready artifact -> HumanInboxItem(submit_review)
 ```
 
-如果 `stream=False`，runtime 调用 `provider.generate(...)`，不会生成 `provider_delta`。上层如果需要把 token 流变成 IM 消息聚合、WebSocket 推送或 TUI 输出，应在 loop1 的 channel adapter 中处理。
+Web、IM、CLI、桌面应用可以读取 `HLPClient.human_inbox(principal)`，再用自己的
+channel 进行渲染和送达。
 
-## Logging
+## 设计原则
 
-`EventLogger` 是观测接口，和 `EventSink` 分离：
+- 极简：HLP SDK 只保留责任闭环必要对象和操作。
+- 正交：协议对象、store、event bus、adapter、host 分开演进。
+- 分层：HLP 不 import 或控制 harness 内部实现。
+- Fail Fast：adapter 调用失败时，协议状态不推进。
+- 约定优先：默认内存 store、fake adapter、demo 可直接跑；生产系统再替换后端。
 
-- logger 面向日志、trace、调试；
-- sink 面向 embedding host 的运行事件消费。
+## 验证路径
 
-logger 失败不会中断主流程。event sink 失败会快速暴露，因为 sink 是 host 接入 loop0 的显式 IO 边界。
-
-## loop0 不包含 Channel
-
-明确删除 loop0 channel 层：
-
-- 没有 `Channel` protocol。
-- 没有 `ChannelProfile` / `ChannelContext`。
-- 没有 `ConsoleChannel` / `TuiChannel` / `LarkChannel` / `ScheduledChannel`。
-- 没有顶层 `loops.channels` 兼容入口。
-
-原因：
-
-- channel 需要 session、连接状态、消息确认、重试、外部 message id、用户身份和 storage，这些都是 loop1 状态。
-- runtime 只需要知道本次 run 是否 streaming，以及把事件交给谁。
-- prompt 只需要稳定的 `interaction` 视图，不应感知具体 channel 实现。
-
-loop1 后续可以定义：
-
-```text
-ChannelMessage -> Session -> Agent.run(..., event_sink=...)
-AgentEvent -> ChannelOutput
-```
-
-## 目录结构
-
-当前 loop0 目录：
-
-```text
-loops/loop0/
-  agent.py
-  cli.py
-  runtime.py
-  io.py
-  prompt.py
-  profiles.py
-  policy.py
-  state.py
-  events.py
-  logging.py
-  types.py
-  providers/
-  tools/
-  components/
-```
-
-各文件职责：
-
-- `agent.py`: public Agent / AgentSpec / factory。
-- `cli.py`: one-shot loop0 runner，把 CLI/config 归一化成 `UserInput + InteractionContext + EventSink`。
-- `runtime.py`: provider/tool 主循环和 run 生命周期。
-- `io.py`: `EventSink`、`NullEventSink`、`InMemoryEventSink`、callback adapter。
-- `prompt.py`: prompt template、render context 和 renderer。
-- `profiles.py`: prompt 可注入的稳定 profile/view 对象。
-- `policy.py`: 执行策略和审批请求。
-- `state.py`: 单 Agent 状态。
-- `events.py`: `AgentEvent`。
-- `logging.py`: event logger。
-- `types.py`: provider-neutral message、tool call、user input。
-- `providers/`: provider 协议和 adapter。
-- `tools/`: tool 协议和内置 shell tool。
-- `components/`: component 协议。
-
-## 扩展规则
-
-新增 provider：
-
-- 实现 `Provider`，或实现 `ProviderAdapter` 后用 `AdapterBackedProvider`。
-- 将 provider 能力写进 `ProviderProfile.capabilities`。
-- 不在 runtime 中写 provider 特判。
-
-新增 tool：
-
-- 实现 `BaseTool.execute`。
-- 提供准确的 `ToolProfile` 和 JSON schema。
-- 高风险能力通过 `AgentPolicy.approval_handler` 请求审批。
-
-新增 prompt 能力：
-
-- 优先通过 `PromptRenderContext` 中已有 profile/view 暴露。
-- 新字段必须是稳定抽象，不能泄漏上层 channel/session 对象。
-
-新增外部输入输出：
-
-- 不放进 loop0。
-- 在 loop1 中实现 channel/session/storage。
-- 把输入映射为 `UserInput + InteractionContext`。
-- 把输出映射为 `EventSink` 或消费 `AgentResult.events`。
-
-新增 CLI/config runner：
-
-- 只能作为 one-shot loop0 host，不能引入 session/channel 状态。
-- CLI 参数和配置文件必须归一化到同一个 config model。
-- prompt 等大文本应支持从文件读取，文件路径相对 config 文件目录解析。
-- provider、policy、agent metadata、run、interaction、output 参数都应能由命令行覆盖。
-
-## 当前优先级
-
-1. 继续稳定 loop0 的 provider/tool/prompt/state/io 抽象。
-2. 保持 loop0 API 小而明确，避免重新引入 channel/session/storage。
-3. 后续再启动 loop1：定义 `ChannelMessage`、`ChannelOutput`、`SessionState`、`Storage`、`LoopContainer`。
-4. loop2 在 loop1 稳定后再承接项目空间、跨用户 task/handoff/shared artifact。
+- SDK 单测验证对象、状态机、adapter、SQLite 和 demo。
+- `loops-hlp-demo` 验证无外部依赖的人机闭环。
+- `loops-hlp-adapters-demo` 验证 adapter contract。
+- `loops-hlp-harness-demo` 验证外部 harness human-facing 事件投影。
+- 站点验证确保文档定位保持 HLP-first、SDK-only。

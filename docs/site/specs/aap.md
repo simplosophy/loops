@@ -8,13 +8,13 @@ outline: [2, 3]
 HLP does not define a new agent-to-agent protocol. This page is an integration
 guide for connecting HLP to existing L1 agent ecosystems.
 
-Use this route when a Human Loop Platform needs an agent runtime to accept work,
-pause for checkpoints, resume after human decisions, and preserve task identity
-across delegation or handoff.
+Use this route when a Human Loop Platform needs an existing agent harness to
+accept work, pause for checkpoints, resume after human decisions, project
+human-facing events, and preserve task identity across delegation or handoff.
 
 ## What HLP Needs From L1
 
-An agent runtime can sit under HLP if an adapter can provide these semantics:
+An agent harness can sit under HLP if an adapter can provide these semantics:
 
 | HLP need | L1 expectation |
 | --- | --- |
@@ -24,9 +24,10 @@ An agent runtime can sit under HLP if an adapter can provide these semantics:
 | Resolve checkpoints | Resume the blocked run with the human resolution payload. |
 | Transfer ownership | Handoff execution while preserving the original task correlation. |
 | Inspect progress | Emit correlated run events for audit and debugging. |
+| Project human interaction | Turn approvals, choices, input requests, and artifacts into HLP objects. |
 
 These are adapter obligations, not a new protocol surface. If A2A, ACP,
-AGNTCY-style meshes, or a custom runtime already expose equivalent behavior,
+AGNTCY-style meshes, or a custom harness already expose equivalent behavior,
 HLP should route through that implementation.
 
 ## Existing Protocol Routes
@@ -41,7 +42,7 @@ HLP should route through that implementation.
 ## Required Adapter Shape
 
 The HLP reference implementation names the boundary `AgentAdapter`. It is an
-HLP-to-agent-runtime adapter, not a new L1 protocol, and historical AAP
+HLP-to-agent-harness adapter, not a new L1 protocol, and historical AAP
 compatibility aliases are not part of the public API:
 
 ```text
@@ -49,7 +50,7 @@ delegate(task_id, assignee, payload) -> run_id
 block(task_id, checkpoint_id) -> void
 resume(task_id, checkpoint_id, resolution) -> void
 handoff(task_id, from_assignee, to_assignee, context) -> run_id
-events(task_id) -> correlated run events
+observe(run_id) -> human-facing harness events
 ```
 
 The important invariant is correlation:
@@ -63,7 +64,7 @@ AgentRun:
   correlation_id: "task_01J0K7..."
 ```
 
-HLP compatibility fails if the agent runtime loses that identity during
+HLP compatibility fails if the agent harness loses that identity during
 subdelegation, retries, handoff, or recovery.
 
 ## What HLP Does Not Standardize
@@ -76,6 +77,8 @@ HLP does not choose:
 - Placement or scheduling policy.
 - Multi-agent planning strategy.
 - Internal run state beyond the checkpoint contract.
+- Prompt, memory, tool trace, or planner internals unless needed for human
+  decision evidence.
 
 Those decisions belong to the existing L1 ecosystem or the host platform.
 
@@ -87,6 +90,7 @@ Those decisions belong to the existing L1 ecosystem or the host platform.
 - Ensure every run event carries the HLP task correlation id.
 - Treat `checkpoint.raise` as authoritative: the run must remain blocked until
   HLP resolves the checkpoint.
+- Project approval/input/artifact events into HLP through a harness adapter.
 - Preserve correlation through handoff and child delegation.
 
 For the exact HLP-side obligations, see [Integration Contracts](./contracts).

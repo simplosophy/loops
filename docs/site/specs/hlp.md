@@ -9,17 +9,17 @@ outline: [2, 3]
 | --- | --- |
 | Version | 0.1.0-draft |
 | Status | Draft, validated by the current reference implementation |
-| Layer | HLP layer above existing agent and capability routes |
+| Layer | HLP SDK layer above existing agent harness and capability routes |
 | Document type | Full protocol specification |
-| Primary concern | Human-owned work delegated to autonomous agents |
+| Primary concern | Human-owned work delegated to autonomous agent harnesses |
 
-HLP defines how people and autonomous agents collaborate around a bounded unit
-of work called a **Task**. It covers assignment, checkpoints, ownership,
-artifact delivery, review, project state, and audit.
+HLP defines how people and autonomous agent harnesses collaborate around a
+bounded unit of work called a **Task**. It covers assignment, checkpoints,
+ownership, artifact delivery, review, project state, and audit.
 
-HLP is transport-agnostic. It specifies protocol semantics, not whether those
-semantics are carried over HTTP, WebSocket, gRPC, stdio, an event bus, or a host
-platform API.
+HLP is transport-agnostic and harness-agnostic. It specifies protocol semantics,
+not whether those semantics are carried over HTTP, WebSocket, gRPC, stdio, an
+event bus, or a host platform API.
 
 Normative keywords follow RFC 2119: **MUST**, **MUST NOT**, **SHOULD**,
 **SHOULD NOT**, and **MAY**.
@@ -28,8 +28,8 @@ Normative keywords follow RFC 2119: **MUST**, **MUST NOT**, **SHOULD**,
 
 HLP governs:
 
-- Human principals assigning work to agents.
-- Agents raising decision checkpoints.
+- Human principals assigning work to agent harnesses.
+- Agent harnesses raising decision checkpoints.
 - Human reviewers accepting, rejecting, or requesting changes on artifacts.
 - Ownership transfer across humans and agents.
 - Immutable artifact versions and append-only project ledger state.
@@ -37,7 +37,7 @@ HLP governs:
 
 HLP does not govern:
 
-- How an agent internally executes a run.
+- How an agent harness internally executes a run.
 - How agents delegate to other agents; use an existing L1 agent route.
 - How agents invoke tools or skills; use an existing L0 capability route.
 - How notifications are rendered in chat, web, mobile, or CLI channels.
@@ -430,8 +430,17 @@ HLP communicates downward through explicit adapter contracts:
 | `ownership.delegate` | `delegate` | Parent run **SHOULD** remain traceable |
 | `ownership.transfer` | `handoff` | Correlation **MUST** be preserved |
 
+Existing harnesses can also project human-facing events upward:
+
+| Harness event | HLP projection | Contract |
+| --- | --- | --- |
+| `needs_approval` | `Checkpoint(kind="approval")` | TaskID, RunID, and AgentID **MUST** be preserved |
+| `needs_choice` | `Checkpoint(kind="choice")` | Options **MUST** be human-readable |
+| `needs_input` | `Checkpoint(kind="input")` | Prompt and context **SHOULD** support a human decision |
+| `artifact` | `Artifact` | Payload **MUST** have stable uri/checksum |
+
 HLP **MUST NOT** directly invoke capabilities. It references them only through
-`CapabilityRef`; invocation belongs to the agent runtime or host platform.
+`CapabilityRef`; invocation belongs to the agent harness or host platform.
 
 ## Errors
 
@@ -459,7 +468,7 @@ An implementation claiming HLP 0.1.0-draft compatibility **MUST**:
 4. Enforce the immutability rules.
 5. Emit audit events for every state-changing protocol operation.
 6. Validate operation preconditions.
-7. Satisfy the integration contracts when routed into existing agent or
+7. Satisfy the integration contracts when routed into existing agent harness or
    capability systems.
 
 ## Open Issues
@@ -481,11 +490,11 @@ The following topics remain intentionally draft-scoped:
 ```text
 Human Alice                 HLP                         Agent Devin
   | task.create              |                             |
-  | task.assign              | -> L1 delegate(TaskID)      |
-  |                           | <- checkpoint.raise         |
-  | <- checkpoint notice      | -> L1 block                 |
-  | checkpoint.resolve        | -> L1 resume                |
-  |                           | <- artifact.commit(v1)      |
+  | task.assign              | -> harness delegate(TaskID) |
+  |                           | <- needs_approval           |
+  | <- checkpoint notice      | -> harness block            |
+  | checkpoint.resolve        | -> harness resume           |
+  |                           | <- artifact(v1)             |
   | review.submit(changes)    | -> in_progress              |
   |                           | <- artifact.commit(v2)      |
   | review.submit(approved)   | -> accepted -> completed    |

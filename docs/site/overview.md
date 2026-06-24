@@ -2,11 +2,11 @@
 
 <section class="overview-hero">
   <p class="eyebrow">Human Loop Protocol</p>
-  <h2>HLP defines accountability around autonomous agent work.</h2>
+  <h2>HLP defines accountability around autonomous harness work.</h2>
   <p>
-    A human principal delegates a bounded task to an agent, the agent raises
-    decision checkpoints, humans review artifacts, and the full lifecycle
-    remains replayable.
+    A human principal delegates a bounded task to an existing agent harness,
+    the harness raises decision checkpoints, humans review artifacts, and the
+    full lifecycle remains replayable.
   </p>
 </section>
 
@@ -17,7 +17,7 @@
   </div>
   <div>
     <strong>Integration model</strong>
-    <span>Existing L1/L0 ecosystems keep agent execution, delegation, and capability invocation.</span>
+    <span>Existing harnesses and L1/L0 ecosystems keep agent execution, delegation, and capability invocation.</span>
   </div>
   <div>
     <strong>Core invariant</strong>
@@ -25,26 +25,26 @@
   </div>
 </section>
 
-HLP sits above existing agent and capability ecosystems. Those lower layers are
-integration routes, not new protocols owned by Loops:
+HLP sits above existing agent harness and capability ecosystems. Those lower
+layers are integration routes, not new protocols owned by Loops:
 
 | Layer | Role in this project | Concern | Typical implementation |
 | --- | --- | --- | --- |
-| L2 | HLP specification | Human-loop work | Task and review platforms |
-| L1 | Agent protocol route | Agent delegation and run lifecycle | A2A runtimes, ACP brokers, agent meshes |
+| L2 | HLP specification and SDK | Human-loop work | Task and review platforms |
+| L1 | Agent protocol route | Agent delegation and run lifecycle | Existing harnesses, A2A runtimes, ACP brokers, agent meshes |
 | L0 | Capability protocol route | Tool, skill, and capability invocation | MCP servers, Agent Skills runtimes, local tools |
 
-The central claim is simple: a platform should be able to change a capability
-provider without changing human review semantics, add a new agent runtime without
-rewriting task governance, and add a new UI channel without changing execution
-rules.
+The central claim is simple: a platform should be able to wrap a new agent
+harness without rewriting human review semantics, change a capability provider
+without changing task governance, and add a new UI channel without changing
+execution rules.
 
 ## Problem
 
-Most agent products are vertical stacks. Provider calls, tools, channels,
-human approvals, artifact delivery, and audit logic live in one code path. That
-works while the product is small. It becomes brittle when each concern evolves at
-a different speed.
+Most agent products are vertical stacks. Provider calls, tools, channels, human
+approvals, artifact delivery, and audit logic live in one harness-specific code
+path. That works while the product is small. It becomes brittle when each
+concern evolves at a different speed.
 
 Models change weekly. Communication channels change quarterly. Governance,
 identity, audit, and review processes change slowly and must remain reliable. A
@@ -64,9 +64,9 @@ Human principal
   │
   │ HLP: task.assign, checkpoint.raise, review.submit, audit.replay
   ▼
-Agent worker
+Existing agent harness
   │
-  │ L1 agent route: discover, delegate, block, resume, handoff
+  │ L1 route: delegate, block, resume, handoff, harness events
   ▼
 Capability source
   │
@@ -79,8 +79,8 @@ The boundaries are deliberately narrow:
 
 - **HLP** defines the lifecycle of human-owned work: tasks, checkpoints,
   ownership, reviews, artifacts, ledgers, and audit events.
-- **L1 agent routes** point to existing agent protocols. HLP only needs
-  delegation, blocking, resuming, handoff, and correlated run events.
+- **L1 agent routes** point to existing harnesses and agent protocols. HLP only
+  needs delegation, blocking, resuming, handoff, and human-facing harness events.
 - **L0 capability routes** point to existing capability protocols. HLP only
   needs stable capability references when a task constrains required tools or
   skills.
@@ -89,9 +89,10 @@ The boundaries are deliberately narrow:
 
 ### One layer, one responsibility
 
-HLP owns accountable work. Existing agent runtimes own execution and delegation.
-Existing capability systems own tool and skill invocation. HLP observes those
-systems through explicit adapter contracts; it does not absorb their protocols.
+HLP owns accountable work. Existing agent harnesses own execution and
+delegation. Existing capability systems own tool and skill invocation. HLP
+observes those systems through explicit adapter contracts; it does not absorb
+their protocols.
 
 ### Dependencies flow downward
 
@@ -101,20 +102,21 @@ The allowed dependency direction is:
 HLP (L2) -> agent protocol route (L1) -> capability protocol route (L0)
 ```
 
-Capability implementations never need to know HLP exists. Agent runtimes only
-see HLP through correlation and block/resume contracts. HLP never calls a tool
-directly.
+Capability implementations never need to know HLP exists. Agent harnesses only
+see HLP through correlation, block/resume, and event projection contracts. HLP
+never calls a tool directly.
 
 ### Cross-layer communication uses contract objects
 
-Layers do not read or mutate each other's internal state. They coordinate through
-explicit objects:
+Layers do not read or mutate each other's internal state. They coordinate
+through explicit objects:
 
 | Contract | Purpose |
 | --- | --- |
 | `CapabilityRef` | Lets upper layers reference a capability by `(capability_id, version)` without seeing transport details. |
 | `TaskID = Run.correlation_id` | Carries HLP task identity through every agent run and event. |
 | `Checkpoint -> block/resume` | Maps a human decision point to an agent run pause and restart. |
+| `HarnessEvent -> HLP object` | Projects approval, input, choice, and artifact events into HLP semantics. |
 | `Ownership -> handoff` | Maps task ownership transfer to agent handoff while preserving correlation. |
 
 ### Forward-only state
@@ -128,14 +130,18 @@ as new entries or new versions, not as destructive edits.
 This project defines:
 
 - A complete HLP 0.1.0-draft protocol for accountable human-loop work.
+- A Python SDK with protocol objects, `HLPClient`, `HLPHost`, stores, event bus,
+  and adapters.
 - Integration contracts for routing HLP task identity, checkpoints, ownership,
-  and capability references into existing agent and capability protocols.
+  harness events, and capability references into existing agent and capability
+  protocols.
 - Introductory L1/L0 route pages that explain where A2A, ACP, AGNTCY-style
   meshes, MCP, Agent Skills, and local capability systems fit.
 - HLP conformance requirements that let implementations make precise claims.
 
 This project does not define:
 
+- A built-in agent harness or execution loop.
 - A replacement for A2A, ACP, AGNTCY, MCP, Agent Skills, or agent runtime internals.
 - A mandatory transport such as HTTP, gRPC, WebSocket, or stdio.
 - A required persistence backend.
@@ -160,8 +166,8 @@ HLP fills that gap with seven first-class objects:
 | Ledger | Append-only project or organization state. |
 | Audit | Immutable protocol operation log. |
 
-Together, these objects make human-loop work inspectable, replayable,
-and implementable across runtimes.
+Together, these objects make human-loop work inspectable, replayable, and
+implementable across harnesses.
 
 ## Specification Status
 

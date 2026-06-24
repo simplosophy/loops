@@ -883,15 +883,15 @@ def test_ledger_history_is_append_only():
 
 
 # ════════════════════════════════════════════════════════════
-# §9 分层纪律 - loop2 不依赖 loop1/loop0
+# §9 分层纪律 - HLP 不依赖内置 harness
 # ════════════════════════════════════════════════════════════
 
 
 def test_loop2_does_not_import_lower_layers():
-    """loop2 不应感知 loop1/loop0 (参考实现刻意不依赖它们, transport-agnostic)。
+    """HLP 参考实现不应感知自研下层 runtime。
 
-    注: L2 理论上可 import L1/L0 (依赖向下), 但 HLP 参考实现选择零依赖,
-    证明协议层可以独立存在。这是 spec §1.2 适用范围的体现。
+    注: HLP 只通过 adapter 接入外部 harness，证明协议层可以独立存在。
+    这是 spec §1.2 适用范围的体现。
     """
     import loops.loop2 as l2
     assert not hasattr(l2, "loop0")

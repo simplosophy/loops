@@ -60,3 +60,21 @@ OwnershipTransferVia = Literal[
 
 ReviewVerdict = Literal["approved", "changes_requested", "rejected"]
 ReviewCommentSeverity = Literal["blocker", "major", "minor", "nit"]
+
+HarnessConformance = Literal[
+    "delegate-only",
+    "checkpoint-capable",
+    "artifact-aware",
+    "event-streaming",
+    "full-hlp",
+]
+
+HarnessEventKind = Literal[
+    "needs_approval",
+    "needs_choice",
+    "needs_input",
+    "artifact",
+]
+
+HumanInboxKind = Literal["checkpoint", "review"]
+HumanInboxAction = Literal["resolve_checkpoint", "submit_review"]

@@ -11,7 +11,7 @@ ecosystems such as MCP servers, Agent Skills, local tools, or function-calling
 registries.
 
 HLP only needs stable capability references. Actual invocation remains owned by
-the agent runtime or host platform.
+the agent harness or host platform.
 
 ## What HLP Needs From L0
 
@@ -35,7 +35,7 @@ CapabilityRef:
 
 | Route | Use when | HLP adapter focus |
 | --- | --- | --- |
-| MCP | Tools are exposed through MCP servers. | Map tool names and versions into stable `CapabilityRef` values and keep transport below the agent runtime. |
+| MCP | Tools are exposed through MCP servers. | Map tool names and versions into stable `CapabilityRef` values and keep transport below the agent harness. |
 | Agent Skills | Capabilities are packaged with instructions, resources, and permission expectations. | Treat the skill package as the capability identity and record skill version in provenance. |
 | Local tools | The host platform invokes in-process or CLI tools. | Publish a manifest/registry entry so HLP never depends on raw command strings. |
 | Function calling | Capabilities are model-provider functions. | Add host-side discovery and stable ids before referencing them from HLP tasks. |
@@ -46,12 +46,12 @@ HLP should never call a capability directly. The normal path is:
 
 ```text
 HLP Task.constraints.must_use_capabilities
-  -> L1 agent runtime
+  -> L1 agent harness
   -> selected L0 capability route
   -> tool, skill, or function implementation
 ```
 
-HLP records intent and provenance. The agent runtime decides how to invoke the
+HLP records intent and provenance. The agent harness decides how to invoke the
 capability, handle retries, and translate provider-specific errors.
 
 ## What HLP Does Not Standardize
@@ -74,7 +74,7 @@ Those decisions belong to the capability ecosystem or the host platform.
 - Expose enough manifest data for humans to understand why a task requires a
   capability.
 - Record capability use in artifact provenance or audit evidence.
-- Route invocation through the agent runtime or host platform, not through HLP
+- Route invocation through the agent harness or host platform, not through HLP
   operations.
 
 For the exact HLP-side boundary, see [Integration Contracts](./contracts).

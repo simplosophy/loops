@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .adapters import AgentAdapter, AgentRunHandle, FakeAgentAdapter
+from .adapters import AgentAdapter, AgentRunHandle, FakeAgentAdapter, HarnessAdapter
 from .events import EventBus, HLPEvent, InMemoryEventBus
 from .objects import (
     Artifact,
@@ -11,6 +11,7 @@ from .objects import (
     Checkpoint,
     CheckpointOption,
     Evidence,
+    HumanInboxItem,
     InputRef,
     LedgerEntry,
     Review,
@@ -227,6 +228,85 @@ class HLPClient:
 
     async def read_ledger(self, scope: str, key: str) -> Any | None:
         return await self.operations.ledger_read(scope, key)
+
+    async def project_harness_events(self, run_id: str) -> list[Any]:
+        """Project existing harness events into HLP human-loop objects."""
+        if not isinstance(self.adapter, HarnessAdapter):
+            raise RuntimeError("adapter does not expose harness events")
+
+        projected: list[Any] = []
+        for event in await self.adapter.observe(run_id):
+            if event.kind in ("needs_approval", "needs_choice", "needs_input"):
+                checkpoint_kind = {
+                    "needs_approval": "approval",
+                    "needs_choice": "choice",
+                    "needs_input": "input",
+                }[event.kind]
+                projected.append(await self.raise_checkpoint(
+                    task_id=event.task_id,
+                    kind=checkpoint_kind,  # type: ignore[arg-type]
+                    prompt=event.prompt,
+                    options=event.options,  # type: ignore[arg-type]
+                    context=event.context,  # type: ignore[arg-type]
+                    raised_by=event.agent_id,
+                ))
+            elif event.kind == "artifact":
+                projected.append(await self.commit_artifact(
+                    task_id=event.task_id,
+                    type=event.artifact_type or "artifact",
+                    payload=ArtifactPayload(
+                        kind="ref",
+                        uri=event.artifact_uri,
+                        checksum=event.artifact_checksum,
+                        size=event.artifact_size,
+                    ),
+                    produced_by=event.agent_id,
+                ))
+        return projected
+
+    async def human_inbox(self, principal: str) -> list[HumanInboxItem]:
+        """Return human-facing actions independent of the final UI/channel."""
+        items: list[HumanInboxItem] = []
+        for checkpoint in self.store.checkpoints.values():
+            if checkpoint.state != "pending":
+                continue
+            task = self.store.get_task(checkpoint.task_id)
+            if task.ownership.principal != principal:
+                continue
+            items.append(HumanInboxItem(
+                kind="checkpoint",
+                action="resolve_checkpoint",
+                task_id=task.id,
+                subject_id=checkpoint.id,
+                title=checkpoint.prompt,
+                principal=principal,
+                created_at=checkpoint.raised_at,
+            ))
+
+        for task in self.store.list_tasks():
+            if task.ownership.principal != principal:
+                continue
+            if task.state not in ("review_ready", "under_review"):
+                continue
+            for artifact_id in task.artifacts:
+                if self.store.reviews_of_artifact(artifact_id):
+                    continue
+                artifact = self.store.get_artifact(artifact_id)
+                items.append(HumanInboxItem(
+                    kind="review",
+                    action="submit_review",
+                    task_id=task.id,
+                    subject_id=artifact.id,
+                    title=f"Review {artifact.type} {artifact.version}",
+                    principal=principal,
+                    created_at=(
+                        artifact.provenance.produced_at
+                        if artifact.provenance is not None
+                        else task.created_at
+                    ),
+                ))
+
+        return sorted(items, key=lambda item: item.created_at)
 
     async def replay_audit(self, task_id: str) -> list:
         events = await self.operations.audit_replay(task_id)

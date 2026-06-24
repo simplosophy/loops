@@ -1,9 +1,8 @@
 """HLP-first public SDK surface.
 
 `loops` is the public entry point for Human Loop Protocol (HLP): protocol
-objects, SDK, adapters, and the embedding host. The lower-level `loops.loop0`
-runtime remains available as an internal/minimal runtime package, but it is not
-the top-level product API.
+objects, SDK, adapters, and the embedding host. Execution harnesses stay
+external and connect through HLP adapter contracts.
 """
 
 from __future__ import annotations
@@ -29,6 +28,12 @@ from loops.hlp import (
     EventBus,
     Evidence,
     FakeAgentAdapter,
+    FakeHarnessAdapter,
+    HarnessAdapter,
+    HarnessCapabilities,
+    HarnessConformance,
+    HarnessEvent,
+    HarnessEventKind,
     HLPClient,
     HLPEvent,
     HLPHost,
@@ -36,6 +41,9 @@ from loops.hlp import (
     HermsCLIAdapter,
     HumanLoopOperations,
     HumanLoopStore,
+    HumanInboxItem,
+    HumanInboxAction,
+    HumanInboxKind,
     InMemoryAgentAdapter,
     InMemoryEventBus,
     InputRef,
@@ -80,6 +88,12 @@ __all__ = [
     "EventBus",
     "Evidence",
     "FakeAgentAdapter",
+    "FakeHarnessAdapter",
+    "HarnessAdapter",
+    "HarnessCapabilities",
+    "HarnessConformance",
+    "HarnessEvent",
+    "HarnessEventKind",
     "HLPClient",
     "HLPEvent",
     "HLPHost",
@@ -87,6 +101,9 @@ __all__ = [
     "HermsCLIAdapter",
     "HumanLoopOperations",
     "HumanLoopStore",
+    "HumanInboxItem",
+    "HumanInboxAction",
+    "HumanInboxKind",
     "InMemoryAgentAdapter",
     "InMemoryEventBus",
     "InputRef",

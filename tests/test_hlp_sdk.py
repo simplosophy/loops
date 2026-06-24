@@ -12,6 +12,9 @@ from loops.hlp import (
     CodexCLIAdapter,
     CrewAIAdapter,
     FakeAgentAdapter,
+    FakeHarnessAdapter,
+    HarnessEvent,
+    HarnessCapabilities,
     HLPEvent,
     HermesCLIAdapter,
     HermsCLIAdapter,
@@ -29,6 +32,7 @@ from loops.hlp import (
 )
 from examples.hlp_e2e_demo import run_demo
 from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
+from examples.hlp_harness_wrap_demo import run_demo as run_harness_wrap_demo
 from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
 
 
@@ -164,6 +168,65 @@ def test_hlp_client_runs_human_loop_without_low_level_operations():
         "task.completed",
         "ledger.written",
     ]
+
+
+def test_harness_adapter_projects_human_interaction_events_into_hlp_inbox():
+    adapter = FakeHarnessAdapter(capabilities=HarnessCapabilities(
+        name="fake-review-harness",
+        conformance=("checkpoint-capable", "artifact-aware"),
+    ))
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Wrap an existing code-review harness",
+        type="harness-wrap",
+    ))
+    handle = run(client.delegate(
+        task.id,
+        "agent_review_harness",
+        capability="harness-wrap",
+    ))
+    run(client.start(task.id))
+
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_approval",
+        task_id=task.id,
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="Apply the generated patch?",
+    ))
+    projected = run(client.project_harness_events(handle.run_id))
+
+    assert projected[0].__class__.__name__ == "Checkpoint"
+    inbox = run(client.human_inbox("user_alice"))
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", projected[0].id),
+    ]
+    assert inbox[0].title == "Apply the generated patch?"
+
+    run(client.resolve_checkpoint(
+        projected[0].id,
+        by="user_alice",
+        action="approve",
+    ))
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="artifact",
+        task_id=task.id,
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        artifact_type="patch",
+        artifact_uri="mem://patch-v1",
+        artifact_checksum="sha256:patch-v1",
+    ))
+    projected = run(client.project_harness_events(handle.run_id))
+
+    assert projected[0].__class__.__name__ == "Artifact"
+    inbox = run(client.human_inbox("user_alice"))
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", projected[0].id),
+    ]
+    assert inbox[0].title == "Review patch v1"
 
 
 def test_fake_agent_adapter_records_contract_calls():
@@ -978,6 +1041,23 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
     assert result["codex_cli"]["run_id"] == "codex_demo"
     assert result["claude_code_cli"]["run_id"] == "claude_demo"
     assert result["herms_cli"]["run_id"] == "herms_demo"
+
+
+def test_hlp_harness_wrap_demo_runs_without_external_services():
+    result = run(run_harness_wrap_demo())
+
+    assert result["task_id"].startswith("task_")
+    assert result["run_id"].startswith("run_")
+    assert result["checkpoint_prompt"] == "Apply the generated patch?"
+    assert result["checkpoint_decision"] == "approve"
+    assert result["artifact_version"] == "v1"
+    assert result["review_verdict"] == "approved"
+    assert result["inbox_after_checkpoint"] == ["resolve_checkpoint"]
+    assert result["inbox_after_artifact"] == ["submit_review"]
+    assert result["harness_conformance"] == [
+        "checkpoint-capable",
+        "artifact-aware",
+    ]
 
 
 def test_hlp_local_cli_demo_runs_selected_adapters_with_injected_runners():

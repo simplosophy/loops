@@ -14,9 +14,9 @@ from loops.loop2.store import HumanLoopStore
 class HLPHost:
     """Embedding host for HLP applications.
 
-    The host is the public seam for applications that want to run HLP without
-    caring about the internal loop0/loop2 layout. It owns the SDK client and
-    the local event stream; richer channel/session hosts can build on this.
+    The host is the public seam for applications that want to embed HLP without
+    adopting a built-in execution harness. It owns the SDK client and local
+    event stream; richer channel/session hosts can build on this.
     """
 
     store: HumanLoopStore = field(default_factory=HumanLoopStore)

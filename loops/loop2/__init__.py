@@ -1,9 +1,10 @@
-"""loops.loop2 — HLP (Human Loop Protocol) reference implementation.
+"""HLP (Human Loop Protocol) reference implementation.
 
-Loops Protocol Stack 的 L2 层：人机责任闭环协议的参考实现。
+当前目录承载 HLP SDK 的内部参考实现：协议对象、操作层、store、adapter
+和 SDK facade。稳定公共入口是 `loops` / `loops.hlp`。
 对应 spec: docs/specs/HLP.md
 
-本包不依赖 loop1/loop0 (分层纪律: 依赖只能向下)。
+本包不依赖自研 agent harness；执行机制通过 adapter 接入外部 harness。
 """
 from __future__ import annotations
 
@@ -15,6 +16,10 @@ from .adapters import (
     CodexCLIAdapter,
     CrewAIAdapter,
     FakeAgentAdapter,
+    FakeHarnessAdapter,
+    HarnessAdapter,
+    HarnessCapabilities,
+    HarnessEvent,
     HermesCLIAdapter,
     HermsCLIAdapter,
     InMemoryAgentAdapter,
@@ -48,6 +53,7 @@ from .objects import (
     ReviewComment,
     Task,
     TaskSpec,
+    HumanInboxItem,
 )
 from .operations import HumanLoopOperations
 from .sdk import HLPClient
@@ -59,6 +65,10 @@ from .types import (
     CheckpointResolutionAction,
     CheckpointState,
     ErrorCode,
+    HarnessConformance,
+    HarnessEventKind,
+    HumanInboxAction,
+    HumanInboxKind,
     OwnershipTransferVia,
     ProtocolError,
     ReviewCommentSeverity,
@@ -79,6 +89,10 @@ __all__ = [
     "CodexCLIAdapter",
     "CrewAIAdapter",
     "FakeAgentAdapter",
+    "FakeHarnessAdapter",
+    "HarnessAdapter",
+    "HarnessCapabilities",
+    "HarnessEvent",
     "HermesCLIAdapter",
     "HermsCLIAdapter",
     "InMemoryAgentAdapter",
@@ -118,6 +132,7 @@ __all__ = [
     "Evidence",
     "InputRef",
     "Constraints",
+    "HumanInboxItem",
     # 类型
     "TaskState",
     "CheckpointKind",
@@ -126,6 +141,10 @@ __all__ = [
     "OwnershipTransferVia",
     "ReviewVerdict",
     "ReviewCommentSeverity",
+    "HarnessConformance",
+    "HarnessEventKind",
+    "HumanInboxAction",
+    "HumanInboxKind",
     "ErrorCode",
     "ProtocolError",
     # 状态机

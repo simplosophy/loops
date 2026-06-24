@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 
+from .types import HarnessConformance, HarnessEventKind
+
 
 class AgentAdapterError(RuntimeError):
     """Structured adapter failure raised before HLP state is advanced."""
@@ -41,7 +43,7 @@ ProcessRunner = Callable[
 
 @dataclass(frozen=True)
 class AgentRunHandle:
-    """Handle returned by HLP when work is delegated to an agent runtime."""
+    """Handle returned by HLP when work is delegated to an external harness."""
 
     run_id: str
     task_id: str
@@ -51,9 +53,39 @@ class AgentRunHandle:
     parent_run: str | None = None
 
 
+@dataclass(frozen=True)
+class HarnessCapabilities:
+    """Human-interaction capabilities exposed by an existing agent harness."""
+
+    name: str
+    conformance: tuple[HarnessConformance, ...] = ("delegate-only",)
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class HarnessEvent:
+    """Semantic event projected from a harness into HLP.
+
+    This object describes human-facing interaction semantics only. It does not
+    model the harness execution internals.
+    """
+
+    kind: HarnessEventKind
+    task_id: str
+    run_id: str
+    agent_id: str
+    prompt: str = ""
+    options: tuple[Any, ...] = ()
+    context: tuple[Any, ...] = ()
+    artifact_type: str = ""
+    artifact_uri: str = ""
+    artifact_checksum: str = ""
+    artifact_size: int = 0
+
+
 @runtime_checkable
 class AgentAdapter(Protocol):
-    """HLP to agent-runtime adapter contract.
+    """HLP to agent-harness adapter contract.
 
     The adapter is the only supported boundary from HLP into an agent framework,
     CLI, or process. Implementations must keep `task_id` as the run correlation
@@ -89,6 +121,19 @@ class AgentAdapter(Protocol):
 
     async def healthcheck(self) -> dict[str, Any]:
         """Return adapter health metadata."""
+        ...
+
+
+@runtime_checkable
+class HarnessAdapter(AgentAdapter, Protocol):
+    """Adapter for wrapping existing harnesses as HLP human-interaction sources."""
+
+    def harness_capabilities(self) -> HarnessCapabilities:
+        """Return human-interaction projection capabilities."""
+        ...
+
+    async def observe(self, run_id: str) -> tuple[HarnessEvent, ...]:
+        """Return harness events that should be projected into HLP objects."""
         ...
 
 
@@ -204,6 +249,32 @@ class FakeAgentAdapter:
                 details={"run_id": run_id},
             )
         return handle
+
+
+class FakeHarnessAdapter(FakeAgentAdapter):
+    """Deterministic harness adapter for tests and demos."""
+
+    def __init__(
+        self,
+        *,
+        capabilities: HarnessCapabilities | None = None,
+    ) -> None:
+        super().__init__()
+        self._capabilities = capabilities or HarnessCapabilities(name="fake-harness")
+        self._events: dict[str, list[HarnessEvent]] = {}
+
+    def harness_capabilities(self) -> HarnessCapabilities:
+        return self._capabilities
+
+    def queue_event(self, run_id: str, event: HarnessEvent) -> None:
+        self._require_run(run_id, "queue_event")
+        self._events.setdefault(run_id, []).append(event)
+
+    async def observe(self, run_id: str) -> tuple[HarnessEvent, ...]:
+        self._require_run(run_id, "observe")
+        events = tuple(self._events.pop(run_id, ()))
+        self.calls.append(("observe", {"run_id": run_id, "events": len(events)}))
+        return events
 
 
 class ProcessAgentAdapter(FakeAgentAdapter):

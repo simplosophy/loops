@@ -1,338 +1,98 @@
-# loops Stack Architecture
+# HLP SDK Stack Architecture
 
-> **2026-06-22 重新定位**：loops 聚焦 Human Loop Protocol (HLP)。
-> L1/L0 不再作为 Loops 自定义协议推进，而是作为 HLP 接入已有 agent / capability 生态的路由。
-> 调整计划见 [`docs/plans/2026-06-22-hlp-first-site-positioning.md`](../plans/2026-06-22-hlp-first-site-positioning.md)。
+> **2026-06-24 定位更新**：Loops 不再维护自研 `loop0` agent harness，也不再把
+> `loop0/loop1/loop2` 作为要落地的三层运行时框架。项目聚焦 HLP SDK：
+> 统一人类交互语义，包裹既有 harness，复用既有 agent/capability 协议栈。
 
-## HLP-first 架构
-
-loops 的核心贡献是 HLP：定义人和自主 agent 围绕 Task 的责任闭环。已有 AI 协作协议（MCP、Agent Skills、A2A、ACP、AGNTCY 等）继续作为下层生态存在，HLP 通过窄集成契约路由过去：
+## Stack Model
 
 ```text
-  ┌───────────────────────────────────────────────────────────┐
-  │  L2  HLP    Human Loop Protocol                         │  loops 新建 ★
-  │      Task · Checkpoint · Ownership · Review               │  填补生态空白
-  │      Artifact · Ledger · Audit                            │
-  ├───────────────────────────────────────────────────────────┤
-  │  集成契约：Task→delegate / Checkpoint→block / handoff       │
-  ├───────────────────────────────────────────────────────────┤
-  │  L1  Agent Protocol Routes                                │  复用既有生态
-  │      A2A · ACP · AGNTCY · custom runtime                  │
-  ├───────────────────────────────────────────────────────────┤
-  │  层间契约：CapabilityRef (id+version, 不感知 transport)    │
-  ├───────────────────────────────────────────────────────────┤
-  │  L0  Capability Protocol Routes                           │  复用既有生态
-  │      MCP · Agent Skills · local tools · function calling   │
-  └───────────────────────────────────────────────────────────┘
-
-  横切：HLP 只持有责任闭环语义；下层协议通过 adapter 接入；状态归属分层所有
+┌──────────────────────────────────────────────────────────────┐
+│ Human-facing applications                                     │
+│ Web, IM, CLI, IDE, task systems, project platforms             │
+├──────────────────────────────────────────────────────────────┤
+│ HLP SDK                                                       │
+│ Task · Ownership · Checkpoint · Artifact · Review · Ledger     │
+│ Audit · HumanInbox · HLPClient · HLPHost                       │
+├──────────────────────────────────────────────────────────────┤
+│ Adapter contracts                                             │
+│ AgentAdapter: delegate/block/resume/handoff/cancel             │
+│ HarnessAdapter: observe human-facing harness events            │
+├──────────────────────────────────────────────────────────────┤
+│ Existing agent harnesses                                      │
+│ Codex · Kimi · Claude Code · OpenAI Agents SDK · LangGraph     │
+│ CrewAI · custom in-house runtimes                              │
+├──────────────────────────────────────────────────────────────┤
+│ Existing capability ecosystems                                │
+│ MCP · Agent Skills · local tools · function calling · APIs      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 既有软件分层
-
-本文定义 `loops/loop0/loop1/loop2` 三层内部实现边界、状态所有权和扩展点。对外产品主线不是三层框架，而是 HLP 协议、SDK、adapters 和 host。当前代码已经将单 Agent runtime 收敛到 `loops/loop0/`；HLP 参考实现暂由 `loops/loop2/` 承载并通过 `loops.hlp` / 顶层 `loops` 暴露，后续可以在不改变 public API 的前提下继续迁移内部目录。
-
-## 总体分层
-
-```text
-loops/
-  loop0/    单个 Agent 运行时内核
-  loop1/    单用户 Agent Container
-  loop2/    多用户 / 组织级 Runtime Organizer
-```
-
-三层的职责可以压缩成三句话：
-
-- `loop0` owns execution：负责一次 Agent run 如何被执行。
-- `loop1` owns interaction：负责一个用户如何通过 channel、session 和 storage 使用多个 Agent。
-- `loop2` owns coordination：负责多个用户、多个 loop1 如何在项目空间内协同运行。
-
-对应的核心单位：
-
-```text
-loop0: Run / Agent
-loop1: Session / UserRuntime
-loop2: ProjectSpace / OrgRuntime
-```
-
-## 分层原则
-
-- 依赖方向只能向下：`loop2 -> loop1 -> loop0`。低层不能 import 或感知高层。
-- 跨层通信必须通过显式协议：event、message、storage record、control command，不能直接修改下层内部对象。
-- 状态归属必须清晰：谁创建、谁持久化、谁负责一致性，必须由所属层定义。
-- 扩展点应靠近其状态所有者：tool/provider/prompt 属于 loop0，channel/session/storage 属于 loop1，project/policy/scheduler 属于 loop2。
-- 下层只暴露能力，不承载上层业务语义。loop0 不知道用户、项目、组织；loop1 不知道跨用户项目治理；loop2 不直接执行 Agent turn。
-
-## loop0: Agent Runtime Kernel
-
-### 边界
-
-`loop0` 是单个 Agent 的最小运行时内核。它只关心一次输入如何经过 prompt、provider、tool 和 state commit 形成输出。
-
-输入输出边界：
-
-```text
-UserInput + AgentSpec + AgentState
-  -> AgentRuntime
-  -> AgentEvent stream + AgentResult
-```
-
-`loop0` 可以被 CLI、测试、loop1 container 或其他 embedding host 调用，但它不负责这些 host 的 channel 协议。
-
-当前代码已移除 loop0 内的 `Channel` protocol。TUI、WebUI、IM、Scheduler 等业务 channel 上移到 loop1；loop0 只保留 `InteractionContext`、显式 `stream` 参数和最小 `EventSink`，避免 runtime 内核依赖具体交互渠道。
-
-### 负责
-
-- 渲染 prompt。
-- 调用 provider。
-- 暴露和执行 tools。
-- 应用 AgentPolicy。
-- 维护单 Agent 的 thread/history/memory/artifact/checkpoint 状态模型。
-- 产生结构化 AgentEvent。
-- 提供单 Agent attach/fork/close 等生命周期操作。
-
-### 不负责
-
-- 用户身份、组织身份、权限系统。
-- 多 Agent 路由、调度和协作。
-- TUI、WebUI、IM、Webhook 等外部 channel 协议。
-- 持久化存储选型，例如 SQLite、Postgres、S3。
-- 项目空间、任务管理、跨用户协作。
-- 云端部署、租户、计费、审计控制面。
-
-### 状态
-
-`loop0` 状态分为三类：
-
-- 定义态：`AgentSpec`，包含 prompt、provider、tools、components、policy、metadata。
-- 长生命周期态：`AgentState`，包含 threads、memories、artifacts、component_state、checkpoints。
-- 单次运行态：`Run`，包含 run_id、thread_id、input、messages、tool_registry、contributions、pending_state_messages、events。
-
-`loop0` 可以提供内存态默认实现，但持久化 backend 应由 loop1 注入或适配。
-
-### 扩展点
-
-- `Provider`: 模型后端适配。
-- `Tool`: 模型可调用能力。
-- `PromptTemplate` / `PromptRenderer`: prompt 构造。
-- `AgentPolicy`: 轮数、并发、审批、安全策略。
-- `Component`: 为单次 run 贡献 prompt block、tools 或事件处理逻辑。
-- `EventLogger`: 观测、调试和 trace 输出。
-- `StateAdapter`: 后续可引入，用于把 loop0 的状态读写委托给 loop1 storage。
-
-## loop1: User Agent Container
-
-### 边界
-
-`loop1` 是单个用户的 Agent container。它可以持有多个 loop0 Agent，并负责把外部 channel 输入映射成 session 和 Agent run。
-
-输入输出边界：
-
-```text
-ChannelMessage
-  -> UserRuntime / Session / Router
-  -> loop0 AgentRuntime
-  -> ChannelOutput
-```
-
-`loop1` 面向一个用户或一个 user runtime，不处理组织级跨用户治理。跨用户协作必须由 loop2 通过明确的 project/session/task 协议协调。
-
-### 负责
-
-- 管理多个 loop0 Agent 的注册、创建、fork、关闭。
-- 管理 session，把 channel conversation 映射到 agent thread 或多个 agent thread。
-- 接入 channel：TUI、WebUI、IM、HTTP API、Webhook、Scheduler 等。
-- 提供用户级 storage：history、memory、artifact、event trace、session record。
-- 处理用户级 routing：选择目标 agent、agent group 或 handoff 策略。
-- 维护 channel 连接状态、消息确认、外部 message id 映射。
-- 管理用户级 credential、tool approval、interrupt、resource limit。
-- 把 loop0 AgentEvent 转换成 channel 可消费的输出。
-
-### 不负责
-
-- 组织、团队、项目空间的全局权限模型。
-- 多用户任务分配和跨用户协调。
-- 云端 runtime placement、租户隔离、计费。
-- 绕过 loop0 直接实现 provider/tool 主循环。
-- 绕过 loop2 访问其他用户的 loop1 私有状态。
-
-### 状态
-
-`loop1` 状态围绕 UserRuntime 和 Session 展开：
-
-- `UserRuntimeState`: 用户 runtime 配置、默认 agents、资源配额、credential references。
-- `AgentRegistryState`: 当前用户可用 agents、agent profile、agent lifecycle、agent-to-storage binding。
-- `SessionState`: session_id、user_id、channel_id、conversation_id、active_agent_id、thread mapping、pending approvals、interrupts。
-- `ChannelState`: channel 类型、连接信息、外部消息游标、ack offset、delivery state。
-- `StorageState`: threads、memories、artifacts、event traces、session records 的持久化索引。
-- `RoutingState`: channel/session 到 agent 的路由策略、最近 handoff、fallback agent。
-
-`loop1` 拥有持久化一致性：它决定何时从 storage 载入 loop0 状态，以及何时提交 run 后状态和 event trace。
-
-### 扩展点
-
-- `Channel`: TUI、WebUI、IM、Webhook、Scheduler、API channel。
-- `SessionManager`: session 创建、恢复、过期、thread 映射。
-- `Router`: 输入到 agent/agent group 的路由。
-- `Storage`: 内存、文件、SQLite、Postgres、对象存储等 backend。
-- `AgentFactory`: 根据 profile/template 创建 loop0 Agent。
-- `CredentialProvider`: 用户级密钥、token 和外部系统授权。
-- `ApprovalHandler`: 用户级审批、interrupt 和补充输入。
-- `EventBus` / `Hook`: 订阅 loop0 events，驱动 UI、trace、notification、automation。
-- `MemoryProvider`: 用户级 memory 检索、压缩和注入。
-
-## loop2: Org Runtime Organizer
-
-### 边界
-
-`loop2` 是组织级和云端运行时的 organizer。它不执行单次 Agent run，而是管理多个用户的 loop1，并提供项目空间、跨用户协调和云端控制面。
-
-输入输出边界：
-
-```text
-Org API / Project Event / Scheduler Command
-  -> OrgRuntime / ProjectSpace / RuntimeScheduler
-  -> UserRuntime command
-  -> ProjectEvent / AuditEvent / SharedArtifact
-```
-
-`loop2` 可以创建、唤醒、调度或停止某个用户的 loop1，但具体 channel/session/agent run 仍由该 loop1 负责。
-
-### 负责
-
-- 管理 org、tenant、user、team、role。
-- 创建和管理 project space。
-- 管理多个 user loop1 的 runtime inventory、health、placement、lease。
-- 协调跨用户、跨 agent 的项目任务、handoff、review、artifact 流转。
-- 提供共享项目 storage：project artifacts、task graph、audit logs、shared memory index。
-- 执行组织级 policy：权限、配额、审计、数据边界、secret reference。
-- 提供云端 scheduler：定时任务、长任务、后台任务、project workflow。
-- 对外暴露控制面 API 和项目管理 API。
-
-### 不负责
-
-- 直接执行 loop0 AgentRuntime。
-- 直接修改 loop0 AgentState 内部结构。
-- 直接读取其他用户 loop1 私有 storage，除非通过明确授权的 project/shared storage 协议。
-- 绑定具体 IM/Web/TUI channel 协议细节。
-- 在组织层硬编码某个 provider、tool 或 prompt。
-
-### 状态
-
-`loop2` 状态围绕组织、项目和 runtime 编排展开：
-
-- `OrgState`: tenant、users、teams、memberships、roles。
-- `ProjectSpaceState`: project_id、workspace、participants、roles、project settings。
-- `RuntimeInventoryState`: user runtime 实例、runtime status、placement、lease、heartbeat。
-- `CollaborationState`: project tasks、assignments、dependencies、handoff、review records。
-- `SharedArtifactState`: 项目级文件、产物、引用、版本、权限。
-- `SharedMemoryState`: 项目级知识、索引、摘要、可见性范围。
-- `PolicyState`: RBAC/ABAC、quota、audit requirement、secret references、data boundary。
-- `AuditState`: org/project/user/runtime 关键事件的不可变记录。
-
-### 扩展点
-
-- `RuntimeScheduler`: loop1 实例调度、唤醒、回收、健康检查。
-- `ProjectWorkflow`: 项目任务流、阶段、依赖、审批。
-- `PermissionPolicy`: 组织级访问控制和数据边界。
-- `SharedStorage`: 项目 artifact、shared memory、audit log backend。
-- `NotificationBridge`: 把 project event 投递到用户 loop1/channel。
-- `BillingQuotaProvider`: 配额、成本、计费统计。
-- `ControlPlaneAPI`: 云端 API、admin UI、project management integration。
-- `OrgConnector`: 组织通讯录、IM、工单、代码平台、文档系统集成。
-
-## 跨层事件和控制协议
-
-三层都应使用事件驱动的接口，但事件语义不同：
-
-```text
-loop0: AgentEvent
-  run_started, provider_delta, tool_started, tool_finished, run_finished
-
-loop1: SessionEvent / ChannelEvent
-  session_started, message_received, route_selected, output_delivered
-
-loop2: ProjectEvent / RuntimeEvent / AuditEvent
-  task_assigned, runtime_started, handoff_requested, artifact_published
-```
-
-推荐的调用链：
-
-```text
-ChannelMessage
-  -> loop1 SessionManager
-  -> loop1 Router
-  -> loop0 Agent.run
-  -> loop0 AgentEvent stream
-  -> loop1 EventBus
-  -> ChannelOutput
-  -> loop2 ProjectEvent/AuditEvent when project-scoped
-```
-
-跨用户协作不共享裸 AgentState。loop2 应通过 `ProjectTask`、`HandoffRequest`、`SharedArtifact`、`ProjectEvent` 等显式对象协调不同用户的 loop1。
-
-## 目标目录布局
-
-目标代码布局倾向如下：
-
-```text
-loops/
-  hlp/
-    __init__.py
-    host.py
-    # public HLP SDK surface: protocol objects, client, adapters, host
-
-  loop0/
-    agent.py
-    runtime.py
-    io.py
-    prompt.py
-    policy.py
-    state.py
-    events.py
-    providers/
-    tools/
-    components/
-
-  loop1/
-    container.py
-    session.py
-    channel.py
-    router.py
-    storage.py
-    event_bus.py
-    approvals.py
-    credentials.py
-    channels/
-    storage_backends/
-
-  loop2/
-    org.py
-    project.py
-    scheduler.py
-    collaboration.py
-    policy.py
-    audit.py
-    shared_storage.py
-    control_plane.py
-```
-
-顶层 `loops/__init__.py` 只 re-export 稳定 HLP 公共 API。loop0/loop1/loop2 仍可被内部代码和高级用户显式导入，但不再作为顶层产品入口或兼容别名暴露。
-
-## 演进顺序
-
-建议按以下顺序落地：
-
-1. 已完成：将外部产品入口翻转为 HLP-first：`loops` / `loops.hlp` 暴露 HLP objects、SDK、adapters、host。
-2. 已完成：将当前单 Agent runtime 收敛为显式内部路径 `loops.loop0`，并移除顶层 loop0 兼容别名。
-3. 已完成：移除 loop0 channel 层，改为 `InteractionContext` + `EventSink`。
-4. 下一步：把 HLP reference implementation 从 `loops.loop2` 逐步物理迁移到 `loops.hlp` 内部模块，保持 public API 不变。
-5. 后续：按需引入 loop1 的 channel/session/storage 实现，作为 HLP host 的下层 adapter，不作为新的对外协议。
-6. 后续：在 HLP 上增加 project/runtime 编排能力，但只通过 Task、Ownership、Artifact、Ledger、Audit 等 HLP 对象暴露。
-
-## 待确认问题
-
-- loop1 的 multi-agent 第一版是只做 router，还是要包含 planner/task graph。
-- `AgentState` 持久化 adapter 是放在 loop0 interface 还是完全由 loop1 storage 包装。
-- loop2 的 project shared memory 是否允许被 loop1 自动注入 prompt，还是必须由用户/策略显式授权。
-- 跨用户 handoff 的最小协议字段和审批流程。
+HLP lives above existing harnesses. It does not absorb their execution model; it
+only requires enough correlation and pause/resume semantics to make human
+responsibility auditable.
+
+## What Changed
+
+Earlier design notes treated `loop0` as a minimal single-agent runtime and
+`loop1` as a user interaction container. That direction duplicated the role of
+real harnesses and pulled the project away from the protocol gap HLP should
+own. The current architecture removes the self-implemented harness from the
+product and repository.
+
+Current rule:
+
+- HLP SDK is the product.
+- Existing harnesses own execution.
+- L1 and L0 docs are routing references to existing protocols, not Loops-owned
+  protocols.
+- Public imports go through `loops` or `loops.hlp`.
+
+## HLP SDK Responsibilities
+
+- Create and track human-owned tasks.
+- Delegate tasks to external harnesses through `AgentAdapter`.
+- Project harness approval/input/artifact events through `HarnessAdapter`.
+- Block work at checkpoints until a human decision is recorded.
+- Expose a unified human inbox for host UIs.
+- Commit artifacts and collect human reviews.
+- Maintain append-only ledger and audit trails.
+
+## External Harness Responsibilities
+
+- Select models, prompts, tools, skills, and memory.
+- Run planning and execution loops.
+- Invoke capabilities through MCP, Skills, local tools, APIs, or custom systems.
+- Manage runtime lifecycle, retries, streaming, logs, and internal state.
+- Render or deliver UI if the host chooses to keep UI outside HLP.
+
+## Integration Invariants
+
+| Invariant | Reason |
+| --- | --- |
+| `Task.id == Run.correlation_id` | Audit replay must connect human work to harness runs. |
+| Checkpoints map to runtime block/resume | Human decisions must be authoritative. |
+| Artifacts enter HLP review flow | Delivery and acceptance must be independent of harness internals. |
+| Adapter failure is fail-before-commit | HLP state must not claim work moved when the harness rejected it. |
+| Capability references hide transport | HLP should not know whether a capability came from MCP, Skills, local tools, or APIs. |
+
+## Internal Package Notes
+
+`loops.loop2` remains the current implementation directory for HLP objects,
+operations, store, adapters, and SDK facade. This is an implementation detail.
+It may be migrated under `loops.hlp` later without changing public imports.
+
+There is intentionally no `loops.loop0` runtime in the current architecture.
+Projects that need execution should connect an existing harness through
+`AgentAdapter` or `HarnessAdapter`.
+
+## Open Design Questions
+
+- Whether `HarnessAdapter.observe(run_id)` should remain pull-based only or add
+  an async event stream interface.
+- How much conformance metadata a harness should expose beyond the current
+  capability labels.
+- Whether production HLP services should standardize a durable outbox contract
+  for adapter calls.
+- How host applications should map `HumanInboxItem` into web, IM, IDE, and CLI
+  interaction patterns without HLP becoming a UI protocol.

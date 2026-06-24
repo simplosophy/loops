@@ -1,7 +1,7 @@
 [project]
 name = "loops"
 version = "0.1.0"
-description = "Minimal agent runtime SDK"
+description = "Human Loop Protocol SDK for wrapping agent harnesses"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -11,10 +11,9 @@ dependencies = [
 ]
 
 [project.scripts]
-loops-loop0 = "loops.loop0.cli:main"
-loops-demo = "examples.start_agent:main"
 loops-hlp-demo = "examples.hlp_e2e_demo:main"
 loops-hlp-adapters-demo = "examples.hlp_adapter_compat_demo:main"
+loops-hlp-harness-demo = "examples.hlp_harness_wrap_demo:main"
 loops-hlp-local-cli-demo = "examples.hlp_local_cli_e2e:main"
 
 [build-system]

@@ -1,8 +1,8 @@
 # HLP Integration Contracts
 
-This page defines the narrow contracts HLP expects when it routes work into an
-existing agent runtime and capability ecosystem. These contracts do not define a
-new L1 or L0 protocol; they define the adapter invariants HLP relies on.
+This page defines the narrow contracts HLP expects when it wraps an existing
+agent harness and capability ecosystem. These contracts do not define a new L1
+or L0 protocol; they define the adapter invariants HLP relies on.
 
 ## Contract Summary
 
@@ -11,6 +11,7 @@ new L1 or L0 protocol; they define the adapter invariants HLP relies on.
 | `CapabilityRef` | Capability reference | HLP references capabilities only by `(capability_id, version)`. |
 | TaskID correlation | Task and agent run identity | HLP `Task.id` must survive every delegated run and event. |
 | Checkpoint-to-Block | Checkpoint and run state | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
+| Harness event projection | Harness event and HLP object | Human-facing harness events become checkpoints, artifacts, and inbox items. |
 | Ownership-to-Handoff | Ownership transfer and run handoff | `ownership.transfer` preserves task correlation through handoff. |
 
 ## Contract 1: CapabilityRef
@@ -96,7 +97,32 @@ Required behavior:
 - `checkpoint.resolve` passes the human resolution to the run.
 - Resolution and resume should be auditable as one logical transition.
 
-## Contract 4: Ownership-to-Handoff
+## Contract 4: Harness Event Projection
+
+HLP does not require a harness to expose its internal planning loop, prompt
+state, memory, or tool traces. A harness only needs to project human-facing
+events into HLP semantics.
+
+```yaml
+HarnessEvent:
+  kind: "needs_approval"
+  task_id: "task_01J0K7..."
+  run_id: "run_01J0K8..."
+  agent_id: "agent_reviewer"
+  prompt: "Apply the generated patch?"
+```
+
+Required behavior:
+
+- `needs_approval`, `needs_choice`, and `needs_input` become pending HLP
+  checkpoints.
+- `artifact` events commit immutable HLP artifacts and make them available for
+  human review.
+- Projected events must preserve `task_id`, `run_id`, and `agent_id`.
+- Event projection must not leak harness-specific internal state into HLP
+  objects unless that state is required for a human decision or audit.
+
+## Contract 5: Ownership-to-Handoff
 
 HLP ownership expresses who is responsible for a task. The L1 route expresses
 how execution moves to another agent or human-operated worker.
@@ -129,7 +155,7 @@ NewRun:
 | Boundary | Emits | Consumed by |
 | --- | --- | --- |
 | Capability route | Capability invocation results and capability errors | Agent runtime or host platform |
-| Agent route | Run events with HLP task correlation | HLP adapter and host platform |
+| Agent harness | Run and human-facing events with HLP task correlation | HLP adapter and host platform |
 | HLP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
 
 HLP produces events, but it does not define how those events are rendered in

@@ -1,4 +1,4 @@
-# loop2 架构
+# HLP Reference Implementation Architecture
 
 > HLP（Human Loop Protocol）参考实现。
 > 对应规范：[`docs/specs/HLP.md`](../specs/HLP.md)
@@ -6,13 +6,20 @@
 
 ## 定位
 
-loop2 是 Human Loop Protocol (HLP) 的参考实现。它定义**人**与**自主 agent** 如何围绕一个有边界的工作单元（Task）进行委派、把关、交付与治理。
+`loops.loop2` 是 Human Loop Protocol (HLP) 当前的参考实现目录。它定义
+**人**与**自主 agent harness** 如何围绕一个有边界的工作单元（Task）进行
+委派、把关、交付与治理。
 
-loop2 不与 loop0/loop1 竞争，而是补上 MCP / Agent Skills（agent↔工具）和 A2A / ACP / AGNTCY（agent↔agent）未覆盖的维度：**agent 与其负责人之间的责任闭环语义**。L1/L0 由既有协议承担，loop2 只通过 adapter 契约接入。
+HLP 不提供自研 agent harness，也不与 MCP / Agent Skills（agent↔工具）
+或 A2A / ACP / AGNTCY（agent↔agent）竞争。它补的是这些生态未覆盖的维度：
+**agent 与其负责人之间的责任闭环语义**。L1/L0 由既有协议和 runtime 承担，
+HLP 只通过 adapter 契约接入。
 
-## owns coordination
+## owns human interaction semantics
 
-loop2 owns coordination：负责多个用户、多个 agent 如何在项目空间内协同运行。核心单位是 `ProjectSpace / OrgRuntime`，但参考实现聚焦于**协议语义**而非组织模型——后者留后续。
+HLP owns human interaction semantics：负责一次 harness 运行中哪些事项需要人
+负责、决策、验收和审计。组织模型、调度平台、UI channel、agent execution loop
+都留给 host application 或既有 harness。
 
 ## 包结构
 
@@ -26,7 +33,7 @@ loops/loop2/
   store.py             # HumanLoopStore：内存存储
   sqlite_store.py      # SQLiteHumanLoopStore：本地 snapshot store（非生产并发后端）
   sdk.py               # HLPClient：稳定 SDK facade
-  adapters.py          # AgentAdapter + fake/process/framework adapter entry points
+  adapters.py          # AgentAdapter + HarnessAdapter + fake/process/framework adapter entry points
   events.py            # HLPEvent + InMemoryEventBus
   operations.py        # 21 个操作 (spec §4)
   audit.py             # AuditEvent + AuditLog (append-only)
@@ -69,18 +76,25 @@ task = await client.create_task(principal="user_alice", goal="Review PR #1234")
 run = await client.delegate(task.id, "agent_reviewer", capability="code-review")
 ```
 
-## 集成契约（spec §5.1）
+## 集成契约（spec §5）
 
-loop2 与外部 agent runtime 的缝合点通过 `AgentAdapter` 定义。历史上的 `AAPBridge` / `InMemoryAAPBridge` 兼容别名已经移除；HLP 只公开一个下行边界：HLP→agent adapter。
+HLP 与外部 agent harness 的缝合点分成两个方向：
 
-| HLP 操作 | L1 adapter 联动 | 铁律 |
+- `AgentAdapter`：HLP→harness，下发 delegate / block / resume / handoff / cancel。
+- `HarnessAdapter`：harness→HLP，投影 needs_approval / needs_choice / needs_input / artifact 等 human-facing event。
+
+历史上的 `AAPBridge` / `InMemoryAAPBridge` 兼容别名已经移除；HLP 不定义新的
+agent-to-agent runtime 协议。
+
+| HLP 操作 | Adapter 联动 | 铁律 |
 |----------|---------|------|
 | task.assign | delegate | TaskID = Run.correlation_id |
 | checkpoint.raise | block | CheckpointID 传入 |
 | checkpoint.resolve | resume | resolution 透传 |
 | ownership.transfer | handoff | correlation_id 保持 |
+| harness event | project into HLP object | human-facing event 不泄漏 harness internals |
 
-参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`OpenAIAgentsSDKAdapter` 可通过注入 `runner + agent` 调用 OpenAI Agents SDK 的 `run/run_sync` 形态；`LangGraphAdapter` 可通过注入 compiled graph 调用 `ainvoke/invoke`；`CrewAIAdapter` 可通过注入 crew 调用 `akickoff/kickoff_async/kickoff`；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖自定义 CLI/process 形态；`PromptCLIAdapter` 将 HLP request 嵌入 one-shot prompt，用于贴合 Codex CLI、Kimi CLI、Claude Code CLI 这类本机 coding-agent 命令。
+参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`FakeHarnessAdapter` 在此基础上增加 harness event 队列，用于验证既有 harness 的人工审批和交付事件可以投影为 HLP checkpoint、artifact 和 human inbox item。`OpenAIAgentsSDKAdapter` 可通过注入 `runner + agent` 调用 OpenAI Agents SDK 的 `run/run_sync` 形态；`LangGraphAdapter` 可通过注入 compiled graph 调用 `ainvoke/invoke`；`CrewAIAdapter` 可通过注入 crew 调用 `akickoff/kickoff_async/kickoff`；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖自定义 CLI/process 形态；`PromptCLIAdapter` 将 HLP request 嵌入 one-shot prompt，用于贴合 Codex CLI、Kimi CLI、Claude Code CLI 这类本机 coding-agent 命令。
 
 adapter-coupled 操作遵循 fail-before-commit：如果 `delegate` / `block` / `resume` / `handoff` / `cancel` 失败，HLP Task、Checkpoint、Ownership、audit 和 run binding 不推进到假成功状态。当前参考实现用同步调用保证本地一致性；生产服务端应演进为 transaction + durable outbox + idempotency key。
 
@@ -96,6 +110,15 @@ Adapter capability baseline:
 | `OpenAIAgentsSDKAdapter` | injected `runner.run/run_sync` | local contract recording, not real runtime pause yet | local contract recording | local handle |
 | `LangGraphAdapter` | `ainvoke/invoke` with `configurable.thread_id` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
 | `CrewAIAdapter` | `akickoff/kickoff_async/kickoff` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
+
+Harness event projection baseline:
+
+| Harness event | HLP projection | Human inbox |
+| --- | --- | --- |
+| `needs_approval` | `Checkpoint(kind="approval")` | `resolve_checkpoint` |
+| `needs_choice` | `Checkpoint(kind="choice")` | `resolve_checkpoint` |
+| `needs_input` | `Checkpoint(kind="input")` | `resolve_checkpoint` |
+| `artifact` | `Artifact` committed to task | `submit_review` |
 
 `ProcessAgentAdapter` 约定所有操作都向 runner 传入结构化请求：
 
@@ -117,7 +140,9 @@ runner 返回 JSON object 或 JSONL event stream，`delegate` 至少应返回 `r
 
 ## 分层纪律
 
-loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（transport-agnostic），也为 spec §1.2 适用范围提供实证。有 `test_loop2_does_not_import_lower_layers` 守护此纪律。
+HLP 参考实现刻意不依赖任何自研下层 runtime。这证明协议层可以独立存在
+（transport-agnostic / harness-agnostic），也为 spec §1.2 适用范围提供实证。
+有 `test_loop2_does_not_import_lower_layers` 守护此纪律。
 
 ## 不在本参考实现范围（spec §7 开放议题）
 
@@ -125,7 +150,7 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 - vendor package 直接依赖 — 当前通过对象注入提供框架级契约，不强依赖第三方包
 - 服务端数据库后端 — 当前提供内存 store + SQLite 本地 snapshot store；生产级对象表、CAS、schema migration、audit hash chain 和 outbox/recovery 是后续 hardening 项
 - HLP server/CLI 管理面 — 当前只提供 SDK 和 demo console script
-- HLP→channel 通知 — stub
+- HLP→channel 通知 — 当前只提供 `human_inbox` 语义，不定义 UI/channel
 - 开放议题定论（checkpoint 超时、委派深度、Ledger 并发等）— 实现后待收敛
 
 ## 验证
@@ -135,4 +160,5 @@ loop2 刻意不 import loop1/loop0。这证明协议层可以独立存在（tran
 - `uv run pytest tests/test_loop2_hlp.py -q`
 - `uv run loops-hlp-demo`：无外部依赖端到端 demo
 - `uv run loops-hlp-adapters-demo`：无外部依赖 adapter compatibility demo
+- `uv run loops-hlp-harness-demo`：无外部依赖 harness wrapping demo
 - 端到端闭环覆盖 spec 附录 A "Review PR #1234" 全时序

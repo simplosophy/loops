@@ -14,6 +14,8 @@ from .types import (
     CheckpointKind,
     CheckpointResolutionAction,
     CheckpointState,
+    HumanInboxAction,
+    HumanInboxKind,
     OwnershipTransferVia,
     ProtocolError,
     ReviewCommentSeverity,
@@ -123,6 +125,23 @@ class LedgerEntry:
     value: Any
     by: str                     # 写入者 task_id
     written_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
+class HumanInboxItem:
+    """Projected human action item for UI/channel hosts.
+
+    HLP owns the interaction semantics; host platforms still own rendering and
+    delivery.
+    """
+
+    kind: HumanInboxKind
+    action: HumanInboxAction
+    task_id: str
+    subject_id: str
+    title: str
+    principal: str
+    created_at: datetime = field(default_factory=_now)
 
 
 # ════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@
 
 Use this guide to choose the right entry point. HLP is the only complete
 protocol specification in this project. L1 and L0 pages are routing references
-for integrating with existing agent and capability ecosystems.
+for integrating with existing agent harness and capability ecosystems.
 
 | Document | Type | Meaning |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ for integrating with existing agent and capability ecosystems.
 | [Agent Protocol Routes](./specs/aap) | L1 routing reference | How HLP can delegate into A2A, ACP, AGNTCY-style meshes, or custom runtimes. |
 | [Capability Protocol Routes](./specs/cap) | L0 routing reference | How HLP references capabilities exposed through MCP, Agent Skills, local tools, or registries. |
 | [Integration Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and adapter boundary map. |
-| [Contracts](./specs/contracts) | Cross-layer reference | The narrow contracts HLP expects adapters to preserve. |
+| [Contracts](./specs/contracts) | Cross-layer reference | The narrow contracts HLP expects harness adapters to preserve. |
 
 ## Path 0: Embed the HLP SDK
 
@@ -24,10 +24,10 @@ host = HLPHost.in_memory(adapter=FakeAgentAdapter())
 client = host.client
 ```
 
-Use `HLPHost` to wire store, event bus, and agent adapter. Use `HLPClient` for
-task, checkpoint, artifact, review, ledger, and audit operations. Internal
-packages such as `loops.loop0`, `loops.loop1`, and `loops.loop2` are explicit
-implementation paths; they are not the public product entry point.
+Use `HLPHost` to wire store, event bus, and harness adapters. Use `HLPClient`
+for task, checkpoint, artifact, review, ledger, audit, and human inbox
+operations. Public imports should come from `loops` or `loops.hlp`; internal
+package names are implementation details.
 
 ## Path 1: Build a Human Loop Platform
 
@@ -45,18 +45,18 @@ Implementation checklist:
 - Enforce the Task state machine and operation preconditions.
 - Persist immutable specs, artifact versions, reviews, ledger entries, and audit
   events.
-- Bridge downward to your chosen agent runtime for delegation, blocking,
+- Bridge downward to your chosen agent harness for delegation, blocking,
   resuming, and handoff.
 
 Expected work: large. HLP is a complete protocol surface.
 
-## Path 2: Connect an Existing Agent Runtime
+## Path 2: Wrap an Existing Agent Harness
 
 Read [Agent Protocol Routes](./specs/aap), then [Integration Contracts](./specs/contracts).
 
-You are building this path if you already have an agent runtime, A2A runtime,
-ACP broker, agent mesh, or multi-agent orchestrator and want it to sit under
-HLP.
+You are building this path if you already have an agent harness, A2A runtime,
+ACP broker, agent mesh, or multi-agent orchestrator and want HLP to provide the
+human interaction control plane around it.
 
 Implementation checklist:
 
@@ -67,10 +67,12 @@ Implementation checklist:
 - Treat `block` as authoritative: an agent run must not resume itself while
   blocked by a HLP checkpoint.
 - Preserve correlation during handoff.
+- Project human-facing harness events such as approvals, choices, input
+  requests, and artifacts into HLP objects.
 
-Expected work: small to medium. You are not implementing a new Loops L1
-protocol; you are preserving HLP correlation and pause/resume semantics in an
-existing runtime.
+Expected work: small to medium. You are not implementing a new Loops harness or
+L1 protocol; you are preserving HLP correlation, pause/resume, and event
+projection semantics in an existing runtime.
 
 ## Path 3: Connect a Capability Source
 
@@ -105,8 +107,8 @@ Build from the human-loop boundary outward:
 
 - Implement HLP objects and operations.
 - Embed through `HLPHost` or an equivalent host process.
-- Connect your agent runtime through a narrow adapter.
-- Connect capability sources through the agent runtime or host platform.
+- Connect your agent harness through narrow command and event adapters.
+- Connect capability sources through the agent harness or host platform.
 - Verify that HLP task identity survives every runtime and capability boundary.
 
 ## Path 5: Evaluate an Existing Product
@@ -120,7 +122,8 @@ Ask four questions:
 2. Can every delegated agent run preserve the HLP TaskID as correlation?
 3. Can checkpoints block and resume the corresponding agent run without letting
    the agent bypass the human decision?
-4. Can task constraints reference capabilities without exposing transport
+4. Can harness approval/input/artifact events be projected into HLP objects?
+5. Can task constraints reference capabilities without exposing transport
    details to HLP?
 
 If any answer is no, the product may still be useful, but it should not claim
@@ -133,13 +136,13 @@ For a reference implementation, start with a single task:
 ```text
 Human creates Task
   -> HLP task.assign
-  -> L1 delegate with Run.correlation_id = TaskID
+  -> Harness delegate with Run.correlation_id = TaskID
   -> Agent reaches a decision point
-  -> HLP checkpoint.raise
-  -> L1 block
+  -> Harness projects needs_approval to HLP checkpoint.raise
+  -> Harness block
   -> Human resolves the checkpoint
-  -> L1 resume
-  -> Agent commits Artifact
+  -> Harness resume
+  -> Harness projects Artifact
   -> Human submits Review
   -> Task reaches completed
   -> Audit replay reconstructs the flow
