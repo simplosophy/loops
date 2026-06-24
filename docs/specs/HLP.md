@@ -125,11 +125,20 @@ InputRef:
 
 Constraints:
   max_duration: duration       # OPTIONAL
-  must_use_capabilities: [cap] # OPTIONAL, CapabilityRef
+  external_refs: [ExternalRef] # OPTIONAL, opaque evidence refs
+
+ExternalRef:
+  kind: string                 # 如 "capability", "dataset", "policy"
+  namespace: string            # 如 "mcp", "skill", "host"
+  id: string                   # 外部系统内稳定 ID
+  version: string | null       # OPTIONAL
+  label: string | null         # OPTIONAL, 给人看的名称
 ```
 
 **一致性约束**：
 - `spec` 在 `task.create` 后 **MUST NOT** 变更。
+- `external_refs` **MAY** 记录人类决策和审计需要的外部证据引用；HLP **MUST NOT**
+  解析、鉴权或调用这些外部系统。
 - `ownership.principal` **MUST** 在创建时设定，且 **MUST NEVER** 变更。
 - `state` 转移 **MUST** 遵守 §4.1 状态机。
 
@@ -451,14 +460,20 @@ HLP 只产出事件，不负责送达。以下事件 **MAY** 被转译为 channe
 
 具体 UI/通知实现不属于 HLP 规范范围。
 
-### 5.4 CapabilityRef（跨 HLP / agent route / capability route）
+### 5.4 外部能力证据（跨 HLP / agent route / capability route）
 
-HLP 引用能力时 **MUST** 只用 `(capability_id, version)`，**MUST NOT** 感知底层 transport（MCP stdio/SSE、Agent Skills runtime、local function name 等）。
+HLP core 不定义 capability schema，也不要求 Task 必须携带能力约束。需要在人类
+决策或审计中说明能力来源时，HLP **MAY** 保存 opaque `ExternalRef`。下层
+capability ecosystem 可以把 `kind="capability"` 的 `ExternalRef` 解释为自己的
+能力证据 profile，但解释、鉴权、schema 解析和调用都不属于 HLP。
 
 ```yaml
-CapabilityRef:
-  capability_id: string        # 如 "cap:code-review"
+ExternalRef:
+  kind: "capability"
+  namespace: string            # 如 "mcp" / "skill" / "host"
+  id: string                   # 如 "cap:code-review"
   version: string              # 如 "v2"
+  label: string | null
 ```
 
 ---

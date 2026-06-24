@@ -8,7 +8,7 @@ for integrating with existing agent harness and capability ecosystems.
 | --- | --- | --- |
 | [HLP](./specs/hlp) | Full protocol specification | The primary spec: schemas, state machine, operations, errors, and conformance. |
 | [Agent Protocol Routes](./specs/aap) | L1 routing reference | How HLP can delegate into existing harnesses, A2A, ACP, or AGNTCY-style meshes. |
-| [Capability Protocol Routes](./specs/cap) | L0 routing reference | How HLP references capabilities exposed through MCP, Agent Skills, local tools, or registries. |
+| [Capability Protocol Routes](./specs/cap) | L0 routing reference | How HLP records optional capability evidence from MCP, Agent Skills, local tools, or registries. |
 | [Integration Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and adapter boundary map. |
 | [Contracts](./specs/contracts) | Cross-layer reference | The narrow contracts HLP expects harness adapters to preserve. |
 
@@ -83,8 +83,10 @@ automation, retrieval functions, or other agent-callable capabilities.
 
 Implementation checklist:
 
-- Map your existing discovery mechanism into stable capability ids.
-- Give every HLP-visible capability a globally unique `(capability_id, version)`.
+- Map your existing discovery mechanism into stable external refs only when
+  HLP needs capability evidence.
+- Give every HLP-visible capability evidence ref a globally unique
+  `(namespace, id, version)` tuple.
 - Publish enough manifest or schema data for humans to understand task constraints.
 - Preserve invocation results and errors as harness or host-platform evidence.
 - Hide transport details from HLP and agent-level planning.
@@ -123,8 +125,8 @@ Ask four questions:
 3. Can checkpoints block and resume the corresponding agent run without letting
    the agent bypass the human decision?
 4. Can harness approval/input/artifact events be projected into HLP objects?
-5. Can task constraints reference capabilities without exposing transport
-   details to HLP?
+5. If capability evidence is part of the claim, can HLP record it without
+   exposing transport or invocation details?
 
 If any answer is no, the product may still be useful, but it should not claim
 HLP compatibility.

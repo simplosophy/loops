@@ -10,7 +10,7 @@ harness and capability ecosystems the host platform already uses.
 | --- | --- | --- |
 | HLP | Human-owned tasks, checkpoints, reviews, artifacts, ledger entries, audit events | Agent execution loops, tool invocation, provider transport |
 | L1 agent route | Task-to-run correlation, block/resume, handoff adapters, harness event projection | Existing harnesses, A2A, ACP, AGNTCY-style meshes, custom harnesses |
-| L0 capability route | Stable capability references and provenance | MCP, Agent Skills, local tools, function-calling registries |
+| L0 capability route | Optional capability evidence and provenance | MCP, Agent Skills, local tools, function-calling registries |
 
 The allowed dependency direction remains downward:
 
@@ -44,13 +44,13 @@ objects.
 | Review | HLP | `review_id` | Immutable human verdict and feedback. |
 | Artifact | HLP | `artifact_id` plus version | Immutable deliverable with provenance. |
 | Agent run | L1 route | Runtime-specific `run_id` | Must carry HLP `Task.id` as correlation. |
-| Capability | L0 route | `(capability_id, version)` | Must be referenced without exposing transport. |
+| External capability evidence | L0 route | `ExternalRef(kind="capability")` | Optional; must not expose transport or invocation details. |
 
 ## Integration Contracts
 
 | Contract | Rule | Evidence |
 | --- | --- | --- |
-| `CapabilityRef` | HLP references capabilities only by `(capability_id, version)`. | Task constraints contain no transport endpoints or local command strings. |
+| External evidence reference | HLP may store opaque capability evidence refs. | External refs contain no transport endpoints or local command strings. |
 | TaskID correlation | HLP `Task.id` survives every agent run and event. | Run/event metadata carries the same task id. |
 | Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. | Audit replay shows the checkpoint and run transition as one logical pause. |
 | Harness event projection | Harness approval/input/artifact events become HLP objects. | Human inbox and audit show checkpoints and reviews without harness internals. |

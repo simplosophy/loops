@@ -70,7 +70,7 @@
 
   <!-- contract seam 2 -->
   <text class="st-ccap" x="480" y="292" text-anchor="middle" dominant-baseline="central">INTEGRATION CONTRACT</text>
-  <text class="st-ctext" x="480" y="308" text-anchor="middle" dominant-baseline="central">CapabilityRef only  ·  no transport leakage across layers</text>
+  <text class="st-ctext" x="480" y="308" text-anchor="middle" dominant-baseline="central">External evidence refs  ·  no transport leakage across layers</text>
 
   <!-- L0 -->
   <text class="st-code" x="84" y="342" dominant-baseline="central">L0</text>

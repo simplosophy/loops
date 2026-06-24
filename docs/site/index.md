@@ -158,9 +158,9 @@ hero:
     <h2>Four contracts keep the stack replaceable.</h2>
   </div>
   <div class="contract-grid">
-    <a href="./specs/contracts#contract-1-capabilityref">
-      <strong>CapabilityRef</strong>
-      <span>Capabilities are referenced by id and version, never transport.</span>
+    <a href="./specs/contracts#contract-1-external-evidence-reference">
+      <strong>External evidence</strong>
+      <span>Capability evidence is optional, opaque, and never transport.</span>
     </a>
     <a href="./specs/contracts#contract-2-taskid-correlation">
       <strong>TaskID correlation</strong>

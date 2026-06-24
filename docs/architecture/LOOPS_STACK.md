@@ -74,7 +74,7 @@ Current rule:
 | Checkpoints map to harness block/resume | Human decisions must be authoritative. |
 | Artifacts enter HLP review flow | Delivery and acceptance must be independent of harness internals. |
 | Adapter failure is fail-before-commit | HLP state must not claim work moved when the harness rejected it. |
-| Capability references hide transport | HLP should not know whether a capability came from MCP, Skills, local tools, or APIs. |
+| External evidence refs hide transport | HLP should not know whether capability evidence came from MCP, Skills, local tools, or APIs. |
 
 ## Internal Package Notes
 

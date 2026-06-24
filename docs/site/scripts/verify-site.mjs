@@ -123,10 +123,11 @@ if (existsSync(distDir)) {
   if (existsSync(protocolMapHtmlPath)) {
     const protocolMapHtml = readText(protocolMapHtmlPath)
     assert(protocolMapHtml.includes('Integration Contracts'), 'Protocol map is missing the integration contracts section.')
-    assert(protocolMapHtml.includes('CapabilityRef'), 'Protocol map is missing the CapabilityRef contract.')
+    assert(protocolMapHtml.includes('External evidence reference'), 'Protocol map is missing the external evidence contract.')
     assert(protocolMapHtml.includes('TaskID'), 'Protocol map is missing the TaskID correlation contract.')
     assert(protocolMapHtml.includes('task.start'), 'Protocol map is missing the task.start operation.')
     assert(!protocolMapHtml.includes('review.open'), 'Protocol map references a non-existent review.open operation.')
+    assert(!protocolMapHtml.includes('must_use_capabilities'), 'Protocol map should not require HLP core capability constraints.')
   }
 
   const hlpSpecSource = readText(join(siteDir, 'specs/hlp.md'))
@@ -134,6 +135,10 @@ if (existsSync(distDir)) {
 
   const hlpSpecHtml = readText(join(distDir, 'specs/hlp.html'))
   assert(hlpSpecHtml.includes('task.start'), 'HLP spec is missing task.start.')
+  assert(hlpSpecHtml.includes('ExternalRef'), 'HLP spec is missing ExternalRef.')
+  assert(hlpSpecHtml.includes('MUST NOT') && hlpSpecHtml.includes('interpret or invoke referenced systems'), 'HLP spec must keep external refs opaque.')
+  assert(!hlpSpecHtml.includes('CapabilityRef'), 'HLP core spec must not require CapabilityRef.')
+  assert(!hlpSpecHtml.includes('must_use_capabilities'), 'HLP core spec must not expose must_use_capabilities.')
   assert(hlpSpecHtml.includes('How an agent harness internally executes a run'), 'HLP spec is missing the harness execution non-goal.')
 
   const aapHtml = readText(join(distDir, 'specs/aap.html'))
@@ -142,7 +147,10 @@ if (existsSync(distDir)) {
 
   const capHtml = readText(join(distDir, 'specs/cap.html'))
   assert(capHtml.includes('does not define a new tool or capability protocol'), 'L0 route page must not define a new capability protocol.')
-  assert(capHtml.includes('Actual invocation remains owned by'), 'L0 route page must leave invocation below HLP.')
+  assert(capHtml.includes('HLP core does not require capability references'), 'L0 route page must make capability refs optional.')
+  assert(capHtml.includes('ExternalRef'), 'L0 route page must use ExternalRef as the evidence carrier.')
+  assert(capHtml.includes('Actual discovery, authorization, schema handling, and invocation'), 'L0 route page must leave invocation below HLP.')
+  assert(!capHtml.includes('must_use_capabilities'), 'L0 route page must not expose must_use_capabilities.')
   assert(!capHtml.includes('capability.list'), 'L0 route page must not define a capability.list API.')
   assert(!capHtml.includes('capability.describe'), 'L0 route page must not define a capability.describe API.')
   assert(!capHtml.includes('capability.invoke'), 'L0 route page must not define a capability.invoke API.')

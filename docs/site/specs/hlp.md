@@ -127,12 +127,21 @@ InputRef:
 
 Constraints:
   max_duration: duration
-  must_use_capabilities: [CapabilityRef]
+  external_refs: [ExternalRef]
+
+ExternalRef:
+  kind: string
+  namespace: string
+  id: string
+  version: string | null
+  label: string | null
 ```
 
 Rules:
 
 - `spec` **MUST** be immutable after creation.
+- `external_refs` **MAY** record opaque external evidence for human decisions
+  and audit, but HLP **MUST NOT** interpret or invoke referenced systems.
 - `ownership.principal` **MUST** be set at creation and **MUST NEVER** change.
 - `state` transitions **MUST** follow the Task state machine.
 
@@ -443,8 +452,10 @@ Existing harnesses can also project human-facing events upward:
 | `needs_input` | `Checkpoint(kind="input")` | Prompt and context **SHOULD** support a human decision |
 | `artifact` | `Artifact` | Payload **MUST** have stable uri/checksum |
 
-HLP **MUST NOT** directly invoke capabilities. It references them only through
-`CapabilityRef`; invocation belongs to the agent harness or host platform.
+HLP **MUST NOT** directly invoke capabilities. Capability identity, discovery,
+schema interpretation, authorization, and invocation belong to the agent
+harness, host platform, or L0 ecosystem. HLP may only store opaque external
+references needed for human decision evidence or audit replay.
 
 ## Errors
 

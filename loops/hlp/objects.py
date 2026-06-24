@@ -52,9 +52,24 @@ class InputRef:
 
 
 @dataclass(frozen=True)
+class ExternalRef:
+    """Opaque external evidence reference.
+
+    HLP stores this for human decision and audit context; the host or lower
+    protocol stack owns interpretation, authorization, and invocation.
+    """
+
+    kind: str
+    namespace: str
+    id: str
+    version: str | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
 class Constraints:
     max_duration: str | None = None
-    must_use_capabilities: tuple[str, ...] = ()
+    external_refs: tuple[ExternalRef, ...] = ()
 
 
 @dataclass(frozen=True)

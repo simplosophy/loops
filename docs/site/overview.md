@@ -70,7 +70,7 @@ Existing agent harness
   ▼
 Capability source
   │
-  │ L0 capability route: list, describe, invoke
+  │ L0 capability route: manifest, provenance, invocation evidence
   ▼
 Tool or Skill implementation
 ```
@@ -82,8 +82,8 @@ The boundaries are deliberately narrow:
 - **L1 agent routes** point to existing harnesses and agent protocols. HLP only
   needs delegation, blocking, resuming, handoff, and human-facing harness events.
 - **L0 capability routes** point to existing capability protocols. HLP only
-  needs stable capability references when a task constrains required tools or
-  skills.
+  stores opaque external evidence when a human decision or audit trail needs
+  capability context.
 
 ## Design Principles
 
@@ -113,7 +113,7 @@ through explicit objects:
 
 | Contract | Purpose |
 | --- | --- |
-| `CapabilityRef` | Lets upper layers reference a capability by `(capability_id, version)` without seeing transport details. |
+| `ExternalRef` | Lets HLP record opaque external evidence without seeing transport or invocation details. |
 | `TaskID = Run.correlation_id` | Carries HLP task identity through every agent run and event. |
 | `Checkpoint -> block/resume` | Maps a human decision point to an agent run pause and restart. |
 | `HarnessEvent -> HLP object` | Projects approval, input, choice, and artifact events into HLP semantics. |
@@ -133,7 +133,7 @@ This project defines:
 - A Python SDK with protocol objects, `HLPClient`, `HLPHost`, stores, event bus,
   and adapters.
 - Integration contracts for routing HLP task identity, checkpoints, ownership,
-  harness events, and capability references into existing agent and capability
+  harness events, and optional external evidence into existing agent and capability
   protocols.
 - Introductory L1/L0 route pages that explain where A2A, ACP, AGNTCY-style
   meshes, MCP, Agent Skills, and local capability systems fit.

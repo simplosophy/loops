@@ -336,7 +336,7 @@
 
       <!-- 契约带 AAP↔CAP -->
       <rect x="24" y="346" width="992" height="34" rx="8" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4" stroke-dasharray="5 3"/>
-      <text x="520" y="368" text-anchor="middle" fill="#06b6d4" font-size="11" font-family="SF Mono,monospace">CapabilityRef (id+version, transport-agnostic)</text>
+      <text x="520" y="368" text-anchor="middle" fill="#06b6d4" font-size="11" font-family="SF Mono,monospace">ExternalRef evidence (opaque, transport-agnostic)</text>
 
       <!-- CAP L0 -->
       <rect x="24" y="390" width="992" height="100" rx="14" fill="#f97316" fill-opacity="0.07" stroke="#f97316" stroke-opacity="0.5"/>
@@ -449,11 +449,11 @@
       <text x="40" y="360" fill="#8a8a9a" font-size="10">能力</text>
 
       <!-- 右：四个契约 -->
-      <!-- 契约1 CapabilityRef: CAP→AAP→HLP -->
+      <!-- 契约1 ExternalRef evidence: CAP→AAP→HLP -->
       <line x1="200" y1="350" x2="280" y2="90" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4,2"/>
       <rect x="280" y="60" width="700" height="60" rx="10" fill="#06b6d4" fill-opacity="0.06" stroke="#06b6d4" stroke-opacity="0.4"/>
-      <text x="300" y="84" fill="#06b6d4" font-size="13" font-weight="700">① CapabilityRef</text>
-      <text x="300" y="104" fill="#e8e8f0" font-size="12">跨 L0→L1→L2 · 上层只用 (id, version)，禁止感知 transport</text>
+      <text x="300" y="84" fill="#06b6d4" font-size="13" font-weight="700">① ExternalRef evidence</text>
+      <text x="300" y="104" fill="#e8e8f0" font-size="12">跨 L0→L1→L2 · HLP 只保存 opaque evidence，禁止感知 transport</text>
 
       <!-- 契约2 TaskID 贯穿: HLP→AAP -->
       <line x1="200" y1="90" x2="280" y2="160" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="4,2"/>
@@ -672,7 +672,7 @@
       <div class="rule">
         <div class="ico">🔌</div>
         <h4>跨层只走显式契约</h4>
-        <p>CapabilityRef、TaskID 贯穿、Checkpoint→Block、Ownership→Handoff。绝不直接修改邻层内部对象——这是烟囱和协议栈的本质区别。</p>
+        <p>ExternalRef evidence、TaskID 贯穿、Checkpoint→Block、Ownership→Handoff。绝不直接修改邻层内部对象——这是烟囱和协议栈的本质区别。</p>
       </div>
       <div class="rule">
         <div class="ico">📍</div>

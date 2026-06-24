@@ -48,7 +48,7 @@ contracts it uses:
 | Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
 | Harness event projection | Approval, input, choice, and artifact events become HLP checkpoints or artifacts. |
 | Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |
-| CapabilityRef | Task constraints reference capabilities by `(capability_id, version)` without transport endpoints. |
+| External evidence reference | Capability evidence, when used, is stored as opaque external references without transport endpoints. |
 
 The evidence can come from A2A, ACP, AGNTCY-style meshes, MCP, Agent Skills, a
 custom host platform, an existing agent harness, or another existing system. HLP
@@ -68,7 +68,7 @@ Before publishing a compatibility claim, produce evidence for:
 | Cross-harness correlation trace | Recommended | Required |
 | Checkpoint block/resume trace | Recommended | Required |
 | Harness event projection trace | Recommended | Required when wrapping an existing harness |
-| Capability provenance trace | Recommended | Required when task constraints use capabilities |
+| Capability provenance trace | Optional | Required only when the integration claims capability evidence support |
 
 ## Non-Conforming Patterns
 
@@ -80,8 +80,8 @@ The following patterns are incompatible with HLP conformance:
   handoff.
 - A harness wrapper that exposes approvals only as opaque log lines instead of
   HLP checkpoints.
-- A capability registry that requires HLP task specs to know stdio commands,
-  SSE endpoints, HTTP paths, or local function names.
+- A capability registry that requires HLP task specs or external evidence refs
+  to know stdio commands, SSE endpoints, HTTP paths, or local function names.
 - A checkpoint implementation that lets an agent resume itself without a human
   or authorized system resolution.
 - An audit log that can be rewritten or deleted after protocol operations occur.

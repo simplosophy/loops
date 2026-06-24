@@ -15,7 +15,7 @@ Loops 当前聚焦 **Human Loop Protocol (HLP)**：定义人和自主 agent harn
 - agent ↔ agent：A2A、ACP、AGNTCY 风格 mesh、各类已有 agent harness
 - agent ↔ 工具/能力：MCP、Agent Skills、local tools、function calling registry
 
-因此本项目不再把 L1/L0 作为自定义协议重点推进。它们在本文档中只承担**路由说明**职责：告诉 HLP 实现者应该如何把 TaskID、Checkpoint、Ownership、CapabilityRef 映射到既有协议。
+因此本项目不再把 L1/L0 作为自定义协议重点推进。它们在本文档中只承担**路由说明**职责：告诉 HLP 实现者应该如何把 TaskID、Checkpoint、Ownership 和外部证据引用映射到既有协议。
 
 ---
 
@@ -25,7 +25,7 @@ Loops 当前聚焦 **Human Loop Protocol (HLP)**：定义人和自主 agent harn
 |------|------|------|
 | [HLP.md](./HLP.md) | **完整协议规范** | 本项目定义的核心协议。包含对象、状态机、操作、错误码、一致性要求。 |
 | [AAP.md](./AAP.md) | **L1 路由说明** | 说明 HLP 如何接入 A2A、ACP、AGNTCY 风格 mesh 或已有 agent harness。不是新协议规范。 |
-| [CAP.md](./CAP.md) | **L0 路由说明** | 说明 HLP 如何通过 CapabilityRef 引用 MCP、Agent Skills、local tools 或 function calling registry。不是新协议规范。 |
+| [CAP.md](./CAP.md) | **L0 路由说明** | 说明 HLP 如何记录来自 MCP、Agent Skills、local tools 或 function calling registry 的可审计能力证据。不是新协议规范。 |
 
 ---
 
@@ -54,8 +54,8 @@ Loops 当前聚焦 **Human Loop Protocol (HLP)**：定义人和自主 agent harn
 
 读 [CAP.md](./CAP.md)。重点确认：
 
-- capability 如何获得稳定 `(capability_id, version)`
-- HLP Task 里如何只保存 CapabilityRef，不暴露 transport
+- capability evidence 如何获得稳定外部 ID
+- HLP 里如何只保存 opaque `ExternalRef`，不暴露 transport
 - artifact provenance / audit 如何记录 capability 使用证据
 
 ---
@@ -68,7 +68,7 @@ Loops 当前聚焦 **Human Loop Protocol (HLP)**：定义人和自主 agent harn
 | **Checkpoint→Block** | Checkpoint ↔ Run | `checkpoint.raise` 必须阻塞对应 run，`checkpoint.resolve` 才能恢复。 |
 | **HarnessEvent→HLP** | Harness event ↔ HLP object | 人工审批、输入、选择和 artifact 事件必须可投影为 HLP 对象。 |
 | **Ownership→Handoff** | Ownership ↔ Run | ownership 转移到新 agent 时，harness handoff 必须保持原 TaskID。 |
-| **CapabilityRef** | Capability 引用 | HLP 只引用 `(capability_id, version)`，不得感知 stdio/SSE/HTTP/function name。 |
+| **ExternalRef** | 外部证据引用 | HLP 可保存 opaque evidence ref，但不得感知 stdio/SSE/HTTP/function name 或 invocation 细节。 |
 
 ---
 

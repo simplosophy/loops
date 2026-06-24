@@ -29,6 +29,8 @@ from loops.hlp import (
     ArtifactPayload,
     ArtifactRef,
     CheckpointOption,
+    Constraints,
+    ExternalRef,
     ReviewComment,
     check_transition,
     is_legal,
@@ -77,12 +79,37 @@ def test_human_loop_public_api_names_are_primary():
 
     assert hlp.HumanLoopOperations is hlp.operations.HumanLoopOperations
     assert hlp.HumanLoopStore is hlp.store.HumanLoopStore
+    assert hlp.ExternalRef is ExternalRef
     assert "HumanLoopOperations" in hlp.__all__
     assert "HumanLoopStore" in hlp.__all__
+    assert "ExternalRef" in hlp.__all__
     assert "AAPBridge" not in hlp.__all__
     assert "InMemoryAAPBridge" not in hlp.__all__
     assert "H" + "ACPOperations" not in hlp.__all__
     assert "H" + "ACPStore" not in hlp.__all__
+
+
+def test_task_constraints_use_opaque_external_refs_not_capability_refs():
+    capability = ExternalRef(
+        kind="capability",
+        namespace="mcp",
+        id="cap:code-review",
+        version="2.1.0",
+        label="Code review tool",
+    )
+    constraints = Constraints(
+        max_duration="PT30M",
+        external_refs=(capability,),
+    )
+    spec = TaskSpec(goal="Review PR", constraints=constraints)
+
+    assert spec.constraints is not None
+    assert spec.constraints.external_refs == (capability,)
+    assert capability.kind == "capability"
+    assert capability.namespace == "mcp"
+    assert capability.id == "cap:code-review"
+    assert capability.version == "2.1.0"
+    assert not hasattr(spec.constraints, "must_use_capabilities")
 
 
 # ════════════════════════════════════════════════════════════

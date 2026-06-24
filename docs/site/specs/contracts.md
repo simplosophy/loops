@@ -8,33 +8,40 @@ or L0 protocol; they define the adapter invariants HLP relies on.
 
 | Contract | Cross-boundary object | Rule |
 | --- | --- | --- |
-| `CapabilityRef` | Capability reference | HLP references capabilities only by `(capability_id, version)`. |
+| External evidence reference | Optional `ExternalRef` profile | Capability evidence may be recorded without exposing transport or invocation details. |
 | TaskID correlation | Task and agent run identity | HLP `Task.id` must survive every delegated run and event. |
 | Checkpoint-to-Block | Checkpoint and run state | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
 | Harness event projection | Harness event and HLP object | Human-facing harness events become checkpoints, artifacts, and inbox items. |
 | Ownership-to-Handoff | Ownership transfer and run handoff | `ownership.transfer` preserves task correlation through handoff. |
 
-## Contract 1: CapabilityRef
+## Contract 1: External Evidence Reference
 
-`CapabilityRef` is the only legal way for HLP to refer to a capability.
+HLP core does not define capabilities. When a human decision, task constraint,
+artifact provenance, or audit replay needs external capability evidence, HLP
+may carry an opaque `ExternalRef`.
 
 ```yaml
-CapabilityRef:
-  capability_id: string
-  version: string
+ExternalRef:
+  kind: "capability"
+  namespace: string
+  id: string
+  version: string | null
+  label: string | null
 ```
 
 Required behavior:
 
-- Capability identities are created by the host capability ecosystem.
-- HLP uses references in task constraints such as `must_use_capabilities`.
-- HLP must not know whether the capability is reached through MCP stdio, MCP
-  SSE, HTTP, a local function, or an Agent Skills runtime.
+- External identities are created and interpreted by the host, harness, or L0
+  capability ecosystem.
+- HLP stores the reference only as evidence; it does not resolve manifests,
+  authorize use, invoke tools, or inspect transport.
+- Capability integrations may define a `CapabilityRef` profile over
+  `ExternalRef(kind="capability")` using `(namespace, id, version)`.
 
 Non-compatible behavior:
 
 ```yaml
-must_use_capabilities:
+external_refs:
   - transport: "stdio"
     command: "node server.js"
 ```
@@ -42,9 +49,12 @@ must_use_capabilities:
 Compatible behavior:
 
 ```yaml
-must_use_capabilities:
-  - capability_id: "cap:code-review"
+external_refs:
+  - kind: "capability"
+    namespace: "mcp"
+    id: "cap:code-review"
     version: "2.1.0"
+    label: "Code review tool"
 ```
 
 ## Contract 2: TaskID Correlation
