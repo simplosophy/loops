@@ -7,7 +7,7 @@ for integrating with existing agent harness and capability ecosystems.
 | Document | Type | Meaning |
 | --- | --- | --- |
 | [HLP](./specs/hlp) | Full protocol specification | The primary spec: schemas, state machine, operations, errors, and conformance. |
-| [Agent Protocol Routes](./specs/aap) | L1 routing reference | How HLP can delegate into A2A, ACP, AGNTCY-style meshes, or custom runtimes. |
+| [Agent Protocol Routes](./specs/aap) | L1 routing reference | How HLP can delegate into existing harnesses, A2A, ACP, or AGNTCY-style meshes. |
 | [Capability Protocol Routes](./specs/cap) | L0 routing reference | How HLP references capabilities exposed through MCP, Agent Skills, local tools, or registries. |
 | [Integration Map](./protocol-map) | Implementation map | One-page ownership, operation, identity, and adapter boundary map. |
 | [Contracts](./specs/contracts) | Cross-layer reference | The narrow contracts HLP expects harness adapters to preserve. |
@@ -72,7 +72,7 @@ Implementation checklist:
 
 Expected work: small to medium. You are not implementing a new Loops harness or
 L1 protocol; you are preserving HLP correlation, pause/resume, and event
-projection semantics in an existing runtime.
+projection semantics in the harness you already use.
 
 ## Path 3: Connect a Capability Source
 
@@ -109,7 +109,7 @@ Build from the human-loop boundary outward:
 - Embed through `HLPHost` or an equivalent host process.
 - Connect your agent harness through narrow command and event adapters.
 - Connect capability sources through the agent harness or host platform.
-- Verify that HLP task identity survives every runtime and capability boundary.
+- Verify that HLP task identity survives every harness and capability boundary.
 
 ## Path 5: Evaluate an Existing Product
 

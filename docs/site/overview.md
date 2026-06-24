@@ -21,7 +21,7 @@
   </div>
   <div>
     <strong>Core invariant</strong>
-    <span>Task identity, human decisions, and artifact provenance survive every runtime boundary.</span>
+    <span>Task identity, human decisions, and artifact provenance survive every harness boundary.</span>
   </div>
 </section>
 
@@ -48,7 +48,7 @@ concern evolves at a different speed.
 
 Models change weekly. Communication channels change quarterly. Governance,
 identity, audit, and review processes change slowly and must remain reliable. A
-single runtime abstraction cannot carry all three rhythms without coupling them.
+single harness abstraction cannot carry all three rhythms without coupling them.
 
 ## Model
 
@@ -142,7 +142,7 @@ This project defines:
 This project does not define:
 
 - A built-in agent harness or execution loop.
-- A replacement for A2A, ACP, AGNTCY, MCP, Agent Skills, or agent runtime internals.
+- A replacement for A2A, ACP, AGNTCY, MCP, Agent Skills, or harness internals.
 - A mandatory transport such as HTTP, gRPC, WebSocket, or stdio.
 - A required persistence backend.
 - A universal identity, RBAC, or billing model.

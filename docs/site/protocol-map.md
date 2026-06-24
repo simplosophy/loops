@@ -9,7 +9,7 @@ harness and capability ecosystems the host platform already uses.
 | Boundary | Owned here | Routed elsewhere |
 | --- | --- | --- |
 | HLP | Human-owned tasks, checkpoints, reviews, artifacts, ledger entries, audit events | Agent execution loops, tool invocation, provider transport |
-| L1 agent route | Task-to-run correlation, block/resume, handoff adapters, harness event projection | Existing harnesses, A2A, ACP, AGNTCY-style meshes, custom runtimes |
+| L1 agent route | Task-to-run correlation, block/resume, handoff adapters, harness event projection | Existing harnesses, A2A, ACP, AGNTCY-style meshes, custom harnesses |
 | L0 capability route | Stable capability references and provenance | MCP, Agent Skills, local tools, function-calling registries |
 
 The allowed dependency direction remains downward:

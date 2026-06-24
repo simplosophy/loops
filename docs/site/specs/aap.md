@@ -34,10 +34,10 @@ HLP should route through that implementation.
 
 | Route | Use when | HLP adapter focus |
 | --- | --- | --- |
-| A2A-style runtime | Agents expose cards, tasks, and asynchronous status updates. | Store HLP `Task.id` in task metadata or an extension field and map status updates to run events. |
+| A2A-style harness | Agents expose cards, tasks, and asynchronous status updates. | Store HLP `Task.id` in task metadata or an extension field and map status updates to run events. |
 | ACP-style broker | Agents communicate through a broker or session-oriented channel. | Keep HLP task correlation outside session-local ids and prevent autonomous resume while blocked. |
 | AGNTCY-style mesh | Agents are discovered and routed through a mesh or registry. | Treat mesh discovery as the L1 route and keep HLP ownership separate from mesh placement. |
-| Custom runtime | The platform already owns agent scheduling. | Implement only the narrow adapter methods HLP needs: delegate, block, resume, handoff, and events. |
+| Custom harness | The platform already owns agent scheduling. | Implement only the narrow adapter methods HLP needs: delegate, block, resume, handoff, and observe. |
 
 ## Required Adapter Shape
 
@@ -84,7 +84,7 @@ Those decisions belong to the existing L1 ecosystem or the host platform.
 
 ## Implementation Checklist
 
-- Pick the existing agent protocol or runtime you already use.
+- Pick the existing agent protocol or harness you already use.
 - Add a HLP adapter at the platform boundary.
 - Persist the mapping from `Task.id` to agent `run_id`.
 - Ensure every run event carries the HLP task correlation id.

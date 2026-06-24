@@ -54,7 +54,7 @@ hero:
   </a>
   <a class="route-card" href="./specs/contracts">
     <strong>Wrap harnesses</strong>
-    <span>Map HLP task identity, checkpoints, and harness events into existing runtimes.</span>
+    <span>Map HLP task identity, checkpoints, and harness events into existing harnesses.</span>
   </a>
   <a class="route-card" href="./reading-routes">
     <strong>Use the SDK</strong>
@@ -184,7 +184,7 @@ hero:
 <section class="adoption-strip">
   <h2>Start with the human loop</h2>
   <p>
-    Platforms that need accountable human-agent work should implement HLP
+    Platforms that need accountable harness-backed human-agent work should embed HLP
     directly. Agent harnesses and capability providers stay on their existing
     protocols; HLP only requires narrow adapter contracts at the boundary.
   </p>

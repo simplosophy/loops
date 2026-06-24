@@ -66,7 +66,7 @@ AgentRun:
 Required behavior:
 
 - `task.assign` delegates work through the L1 adapter.
-- The adapter stores the mapping from HLP `Task.id` to runtime `run_id`.
+- The adapter stores the mapping from HLP `Task.id` to harness `run_id`.
 - Every run event includes the same correlation id.
 - Child delegations and handoffs preserve the original correlation unless a new
   HLP task is explicitly created.
@@ -132,9 +132,9 @@ Required behavior:
 - `ownership.transfer` changes the HLP assignee and appends an ownership chain
   record.
 - When the new assignee requires a different agent run, the adapter performs
-  the runtime-specific handoff.
+  the harness-specific handoff.
 - The receiving run keeps the original HLP task correlation id.
-- The old run should remain visible as read-only history if the runtime
+- The old run should remain visible as read-only history if the harness
   supports it.
 
 Example:
@@ -154,7 +154,7 @@ NewRun:
 
 | Boundary | Emits | Consumed by |
 | --- | --- | --- |
-| Capability route | Capability invocation results and capability errors | Agent runtime or host platform |
+| Capability route | Capability invocation results and capability errors | Agent harness or host platform |
 | Agent harness | Run and human-facing events with HLP task correlation | HLP adapter and host platform |
 | HLP | Task, checkpoint, review, artifact, ledger, and audit events | Channels, UIs, project systems |
 

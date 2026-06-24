@@ -21,7 +21,7 @@ export default defineConfig({
   lang: 'en-US',
   title: 'Human Loop Protocol',
   description:
-    'A protocol for accountable human-agent work, with integration routes to existing agent and capability protocols.',
+    'An SDK and protocol for wrapping existing agent harnesses with accountable human interaction.',
   cleanUrls: true,
   srcDir: './',
   ignoreDeadLinks: false,
@@ -33,7 +33,7 @@ export default defineConfig({
       {
         name: 'keywords',
         content:
-          'Human Loop Protocol,HLP,human-agent work,human loop,A2A,MCP,Agent Skills',
+          'Human Loop Protocol,HLP,agent harness,human interaction control plane,human loop,A2A,MCP,Agent Skills',
       },
     ],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
@@ -149,7 +149,7 @@ export default defineConfig({
     },
 
     footer: {
-      message: 'Human Loop Protocol · HLP owns accountable human-agent work · L1/L0 are ecosystem routes',
+      message: 'Human Loop Protocol · HLP wraps existing harnesses with accountable human interaction',
       copyright: 'Draft protocol documentation. Version 0.1.0-draft.',
     },
 
@@ -165,7 +165,7 @@ export default defineConfig({
 
     darkModeSwitchLabel: false,
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/simplosophy/loop0' },
+      { icon: 'github', link: 'https://github.com/simplosophy/loops' },
     ],
 
     sidebarMenuLabel: 'Menu',

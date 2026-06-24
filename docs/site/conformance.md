@@ -14,7 +14,7 @@ Normative keywords on this site follow RFC 2119 usage: **MUST**, **MUST NOT**,
 | HLP-compatible | The implementation supports the HLP object model, operations, state machine, immutability, and audit requirements. |
 | HLP-integrated | The implementation is HLP-compatible and preserves HLP contracts through one or more agent/capability adapters. |
 
-Do not claim HLP integration if the lower runtime loses HLP task correlation,
+Do not claim HLP integration if the lower harness loses HLP task correlation,
 lets agents bypass human checkpoints, or cannot project human-facing harness
 events into HLP objects.
 
@@ -47,11 +47,11 @@ contracts it uses:
 | TaskID correlation | Every delegated run/event carries the HLP `Task.id` as correlation. |
 | Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
 | Harness event projection | Approval, input, choice, and artifact events become HLP checkpoints or artifacts. |
-| Ownership-to-Handoff | Ownership transfer preserves task correlation through runtime handoff. |
+| Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |
 | CapabilityRef | Task constraints reference capabilities by `(capability_id, version)` without transport endpoints. |
 
 The evidence can come from A2A, ACP, AGNTCY-style meshes, MCP, Agent Skills, a
-custom host runtime, an existing agent harness, or another existing system. HLP
+custom host platform, an existing agent harness, or another existing system. HLP
 does not require a specific lower protocol.
 
 ## Evidence Checklist
@@ -65,7 +65,7 @@ Before publishing a compatibility claim, produce evidence for:
 | Immutable record tests | Required | Required |
 | Error semantic tests | Required | Required |
 | Audit replay demonstration | Required | Required |
-| Cross-runtime correlation trace | Recommended | Required |
+| Cross-harness correlation trace | Recommended | Required |
 | Checkpoint block/resume trace | Recommended | Required |
 | Harness event projection trace | Recommended | Required when wrapping an existing harness |
 | Capability provenance trace | Recommended | Required when task constraints use capabilities |

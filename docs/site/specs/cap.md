@@ -21,7 +21,7 @@ the agent harness or host platform.
 | Hide transport | Keep stdio, SSE, HTTP, local function names, and credentials below HLP. |
 | Explain inputs | Expose enough manifest/schema data for task constraints and review. |
 | Preserve provenance | Let artifacts and audit events reference which capability was used. |
-| Report failures | Return structured errors through the agent or host runtime. |
+| Report failures | Return structured errors through the agent harness or host platform. |
 
 The HLP task schema uses `CapabilityRef` for this boundary:
 

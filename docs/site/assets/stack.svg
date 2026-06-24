@@ -1,6 +1,6 @@
 <svg width="960" height="510" viewBox="0 0 960 510" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="st-title st-desc">
   <title id="st-title">Human Loop Protocol Integration Stack</title>
-  <desc id="st-desc">HLP owns accountable human-agent work. L1 and L0 are integration routes to existing agent and capability protocols. Explicit contracts join the routes.</desc>
+  <desc id="st-desc">HLP wraps existing agent harnesses with accountable human interaction. L1 and L0 remain integration routes to existing harness and capability protocols.</desc>
   <defs>
     <clipPath id="stack-clip">
       <rect x="60" y="82" width="840" height="310" rx="14"/>
@@ -55,18 +55,18 @@
   <text class="st-code" x="84" y="106" dominant-baseline="central">L2</text>
   <text class="st-name" x="110" y="106" dominant-baseline="central">HLP · Human Loop Protocol</text>
   <text class="st-tag-d" x="884" y="106" text-anchor="end" dominant-baseline="central">◆ Defined by Loops</text>
-  <text class="st-role" x="110" y="128" dominant-baseline="central">Owns accountable work delegated to autonomous agents</text>
+  <text class="st-role" x="110" y="128" dominant-baseline="central">Owns human interaction semantics around harness work</text>
   <text class="st-objs" x="110" y="150" dominant-baseline="central">Task · Checkpoint · Ownership · Review · Artifact · Ledger · Audit</text>
 
   <!-- contract seam 1 -->
   <text class="st-ccap" x="480" y="178" text-anchor="middle" dominant-baseline="central">INTEGRATION CONTRACTS</text>
-  <text class="st-ctext" x="480" y="194" text-anchor="middle" dominant-baseline="central">TaskID correlation  ·  Checkpoint ↔ Block  ·  Ownership ↔ Handoff</text>
+  <text class="st-ctext" x="480" y="194" text-anchor="middle" dominant-baseline="central">TaskID correlation  ·  Checkpoint ↔ Block  ·  Harness events ↔ HLP objects</text>
 
   <!-- L1 -->
   <text class="st-code" x="84" y="228" dominant-baseline="central">L1</text>
-  <text class="st-name" x="110" y="228" dominant-baseline="central">L1 · Agent Protocol Routes</text>
-  <text class="st-tag-p" x="884" y="228" text-anchor="end" dominant-baseline="central">◇ A2A · ACP · AGNTCY · custom</text>
-  <text class="st-objs" x="110" y="258" dominant-baseline="central">discover · delegate · block · resume · handoff</text>
+  <text class="st-name" x="110" y="228" dominant-baseline="central">L1 · Agent Harness Routes</text>
+  <text class="st-tag-p" x="884" y="228" text-anchor="end" dominant-baseline="central">◇ A2A · ACP · AGNTCY · harnesses</text>
+  <text class="st-objs" x="110" y="258" dominant-baseline="central">delegate · block · resume · handoff · observe</text>
 
   <!-- contract seam 2 -->
   <text class="st-ccap" x="480" y="292" text-anchor="middle" dominant-baseline="central">INTEGRATION CONTRACT</text>
