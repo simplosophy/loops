@@ -1383,6 +1383,11 @@ def _extract_hlp_json_payload(value: Any) -> dict[str, Any] | None:
             nested = _extract_hlp_json_payload(value.get(key))
             if nested is not None:
                 return nested
+        item = value.get("item")
+        if isinstance(item, dict):
+            nested = _extract_hlp_json_payload(item)
+            if nested is not None:
+                return nested
         if _looks_like_hlp_payload(value):
             return value
         return None
@@ -1414,6 +1419,9 @@ def _extract_last_json_object(text: str) -> dict[str, Any] | None:
         if isinstance(value, dict):
             nested = _extract_hlp_json_payload(value)
             candidates.append(nested or value)
+    for candidate in reversed(candidates):
+        if _looks_like_hlp_payload(candidate):
+            return candidate
     return candidates[-1] if candidates else None
 
 
@@ -1564,6 +1572,23 @@ def _codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
         payload = event.get(key)
         if isinstance(payload, dict):
             return payload
+    nested = _extract_hlp_json_payload(event)
+    if nested is not None and nested is not event:
+        for key in ("hlp", "human_loop", "humanLoop"):
+            payload = nested.get(key)
+            if isinstance(payload, dict):
+                merged = dict(payload)
+                for metadata_key in (
+                    "task_id",
+                    "correlation_id",
+                    "hlp_task_id",
+                    "run_id",
+                    "agent_id",
+                ):
+                    if metadata_key in nested and metadata_key not in merged:
+                        merged[metadata_key] = nested[metadata_key]
+                return merged
+        return nested
     event_type = str(event.get("type") or "")
     if event_type.startswith("hlp.") or event_type in {
         "needs_approval",

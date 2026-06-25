@@ -489,6 +489,71 @@ def test_codex_harness_adapter_projects_jsonl_events_into_hlp():
     ]
 
 
+def test_codex_harness_adapter_projects_real_agent_message_jsonl_shape():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join((
+                json.dumps({
+                    "type": "thread.started",
+                    "thread_id": "019efd48-85a1-7501-bc61-da75d1e60a79",
+                }),
+                json.dumps({"type": "turn.started"}),
+                json.dumps({
+                    "type": "item.completed",
+                    "item": {
+                        "id": "item_0",
+                        "type": "agent_message",
+                        "text": json.dumps({
+                            "run_id": "real_codex_run_1",
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                            "summary": "actual codex json probe",
+                            "hlp": {
+                                "kind": "needs_approval",
+                                "agent_id": "agent_codex",
+                                "prompt": "Approve actual Codex harness projection?",
+                            },
+                        }),
+                    },
+                }),
+                json.dumps({
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 16814,
+                        "cached_input_tokens": 2432,
+                        "output_tokens": 120,
+                        "reasoning_output_tokens": 57,
+                    },
+                }),
+            )),
+            stderr="",
+        )
+
+    adapter = CodexHarnessAdapter(
+        command=("codex", "exec", "--json"),
+        runner=runner,
+    )
+
+    run_id = run(adapter.delegate(
+        task_id="task_real_probe",
+        agent_id="agent_codex",
+        capability="real-codex-harness",
+        input={"goal": "probe"},
+    ))
+    events = run(adapter.observe(run_id))
+
+    assert run_id == "real_codex_run_1"
+    assert adapter.process_results[run_id]["summary"] == "actual codex json probe"
+    assert [(event.kind, event.prompt, event.task_id) for event in events] == [
+        (
+            "needs_approval",
+            "Approve actual Codex harness projection?",
+            "task_real_probe",
+        ),
+    ]
+
+
 def test_codex_harness_adapter_rejects_mismatched_event_correlation():
     async def runner(command, request, timeout):
         return ProcessResult(
