@@ -36,7 +36,7 @@ loops/hlp/
   sdk.py               # HLPClient：稳定 SDK facade
   adapters.py          # AgentAdapter + HarnessAdapter + fake/process/framework adapter entry points
   events.py            # HLPEvent + InMemoryEventBus
-  operations.py        # 21 个操作 (spec §4)
+  operations.py        # 23 个操作 (spec §4)
   audit.py             # AuditEvent + AuditLog (append-only)
 ```
 
@@ -56,12 +56,20 @@ loops/hlp/
 
 ```text
 created → assigned → in_progress → blocked → (resolve) → in_progress
-                              ↘ review_ready → under_review → accepted → completed
-                                              ↘ (changes) → in_progress
-                                              ↘ rejected (终态)
+                │              │ │
+                │              │ │ task.interrupt (人发起)
+                │              │ └──────▶ blocked
+                │              ▼
+                │         review_ready → under_review → accepted → completed
+                │                          │   │
+                │                          │   └─ (changes / plan approved) → in_progress
+                │                          └─ rejected (终态)
 ```
 
 合法转移由 `LEGAL_TRANSITIONS` 表显式定义，非法转移抛 `ProtocolError("PRECONDITION_FAILED")`。
+新增连续控制转移：`task.interrupt`（人发起，`in_progress→blocked`，系统 raise
+`kind=interrupt` checkpoint）与 `under_review→in_progress`（plan approved）。
+`task.amend` 不改 state，只向 append-only `steering_log` 追加方向修正。
 
 ## SDK 入口
 
@@ -81,7 +89,8 @@ run = await client.delegate(task.id, "agent_reviewer", capability="code-review")
 
 HLP 与外部 agent harness 的缝合点分成两个方向：
 
-- `AgentAdapter`：HLP→harness，下发 delegate / block / resume / handoff / cancel。
+- `AgentAdapter`：HLP→harness，下发 delegate / block / resume / steer / handoff / cancel。
+  `steer` 是 0.2.0 新增动作，对应 `task.amend`，把方向修正注入运行中的 agent run 而不重启。
 - `HarnessAdapter`：harness→HLP，投影 needs_approval / needs_choice / needs_input / artifact 等 human-facing event。
 
 历史上的 `AAPBridge` / `InMemoryAAPBridge` 兼容别名已经移除；HLP 不定义新的
@@ -91,7 +100,9 @@ agent-to-agent 协议或 harness mesh。
 |----------|---------|------|
 | task.assign | delegate | TaskID = Run.correlation_id |
 | checkpoint.raise | block | CheckpointID 传入 |
-| checkpoint.resolve | resume | resolution 透传 |
+| checkpoint.resolve | resume | resolution 透传；若带 state_patch/edited_artifact_ref 则从该状态恢复 |
+| task.interrupt | block | 人发起中断；harness 停当前 turn |
+| task.amend | steer | 方向修正注入运行中的 run，不重启 |
 | ownership.transfer | handoff | correlation_id 保持 |
 | harness event | project into HLP object | human-facing event 不泄漏 harness internals |
 

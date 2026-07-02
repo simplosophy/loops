@@ -7,7 +7,7 @@ outline: [2, 3]
 
 | Field | Value |
 | --- | --- |
-| Version | 0.1.0-draft |
+| Version | 0.2.0-draft |
 | Status | Draft, validated by the current reference implementation |
 | Layer | HLP SDK layer above existing agent harness and capability routes |
 | Document type | Full protocol specification |
@@ -66,18 +66,36 @@ support all seven.
 | Ledger | Append-only project or organization state | Scope-scoped, append-only |
 | Audit | Immutable operation log | Append-only forever |
 
+The following structures are **value objects** of Task (not first-class objects)
+that carry continuous-control semantics:
+
+| Value object | Host | Purpose |
+| --- | --- | --- |
+| `SteeringAmendment` | `Task.steering_log` | Append-only direction correction, never alters `spec` |
+| `PermissionGrant` | `Task.spec.constraints.grants` | Append-only pre-authorized capability boundary |
+| `ProposedAction` | `Checkpoint.proposed_actions` | A single proposed action in a batch approval |
+
 ## Immutability
 
 HLP is forward-only:
 
-- Task `spec` **MUST NOT** change after `task.create`.
+- Task `spec` **MUST NOT** change after `task.create`. To change direction you
+  **MUST** use `task.amend` to append to `steering_log` (never alter `spec`);
+  `task.cancel` + new task is reserved for a full restart.
+- `steering_log` **MUST** be append-only; amendments **MUST NEVER** be deleted
+  or modified.
+- `PermissionGrant` entries **MUST** be append-only; revocation appends a
+  `decision="deny"` entry, and the effective decision per scope is
+  last-write-wins.
 - Artifact versions **MUST NOT** change after `artifact.commit`.
 - Review records **MUST NOT** change after `review.submit`.
 - Ledger entries **MUST NOT** be deleted.
 - Audit events **MUST NEVER** be deleted or modified.
 
-Corrections are represented as new tasks, new artifact versions, new reviews, or
-new ledger entries.
+Corrections are represented as appended amendments, new artifact versions, new
+reviews, or new ledger entries. Continuous control (interrupt, steering,
+pre-authorization, take-over) is admitted through append-only structures and
+does not weaken forward-only semantics.
 
 ## Identifiers
 
@@ -111,6 +129,7 @@ Task:
   deadline: timestamp | null
   checkpoints: [ckpt_]
   artifacts: [art_]
+  steering_log: [SteeringAmendment]
   audit_trail: aud_
 
 TaskSpec:
@@ -118,6 +137,12 @@ TaskSpec:
   acceptance_criteria: [string]
   inputs: [InputRef]
   constraints: Constraints
+
+SteeringAmendment:
+  text: string
+  intent: "redirect" | "clarify" | "constrain" | "abort_hint"
+  by: user_
+  at: timestamp
 
 InputRef:
   kind: "artifact" | "resource"
@@ -128,6 +153,17 @@ InputRef:
 Constraints:
   max_duration: duration
   external_refs: [ExternalRef]
+  autonomy: AutonomyTier
+  grants: [PermissionGrant]
+
+AutonomyTier: "autonomous" | "plan_then_implement" | "confirm_each_action" | "read_only"
+
+PermissionGrant:
+  scope: string
+  decision: "allow" | "deny"
+  until: "session" | "task" | timestamp
+  granted_by: user_
+  granted_at: timestamp
 
 ExternalRef:
   kind: string
@@ -139,7 +175,15 @@ ExternalRef:
 
 Rules:
 
-- `spec` **MUST** be immutable after creation.
+- `spec` **MUST** be immutable after creation. Direction changes **MUST** go
+  through `task.amend` appending to `steering_log`; `spec.goal` **MUST NOT** be
+  rewritten.
+- `steering_log` **MUST** be append-only. `task.amend` is callable in
+  `in_progress` or `blocked` and **MUST NOT** be called in a terminal state.
+- `autonomy` sets a baseline autonomy tier; `grants` refine it (allow-always /
+  deny). The effective decision per scope is last-write-wins. A harness **MUST**
+  consult `grants` before executing a proposed action: an allowed scope **MAY**
+  skip a checkpoint; a denied scope **MUST NOT** execute.
 - `external_refs` **MAY** record opaque external evidence for human decisions
   and audit, but HLP **MUST NOT** interpret or invoke referenced systems.
 - `ownership.principal` **MUST** be set at creation and **MUST NEVER** change.
@@ -153,7 +197,8 @@ Only the listed transitions are valid.
 created
   -> assigned
   -> in_progress
-       -> blocked -> in_progress
+       -> blocked -> in_progress          (checkpoint.resolve)
+       -> blocked                         (task.interrupt, human-initiated)
        -> review_ready -> under_review -> in_progress
                                       -> accepted -> completed
                                       -> rejected
@@ -165,16 +210,24 @@ created | assigned | in_progress | blocked -> completed by task.cancel
 | --- | --- | --- |
 | `created` | `assigned` | `task.assign` |
 | `assigned` | `in_progress` | Agent starts work |
-| `in_progress` | `blocked` | `checkpoint.raise` |
-| `blocked` | `in_progress` | `checkpoint.resolve` with approve or provide |
+| `in_progress` | `blocked` | `checkpoint.raise` (agent-initiated) or `task.interrupt` (human-initiated; system raises a `kind=interrupt` checkpoint) |
+| `blocked` | `in_progress` | `checkpoint.resolve` with approve, provide, or amend |
 | `blocked` | `completed` | `checkpoint.resolve` with reject |
 | `in_progress` | `review_ready` | `artifact.commit` |
 | `review_ready` | `under_review` | `review.submit` begins review |
-| `under_review` | `in_progress` | `review.submit` with changes requested |
-| `under_review` | `accepted` | `review.submit` with approved |
-| `under_review` | `rejected` | `review.submit` with rejected |
+| `under_review` | `in_progress` | `review.submit` with changes requested, or `review.submit` with `kind=plan` approved |
+| `under_review` | `accepted` | `review.submit` with `kind=deliverable` approved |
+| `under_review` | `rejected` | `review.submit` with `kind=deliverable` rejected |
 | `accepted` | `completed` | Automatic completion |
 | `created`, `assigned`, `in_progress`, `blocked` | `completed` | `task.cancel` |
+
+Non-state-changing operations (do not transition `state` but **MUST** emit an
+audit event):
+
+| Operation | Allowed states | Semantics |
+| --- | --- | --- |
+| `task.amend` | `in_progress`, `blocked` | Append to `steering_log`; never alter state |
+| `ownership.transfer` | non-terminal | Take-over: assignee may temporarily transfer to a human, then back to an agent |
 
 State ownership:
 
@@ -182,8 +235,8 @@ State ownership:
 | --- | --- | --- |
 | `created` | principal | Created but not assigned |
 | `assigned` | agent | Delegated but not started |
-| `in_progress` | agent | Agent is executing |
-| `blocked` | principal | Human decision required |
+| `in_progress` | agent (MAY be human during take-over) | Agent is executing |
+| `blocked` | principal | Human decision required (includes human-initiated interrupt) |
 | `review_ready` | principal | Artifact delivered for review |
 | `under_review` | principal | Review in progress |
 | `accepted` | principal | Accepted, ready to complete |
@@ -197,12 +250,14 @@ Checkpoint is the upward control surface from agent to human.
 Checkpoint:
   id: ckpt_
   task_id: task_
-  kind: "approval" | "choice" | "input" | "escalation"
+  kind: "approval" | "choice" | "input" | "escalation" | "interrupt"
   prompt: string
   options: [CheckpointOption]
+  proposed_actions: [ProposedAction]
   context: [Evidence]
   state: "pending" | "resolved" | "expired"
   raised_at: timestamp
+  raised_by: "agent" | "human" | "system"
   expires_at: timestamp | null
   resolution: CheckpointResolution | null
 
@@ -211,12 +266,23 @@ CheckpointOption:
   label: string
   risk: "low" | "medium" | "high"
 
+ProposedAction:
+  id: string
+  kind: string
+  summary: string
+  detail: object | null
+  risk: "low" | "medium" | "high"
+
 CheckpointResolution:
   by: user_
   action: "approve" | "reject" | "choose" | "provide" | "reassign"
   choice: string
   input: string
   reassign_to: agent_
+  approved_actions: [string]
+  denied_actions: [string]
+  state_patch: object | null
+  edited_artifact_ref: { id: art_, version: string } | null
   comment: string
   at: timestamp
 ```
@@ -226,8 +292,20 @@ Rules:
 - `resolution.by` **MUST** be a principal or authorized reviewer.
 - `checkpoint.raise` **MUST** move the task to `blocked`.
 - `checkpoint.resolve` **MUST** resolve the checkpoint before resuming work.
+- A `kind=interrupt` checkpoint **MUST** be triggered by `task.interrupt`
+  (`raised_by="human"`) and **MUST NOT** be raised directly by an agent.
 - Expiration policy is implementation-defined in this draft, but expiration
-  **MUST** emit an audit event.
+  **MUST** emit an audit event. A `kind=interrupt` checkpoint **SHOULD** remain
+  purely suspended on expiration, since a human-initiated interrupt means
+  "await human" and has no sensible auto-reject.
+- A single pending checkpoint per task is **SHOULD**; to ask about multiple
+  things at once, use a single checkpoint's `proposed_actions` rather than
+  raising concurrent checkpoints.
+- `approved_actions` / `denied_actions` **MUST** reference the checkpoint's own
+  `proposed_actions` ids; unlisted actions default to denied (**SHOULD**).
+- `state_patch` / `edited_artifact_ref` carry human-modified intermediate
+  state; the harness **MUST** resume from that state rather than the original
+  interruption point.
 
 ## Ownership
 
@@ -264,6 +342,7 @@ Review:
   task_id: task_
   artifact_id: art_
   reviewer: user_
+  kind: "plan" | "deliverable"
   verdict: "approved" | "changes_requested" | "rejected"
   comments: [ReviewComment]
   requested_changes: [string]
@@ -279,6 +358,11 @@ Rules:
 
 - Reviews **MUST** be immutable after submission.
 - `reviewer` **MUST** be human.
+- A `kind="plan"` review targets an intermediate artifact (e.g. a plan):
+  `approved` returns the task to `in_progress` to continue; `changes_requested`
+  likewise returns to `in_progress` for rework.
+- A `kind="deliverable"` review targets a final deliverable: `approved` moves
+  to `accepted`; `rejected` moves to the `rejected` terminal state.
 - `requested_changes` **MUST** be present when verdict is
   `changes_requested`.
 
@@ -370,7 +454,7 @@ Rules:
 ## Operations
 
 HLP operation names follow `<object>.<verb>`. A conforming implementation
-**MUST** support all 21 operations.
+**MUST** support all 23 operations.
 
 | Object | Operation | Caller | Semantics |
 | --- | --- | --- | --- |
@@ -378,6 +462,8 @@ HLP operation names follow `<object>.<verb>`. A conforming implementation
 | Task | `task.assign` | principal | Assign to agent and transfer ownership |
 | Task | `task.start` | agent or adapter | Mark the correlated harness run as started |
 | Task | `task.cancel` | principal | End an active task |
+| Task | `task.interrupt` | principal | Human-initiated pause (`in_progress` to `blocked`; system raises a `kind=interrupt` checkpoint) |
+| Task | `task.amend` | principal | Append a direction correction to `steering_log` (does not change state or `spec`) |
 | Task | `task.get` | any authorized actor | Fetch one task |
 | Task | `task.list` | any authorized actor | Query tasks |
 | Checkpoint | `checkpoint.raise` | agent | Declare a human decision point |
@@ -405,11 +491,13 @@ Violations **MUST** return `PRECONDITION_FAILED`.
 | `task.assign` | Task state is `created` |
 | `task.start` | Task state is `assigned` |
 | `task.cancel` | Task state is `created`, `assigned`, `in_progress`, or `blocked` |
+| `task.interrupt` | Task state is `in_progress`; caller is the principal |
+| `task.amend` | Task state is `in_progress` or `blocked`; caller is the principal |
 | `checkpoint.raise` | Task state is `in_progress` |
 | `checkpoint.resolve` | Checkpoint is pending and caller is authorized |
 | `ownership.delegate` | `ownership.delegable == true` |
 | `artifact.commit` | Task state is `in_progress` or review rework state |
-| `review.submit` | Task state is `review_ready` or `under_review` |
+| `review.submit` | Task state is `review_ready` or `under_review`; a `kind=deliverable` approved transitions to `accepted` only when state is `under_review` |
 
 ## Audit Actions
 
@@ -421,6 +509,8 @@ State-changing operations **MUST** map to audit actions.
 | `task.assign` | `task.assigned` |
 | `task.start` | `task.started` |
 | `task.cancel` | `task.cancelled` |
+| `task.interrupt` | `task.interrupted` + `task.checkpoint.raised` (system raises on behalf of the human) |
+| `task.amend` | `task.amended` |
 | `checkpoint.raise` | `task.checkpoint.raised` |
 | `checkpoint.resolve` | `task.checkpoint.resolved` |
 | `checkpoint.expire` | `task.checkpoint.expired` |
@@ -439,7 +529,9 @@ HLP communicates downward through explicit adapter contracts:
 | `task.assign` | `delegate` | TaskID **MUST** become `Run.correlation_id` |
 | `task.start` | `observe run.started` | The correlated run start **MUST** move the HLP task into progress |
 | `checkpoint.raise` | `agent.block` | The corresponding run **MUST** enter `blocked` |
-| `checkpoint.resolve` | `agent.resume` | Resolution **MUST** be passed to the run |
+| `checkpoint.resolve` | `agent.resume` | Resolution **MUST** be passed to the run; if it carries `state_patch` / `edited_artifact_ref`, the harness **MUST** resume from that state |
+| `task.interrupt` | `agent.block` | Human-initiated interrupt; the harness **MUST** stop the current turn and enter `blocked` |
+| `task.amend` | `agent.steer` | The direction correction **MUST** be injected into the running agent's context; the run **MUST NOT** be restarted |
 | `ownership.delegate` | `delegate` | Parent run **SHOULD** remain traceable |
 | `ownership.transfer` | `handoff` | Correlation **MUST** be preserved |
 
@@ -475,16 +567,20 @@ the caller's perspective.
 
 ## Conformance
 
-An implementation claiming HLP 0.1.0-draft compatibility **MUST**:
+An implementation claiming HLP 0.2.0-draft compatibility **MUST**:
 
 1. Support all seven first-class objects.
-2. Implement all 21 operations.
+2. Implement all 23 operations.
 3. Enforce the Task state machine.
-4. Enforce the immutability rules.
+4. Enforce the immutability rules (including append-only `steering_log` and
+   `PermissionGrant`).
 5. Emit audit events for every state-changing protocol operation.
 6. Validate operation preconditions.
 7. Satisfy the integration contracts when routed into existing agent harness or
    capability systems.
+8. Support the full semantics of `task.interrupt` (human-initiated pause) and
+   `task.amend` (steering without restart), including the `steer` adapter
+   action and `state_patch` / `edited_artifact_ref` resume semantics.
 
 ## Open Issues
 
@@ -493,9 +589,9 @@ The following topics remain intentionally draft-scoped:
 | Issue | Draft stance |
 | --- | --- |
 | Transport binding | Not specified; implementations may choose HTTP, gRPC, WebSocket, stdio, or host APIs. |
-| Checkpoint expiration default | Implementation-defined; pure suspension plus configuration is recommended. |
+| Checkpoint expiration default | Implementation-defined; pure suspension plus configuration is recommended. A `kind=interrupt` checkpoint **SHOULD** remain purely suspended, since a human-initiated interrupt means "await human". |
 | Delegation depth | Allowed through `delegable`, but limits are host policy. |
-| Ledger conflict handling | Last-write-wins plus audit is acceptable in this draft. |
+| Ledger conflict handling | Last-write-wins plus audit is acceptable in this draft. A single pending checkpoint per task is **SHOULD**; use a checkpoint's `proposed_actions` to ask about multiple things at once. |
 | Multi-reviewer verdicts | Not standardized; single reviewer is the baseline. |
 | Cross-project artifact references | Require explicit authorization; mechanism is host-defined. |
 | Version compatibility | Expected to follow semantic versioning after implementation feedback. |
@@ -506,16 +602,29 @@ The following topics remain intentionally draft-scoped:
 Human Alice                 HLP                         Agent Devin
   | task.create              |                             |
   | task.assign              | -> harness delegate(TaskID) |
+  | task.amend               | -> harness steer            | (steering_log += "focus on auth"; no state change)
+  | task.interrupt           | -> harness block            | (-> blocked; system raises kind=interrupt checkpoint)
+  | checkpoint.resolve       | -> harness resume           | (approve + state_patch -> in_progress; resume from patch)
   |                           | <- needs_approval           |
   | <- checkpoint notice      | -> harness block            |
   | checkpoint.resolve        | -> harness resume           |
-  |                           | <- artifact(v1)             |
+  |                           | <- artifact(plan v1)        |
+  | review.submit(plan, approved) | -> in_progress         | (plan approved, continue implementation)
+  |                           | <- artifact(deliverable v2) |
   | review.submit(changes)    | -> in_progress              |
-  |                           | <- artifact.commit(v2)      |
+  |                           | <- artifact.commit(v3)      |
   | review.submit(approved)   | -> accepted -> completed    |
   |                           | -> ledger.write             |
   | audit.replay              | reconstructs the flow       |
 ```
 
-This flow exercises task assignment, checkpoint gating, artifact delivery,
-human review, rework, completion, ledger persistence, and audit replay.
+This flow exercises task assignment, continuous control (amend steering,
+interrupt, state_patch resume), checkpoint gating, plan vs deliverable review,
+artifact delivery, rework, completion, ledger persistence, and audit replay.
+
+## Changelog
+
+| Version | Date | Change |
+| --- | --- | --- |
+| 0.1.0-draft | 2026-06-19 | Initial draft. |
+| 0.2.0-draft | 2026-07-02 | Continuous-control extension: added `task.interrupt` / `task.amend` + `steering_log`; `PermissionGrant` / `autonomy` pre-authorization; `Checkpoint.proposed_actions` batch approval with partial approve/deny; `CheckpointResolution.state_patch` / `edited_artifact_ref` resume-with-state; `Review.kind` distinguishing plan vs deliverable review; state machine gains the interrupt edge and the plan-approved return to `in_progress`. See `docs/plans/2026-07-02-hlp-continuous-control-extension.md`. |

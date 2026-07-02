@@ -16,7 +16,7 @@
 │ Audit · HumanInbox · HLPClient · HLPHost                       │
 ├──────────────────────────────────────────────────────────────┤
 │ Adapter contracts                                             │
-│ AgentAdapter: delegate/block/resume/handoff/cancel             │
+│ AgentAdapter: delegate/block/resume/steer/handoff/cancel       │
 │ HarnessAdapter: observe human-facing harness events            │
 ├──────────────────────────────────────────────────────────────┤
 │ Existing agent harnesses                                      │

@@ -129,7 +129,7 @@ as new entries or new versions, not as destructive edits.
 
 This project defines:
 
-- A complete HLP 0.1.0-draft protocol for accountable human-loop work.
+- A complete HLP 0.2.0-draft protocol for accountable human-loop work.
 - A Python SDK with protocol objects, `HLPClient`, `HLPHost`, stores, event bus,
   and adapters.
 - Integration contracts for routing HLP task identity, checkpoints, ownership,
@@ -171,7 +171,7 @@ implementable across harnesses.
 
 ## Specification Status
 
-All protocol documents are currently **0.1.0-draft**. Draft status means the
+All protocol documents are currently **0.2.0-draft**. Draft status means the
 semantic model is concrete enough to implement, but transport bindings and some
 open policy choices remain intentionally outside the core specification.
 

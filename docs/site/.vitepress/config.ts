@@ -150,7 +150,7 @@ export default defineConfig({
 
     footer: {
       message: 'Human Loop Protocol · HLP wraps existing harnesses with accountable human interaction',
-      copyright: 'Draft protocol documentation. Version 0.1.0-draft.',
+      copyright: 'Draft protocol documentation. Version 0.2.0-draft.',
     },
 
     outline: {

@@ -18,20 +18,24 @@ Do not claim HLP integration if the lower harness loses HLP task correlation,
 lets agents bypass human checkpoints, or cannot project human-facing harness
 events into HLP objects.
 
-## HLP 0.1.0-draft Requirements
+## HLP 0.2.0-draft Requirements
 
 An implementation claiming HLP compatibility **MUST**:
 
 1. Support all seven first-class objects: Task, Checkpoint, Ownership, Review,
    Artifact, Ledger, and Audit.
-2. Implement all 21 HLP operations.
+2. Implement all 23 HLP operations.
 3. Enforce the HLP Task state machine.
 4. Enforce immutability for Task specs, Artifact versions, Reviews, Ledger
-   entries, and Audit events.
+   entries, and Audit events, including the append-only `steering_log` and
+   `PermissionGrant` value objects.
 5. Produce audit events for every protocol operation that changes state.
 6. Validate operation preconditions before state changes.
 7. Keep HLP transport-agnostic: HTTP, gRPC, WebSocket, event bus, or in-process
    APIs are implementation choices, not protocol requirements.
+8. Support the full semantics of `task.interrupt` (human-initiated pause) and
+   `task.amend` (steering without restart), including the `steer` adapter
+   action and `state_patch` / `edited_artifact_ref` resume semantics.
 
 An implementation **MAY** choose its own persistence layer, Task types, Artifact
 types, notification channels, identity model, RBAC model, and policies for open
@@ -88,7 +92,7 @@ The following patterns are incompatible with HLP conformance:
 
 ## Draft Policy
 
-The 0.1.0-draft line is intended for early implementation and feedback. Draft
+The 0.2.0-draft line is intended for early implementation and feedback. Draft
 implementations should state which open issues they have chosen to resolve
 locally, especially transport binding, checkpoint expiration, ledger conflict
 handling, and multi-reviewer verdict aggregation.

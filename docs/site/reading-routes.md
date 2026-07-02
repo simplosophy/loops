@@ -41,7 +41,7 @@ Implementation checklist:
 
 - Implement all seven HLP objects: Task, Checkpoint, Ownership, Review,
   Artifact, Ledger, and Audit.
-- Implement the 21 required HLP operations.
+- Implement the 23 required HLP operations.
 - Enforce the Task state machine and operation preconditions.
 - Persist immutable specs, artifact versions, reviews, ledger entries, and audit
   events.

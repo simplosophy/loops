@@ -131,7 +131,7 @@ if (existsSync(distDir)) {
   }
 
   const hlpSpecSource = readText(join(siteDir, 'specs/hlp.md'))
-  assert(countOperationRows(hlpSpecSource) === 21, 'HLP spec must list exactly 21 operations.')
+  assert(countOperationRows(hlpSpecSource) === 23, 'HLP spec must list exactly 23 operations.')
 
   const hlpSpecHtml = readText(join(distDir, 'specs/hlp.html'))
   assert(hlpSpecHtml.includes('task.start'), 'HLP spec is missing task.start.')

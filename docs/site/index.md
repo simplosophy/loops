@@ -19,7 +19,7 @@ hero:
 
 <section class="protocol-brief">
   <div class="brief-copy">
-    <p class="eyebrow">Version 0.1.0-draft</p>
+    <p class="eyebrow">Version 0.2.0-draft</p>
     <h2>The missing protocol surface is not tools or agents. It is accountability.</h2>
     <p>
       HLP defines how a human principal delegates bounded work to autonomous
