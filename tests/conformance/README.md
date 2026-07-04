@@ -20,7 +20,10 @@ Profiles covered here:
   idempotency-key replay, stale revision conflicts before adapter calls, and
   stable replay for generated checkpoints/artifacts. It also covers permission
   scope grammar, wildcard matching, expiry, deny precedence, and tamper-evident
-  audit hash-chain verification.
+  audit hash-chain verification. JSON schema registry and version negotiation
+  checks cover first-class object schemas, ProtocolError, AuditEvent,
+  HarnessEvent delivery, PermissionGrant, ProposedAction, VersionNegotiation,
+  and dataclass wire serialization aliases.
 
 `HLP-compatible` and `HLP-integrated` do not imply `HLP-industrial`. Industrial
 claims additionally need a documented production profile for CAS, idempotency,

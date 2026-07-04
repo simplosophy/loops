@@ -61,6 +61,9 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("Permission scope grammar", has_literal("Permission scope grammar")),
     ("prev_hash", has_literal("prev_hash")),
     ("tamper-evident", has_literal("tamper-evident")),
+    ("HLP_JSON_SCHEMAS", has_literal("HLP_JSON_SCHEMAS")),
+    ("VERSION_UNSUPPORTED", has_literal("VERSION_UNSUPPORTED")),
+    ("VersionNegotiation", has_literal("VersionNegotiation")),
 ]
 
 

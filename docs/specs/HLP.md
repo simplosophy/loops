@@ -639,6 +639,7 @@ ExternalRef:
 | `IMMUTABLE_VIOLATION` | 409 | 试图修改不可变对象（spec/artifact/ledger/review/audit） |
 | `DEADLINE_EXCEEDED` | 408 | Task 超时 |
 | `CHECKPOINT_EXPIRED` | 410 | 操作已过期的 checkpoint |
+| `VERSION_UNSUPPORTED` | 409 | spec/schema/profile 无共同支持版本 |
 
 ### 6.2 错误对象
 
@@ -655,6 +656,7 @@ ProtocolError:
   correlation_id: task_ | string | null
   spec_version: "0.2.0-draft"
   schema_version: "0.2"
+  profile: "HLP-industrial"
 ```
 
 `CONFLICT` / `DEADLINE_EXCEEDED` 默认 **MAY** retry；前置条件、权限、不可变性和
@@ -669,6 +671,41 @@ ProtocolError:
 - 当 harness event 通过可靠投递扩展投影到 HLP 时，实现 **MUST** 在投影成功后才
   ack；投影失败时事件 **MUST** 保留为未确认状态。
 - SDK/read API **SHOULD** 返回 read snapshot，避免调用方绕过状态机和 audit 直接修改内部 aggregate。
+
+### 6.4 JSON Schema 与版本协商
+
+`HLP-industrial` 实现 **SHOULD** 暴露 object/wire JSON Schema registry。参考实现
+提供 `HLP_JSON_SCHEMAS`、`schema_for(name)`、`to_wire(value)` 与
+`validate_wire_object(name, value)`，当前覆盖：
+
+- `Task`
+- `Checkpoint`
+- `Ownership`
+- `Review`
+- `Artifact`
+- `Ledger`
+- `ProtocolError`
+- `AuditEvent`
+- `HarnessEvent`
+- `HarnessEventDelivery`
+- `PermissionGrant`
+- `ProposedAction`
+- `VersionNegotiation`
+
+`to_wire()` **MUST** 把 dataclass 转为 JSON-compatible object：时间戳使用 RFC3339
+字符串，tuple 转 array，Python 内部字段别名如 `from_` / `as_` 转为 `from` / `as`，
+并补齐 `schema_version` 与 `profile`。
+
+每个 transport wire envelope **MUST** 携带：
+
+```yaml
+spec_version: "0.2.0-draft"
+schema_version: "0.2"
+profile: "HLP-industrial"
+```
+
+版本协商 **MUST** fail fast：双方没有共同 `spec_version`、`schema_version` 或
+`profile` 时返回 `VERSION_UNSUPPORTED`，不能降级为语义不明的兼容行为。
 
 ---
 

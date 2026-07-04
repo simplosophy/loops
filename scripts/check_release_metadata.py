@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSION = "0.2.0"
 EXPECTED_SPEC_VERSION = "0.2.0-draft"
 EXPECTED_SCHEMA_VERSION = "0.2"
+EXPECTED_PROFILE = "HLP-industrial"
 EXPECTED_CNAME = "ontheloops.com"
 
 
@@ -71,7 +72,7 @@ def main() -> int:
 
     sys.path.insert(0, str(ROOT))
     try:
-        from loops.hlp import HLP_SCHEMA_VERSION, HLP_SPEC_VERSION
+        from loops.hlp import HLP_PROFILE, HLP_SCHEMA_VERSION, HLP_SPEC_VERSION
     except Exception as exc:  # pragma: no cover - diagnostic path
         fail(errors, f"could not import HLP version constants: {exc}")
     else:
@@ -84,6 +85,11 @@ def main() -> int:
             fail(
                 errors,
                 f"loops.hlp.HLP_SCHEMA_VERSION is {HLP_SCHEMA_VERSION!r}; expected {EXPECTED_SCHEMA_VERSION!r}",
+            )
+        if HLP_PROFILE != EXPECTED_PROFILE:
+            fail(
+                errors,
+                f"loops.hlp.HLP_PROFILE is {HLP_PROFILE!r}; expected {EXPECTED_PROFILE!r}",
             )
 
     cname = read_text("docs/site/public/CNAME").strip()

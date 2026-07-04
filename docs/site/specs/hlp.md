@@ -628,6 +628,7 @@ industrial reliable delivery.
 | `IMMUTABLE_VIOLATION` | Attempt to mutate immutable object |
 | `DEADLINE_EXCEEDED` | Task deadline exceeded |
 | `CHECKPOINT_EXPIRED` | Checkpoint can no longer be resolved |
+| `VERSION_UNSUPPORTED` | No common spec, schema, or profile version |
 
 When an implementation exposes errors over a transport, it **MUST** use a stable
 wire object:
@@ -642,6 +643,7 @@ ProtocolError:
   correlation_id: task_ | string | null
   spec_version: "0.2.0-draft"
   schema_version: "0.2"
+  profile: "HLP-industrial"
 ```
 
 `CONFLICT` and `DEADLINE_EXCEEDED` default to retryable. Preconditions,
@@ -655,6 +657,43 @@ the caller's perspective.
 When harness events use reliable delivery, event acknowledgement **MUST** happen
 only after successful HLP projection. Failed projection **MUST** leave the event
 unacknowledged.
+
+### JSON Schema And Version Negotiation
+
+`HLP-industrial` implementations **SHOULD** expose an object/wire JSON Schema
+registry. The reference implementation provides `HLP_JSON_SCHEMAS`,
+`schema_for(name)`, `to_wire(value)`, and `validate_wire_object(name, value)`
+for:
+
+- `Task`
+- `Checkpoint`
+- `Ownership`
+- `Review`
+- `Artifact`
+- `Ledger`
+- `ProtocolError`
+- `AuditEvent`
+- `HarnessEvent`
+- `HarnessEventDelivery`
+- `PermissionGrant`
+- `ProposedAction`
+- `VersionNegotiation`
+
+`to_wire()` **MUST** convert dataclasses into JSON-compatible objects: timestamps
+use RFC3339 strings, tuples become arrays, Python aliases such as `from_` /
+`as_` become `from` / `as`, and `schema_version` plus `profile` are added.
+
+Every transport wire envelope **MUST** carry:
+
+```yaml
+spec_version: "0.2.0-draft"
+schema_version: "0.2"
+profile: "HLP-industrial"
+```
+
+Version negotiation **MUST** fail fast. If peers share no `spec_version`,
+`schema_version`, or `profile`, implementations **MUST** return
+`VERSION_UNSUPPORTED` rather than silently downgrading to ambiguous semantics.
 
 ## Conformance
 

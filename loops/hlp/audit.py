@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ._ids import gen_audit_id
-from .types import HLP_SCHEMA_VERSION
+from .types import HLP_PROFILE, HLP_SCHEMA_VERSION
 
 
 def _now() -> datetime:
@@ -35,7 +35,7 @@ class AuditEvent:
     after: Any = None
     id: str = field(default_factory=gen_audit_id)
     schema_version: str = HLP_SCHEMA_VERSION
-    profile: str = "HLP-industrial"
+    profile: str = HLP_PROFILE
     prev_hash: str = ""
     hash: str = ""
 

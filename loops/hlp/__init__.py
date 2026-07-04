@@ -64,6 +64,14 @@ from .permissions import (
     normalize_permission_scope,
     permission_scope_matches,
 )
+from .schema import (
+    HLP_JSON_SCHEMAS,
+    VersionNegotiationResult,
+    negotiate_hlp_version,
+    schema_for,
+    to_wire,
+    validate_wire_object,
+)
 from .sdk import HLPClient
 from .sqlite_store import SQLiteHumanLoopStore
 from .state_machine import (
@@ -80,6 +88,7 @@ from .types import (
     ErrorCode,
     HarnessConformance,
     HarnessEventKind,
+    HLP_PROFILE,
     HLP_SCHEMA_VERSION,
     HLP_SPEC_VERSION,
     HumanInboxAction,
@@ -126,6 +135,8 @@ __all__ = [
     "HarnessEvent",
     "HarnessEventDelivery",
     "HarnessEventKind",
+    "HLP_JSON_SCHEMAS",
+    "HLP_PROFILE",
     "HLP_SCHEMA_VERSION",
     "HLP_SPEC_VERSION",
     "HermesCLIAdapter",
@@ -179,6 +190,11 @@ __all__ = [
     "ReviewVerdict",
     "ReviewCommentSeverity",
     "SteeringIntent",
+    "VersionNegotiationResult",
+    "negotiate_hlp_version",
+    "schema_for",
+    "to_wire",
+    "validate_wire_object",
     "LEGAL_TRANSITIONS",
     "TERMINAL_STATES",
     "check_transition",

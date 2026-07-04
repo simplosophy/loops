@@ -37,6 +37,8 @@ from loops.hlp import (
     HarnessEvent,
     HarnessEventDelivery,
     HarnessEventKind,
+    HLP_JSON_SCHEMAS,
+    HLP_PROFILE,
     HLP_SCHEMA_VERSION,
     HLP_SPEC_VERSION,
     HLPClient,
@@ -78,6 +80,11 @@ from loops.hlp import (
     SteeringAmendment,
     Task,
     TaskSpec,
+    VersionNegotiationResult,
+    negotiate_hlp_version,
+    schema_for,
+    to_wire,
+    validate_wire_object,
 )
 
 __all__ = [
@@ -110,6 +117,8 @@ __all__ = [
     "HarnessEvent",
     "HarnessEventDelivery",
     "HarnessEventKind",
+    "HLP_JSON_SCHEMAS",
+    "HLP_PROFILE",
     "HLP_SCHEMA_VERSION",
     "HLP_SPEC_VERSION",
     "HLPClient",
@@ -151,4 +160,9 @@ __all__ = [
     "SteeringAmendment",
     "Task",
     "TaskSpec",
+    "VersionNegotiationResult",
+    "negotiate_hlp_version",
+    "schema_for",
+    "to_wire",
+    "validate_wire_object",
 ]

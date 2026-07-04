@@ -5,6 +5,7 @@ from typing import Literal
 
 HLP_SPEC_VERSION = "0.2.0-draft"
 HLP_SCHEMA_VERSION = "0.2"
+HLP_PROFILE = "HLP-industrial"
 
 
 # ── 错误码 (HLP spec §6.1) ──
@@ -17,6 +18,7 @@ ErrorCode = Literal[
     "IMMUTABLE_VIOLATION",
     "DEADLINE_EXCEEDED",
     "CHECKPOINT_EXPIRED",
+    "VERSION_UNSUPPORTED",
 ]
 
 _RETRYABLE_ERROR_CODES = frozenset({"CONFLICT", "DEADLINE_EXCEEDED"})
@@ -55,6 +57,7 @@ class ProtocolError(Exception):
             "correlation_id": correlation_id,
             "spec_version": HLP_SPEC_VERSION,
             "schema_version": HLP_SCHEMA_VERSION,
+            "profile": HLP_PROFILE,
         }
 
 

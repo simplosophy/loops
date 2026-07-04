@@ -24,6 +24,7 @@ import pytest
 from loops.hlp import (
     AgentAdapterError,
     FakeAgentAdapter,
+    HLP_PROFILE,
     HLP_SCHEMA_VERSION,
     HLP_SPEC_VERSION,
     HumanLoopOperations,
@@ -82,6 +83,7 @@ def test_human_loop_public_api_names_are_primary():
 
     assert hlp.HLP_SPEC_VERSION == "0.2.0-draft"
     assert hlp.HLP_SCHEMA_VERSION == "0.2"
+    assert hlp.HLP_PROFILE == "HLP-industrial"
     assert hlp.HumanLoopOperations is hlp.operations.HumanLoopOperations
     assert hlp.HumanLoopStore is hlp.store.HumanLoopStore
     assert hlp.ExternalRef is ExternalRef
@@ -93,12 +95,18 @@ def test_human_loop_public_api_names_are_primary():
     assert "ProposedAction" in hlp.__all__
     assert "HLP_SPEC_VERSION" in hlp.__all__
     assert "HLP_SCHEMA_VERSION" in hlp.__all__
+    assert "HLP_PROFILE" in hlp.__all__
     assert "HarnessEventDelivery" in hlp.__all__
     assert "ReliableHarnessEventAdapter" in hlp.__all__
     assert "IdempotencyRecord" in hlp.__all__
     assert "normalize_permission_scope" in hlp.__all__
     assert "permission_scope_matches" in hlp.__all__
     assert "is_permission_scope_pre_authorized" in hlp.__all__
+    assert "HLP_JSON_SCHEMAS" in hlp.__all__
+    assert "schema_for" in hlp.__all__
+    assert "to_wire" in hlp.__all__
+    assert "validate_wire_object" in hlp.__all__
+    assert "negotiate_hlp_version" in hlp.__all__
     assert "AAPBridge" not in hlp.__all__
     assert "InMemoryAAPBridge" not in hlp.__all__
     assert "H" + "ACPOperations" not in hlp.__all__
@@ -148,6 +156,7 @@ def test_protocol_error_serializes_stable_wire_shape():
         "correlation_id": "task_123",
         "spec_version": HLP_SPEC_VERSION,
         "schema_version": HLP_SCHEMA_VERSION,
+        "profile": HLP_PROFILE,
     }
 
 

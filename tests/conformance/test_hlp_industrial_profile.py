@@ -8,13 +8,23 @@ import pytest
 
 from loops.hlp import (
     ArtifactPayload,
+    HLP_JSON_SCHEMAS,
+    HLP_PROFILE,
+    HLP_SCHEMA_VERSION,
+    HLP_SPEC_VERSION,
     FakeAgentAdapter,
     HumanLoopOperations,
     PermissionGrant,
     ProtocolError,
     ProposedAction,
+    ArtifactRef,
+    OwnershipTransfer,
     is_permission_scope_pre_authorized,
+    negotiate_hlp_version,
     permission_scope_matches,
+    schema_for,
+    to_wire,
+    validate_wire_object,
 )
 
 
@@ -281,3 +291,110 @@ def test_audit_log_is_tamper_evident_hash_chain():
     ops.store.audit_log._events[1] = replace(events[1], action="tampered")
 
     assert not ops.store.audit_log.verify_hash_chain()
+
+
+def test_json_schema_registry_covers_industrial_wire_objects():
+    assert set(HLP_JSON_SCHEMAS) >= {
+        "Task",
+        "Checkpoint",
+        "Ownership",
+        "Review",
+        "Artifact",
+        "Ledger",
+        "ProtocolError",
+        "AuditEvent",
+        "HarnessEvent",
+        "HarnessEventDelivery",
+        "PermissionGrant",
+        "ProposedAction",
+        "VersionNegotiation",
+    }
+
+    protocol_error = ProtocolError("CONFLICT", "revision conflict").to_dict(
+        operation_id="op_1",
+        correlation_id="task_1",
+    )
+    validate_wire_object("ProtocolError", protocol_error)
+    assert protocol_error["profile"] == HLP_PROFILE
+
+    grant = PermissionGrant(scope="fs:/repo:*", decision="allow", granted_by="user_alice")
+    validate_wire_object("PermissionGrant", {
+        "scope": grant.scope,
+        "decision": grant.decision,
+        "until": grant.until,
+        "granted_by": grant.granted_by,
+        "granted_at": grant.granted_at.isoformat(),
+        "schema_version": HLP_SCHEMA_VERSION,
+        "profile": HLP_PROFILE,
+    })
+
+    schema = schema_for("ProtocolError")
+    assert schema["properties"]["spec_version"]["const"] == HLP_SPEC_VERSION
+    assert schema["properties"]["schema_version"]["const"] == HLP_SCHEMA_VERSION
+
+
+def test_schema_for_returns_copy_and_unknown_schema_is_not_found():
+    schema = schema_for("ProtocolError")
+    schema["properties"]["schema_version"]["const"] = "mutated"
+
+    assert schema_for("ProtocolError")["properties"]["schema_version"]["const"] == HLP_SCHEMA_VERSION
+
+    with pytest.raises(ProtocolError) as exc:
+        schema_for("MissingSchema")
+    assert exc.value.code == "NOT_FOUND"
+
+
+def test_validate_wire_object_rejects_missing_wrong_type_and_bad_const():
+    with pytest.raises(ProtocolError) as missing:
+        validate_wire_object("ProtocolError", {"code": "CONFLICT"})
+    assert missing.value.code == "INVALID_SPEC"
+
+    invalid_type = ProtocolError("CONFLICT").to_dict()
+    invalid_type["retryable"] = "yes"
+    with pytest.raises(ProtocolError) as wrong_type:
+        validate_wire_object("ProtocolError", invalid_type)
+    assert wrong_type.value.code == "INVALID_SPEC"
+
+    invalid_const = ProtocolError("CONFLICT").to_dict()
+    invalid_const["schema_version"] = "9.0"
+    with pytest.raises(ProtocolError) as bad_const:
+        validate_wire_object("ProtocolError", invalid_const)
+    assert bad_const.value.code == "VERSION_UNSUPPORTED"
+
+
+def test_wire_serialization_preserves_aliases_and_rfc3339_timestamps():
+    transfer = OwnershipTransfer(from_="agent_old", to="agent_new", via="handoff")
+    artifact_ref = ArtifactRef(task_id="task_1", as_="input")
+
+    transfer_wire = to_wire(transfer)
+    ref_wire = to_wire(artifact_ref)
+
+    assert "from" in transfer_wire
+    assert "from_" not in transfer_wire
+    assert transfer_wire["at"].endswith("+00:00")
+    assert "as" in ref_wire
+    assert "as_" not in ref_wire
+    assert ref_wire["schema_version"] == HLP_SCHEMA_VERSION
+    assert ref_wire["profile"] == HLP_PROFILE
+
+
+def test_version_negotiation_selects_shared_profile_and_fails_fast():
+    negotiated = negotiate_hlp_version(
+        spec_versions=(HLP_SPEC_VERSION, "0.1.0-draft"),
+        schema_versions=(HLP_SCHEMA_VERSION,),
+        profiles=("HLP-integrated", HLP_PROFILE),
+    )
+
+    assert negotiated.spec_version == HLP_SPEC_VERSION
+    assert negotiated.schema_version == HLP_SCHEMA_VERSION
+    assert negotiated.profile == HLP_PROFILE
+
+    with pytest.raises(ProtocolError) as exc:
+        negotiate_hlp_version(
+            spec_versions=("9.0.0",),
+            schema_versions=(HLP_SCHEMA_VERSION,),
+            profiles=(HLP_PROFILE,),
+        )
+
+    assert exc.value.code == "VERSION_UNSUPPORTED"
+    validate_wire_object("VersionNegotiation", negotiated.to_dict())
