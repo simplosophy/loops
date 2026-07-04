@@ -1,0 +1,62 @@
+docs/notes/2026-07-04.md
+  s_38241583402686::t_7d1e69c12a81a9 112-124
+docs/plans/2026-07-04-hlp-industrial-hardening.md
+  s_38241583402686::t_3c534a832c118d 91-94
+docs/site/conformance.md
+  s_38241583402686::t_31eff108bfc3b6 48-51,90
+docs/site/specs/hlp.md
+  s_38241583402686::t_b4d144abe96906 631,646,661-697
+docs/specs/HLP.md
+  s_38241583402686::t_69d692ec3f19af 642,659,675-709
+loops/__init__.py
+  s_38241583402686::t_2bbfcd552296ae 40-41,83-87,120-121,163-167
+loops/hlp/__init__.py
+  s_38241583402686::t_f99a60bb1de03b 67-74,91,138-139,193-197
+loops/hlp/audit.py
+  s_38241583402686::t_486d18c1cf3c55 10,38
+loops/hlp/schema.py
+  s_38241583402686::t_313c5c0a5c6f8b 1-352
+loops/hlp/types.py
+  s_2c14d993c57133::t_bc7350664d712c 8,21,60
+scripts/check_release_metadata.py
+  s_38241583402686::t_742f6bf0381a35 17,75,89-93
+scripts/check_spec_site_sync.py
+  s_38241583402686::t_82aca44a0992c4 64-66
+tests/conformance/README.md
+  s_38241583402686::t_c77b0cfbae2824 23-26
+tests/conformance/test_hlp_industrial_profile.py
+  s_38241583402686::t_56ac2a882ab460 11-14,20-21,23,25-27,294-400
+tests/test_hlp_protocol.py
+  s_38241583402686::t_15d7b476ca4be2 27,86,98,105-109,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "7386eca2dfe5b1057bd4d86202f84740b5d73cb5",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_2c14d993c57133": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c76-e3bb-78c2-b9ec-59c4a28dd345",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    },
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
