@@ -1,0 +1,30 @@
+docs/notes/2026-07-04.md
+  s_38241583402686::t_76c9cd31c70531 1-27
+docs/plans/2026-07-04-hlp-industrial-hardening.md
+  s_38241583402686::t_aef7373604df9c 1-77
+tests/test_hlp_protocol.py
+  s_38241583402686::t_b98c197ef34fec 3,5,11,87-89,119-138,175-241,341-357,439-456,524-543,734-737,742-819,864-875,1140-1155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "38e003057d485f61bd50013f46c916302b06dad0",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
