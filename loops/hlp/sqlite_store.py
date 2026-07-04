@@ -23,8 +23,11 @@ from .objects import (
     LedgerEntry,
     Ownership,
     OwnershipTransfer,
+    PermissionGrant,
+    ProposedAction,
     Review,
     ReviewComment,
+    SteeringAmendment,
     Task,
     TaskSpec,
 )
@@ -49,8 +52,11 @@ _DATACLASS_TYPES = {
         LedgerEntry,
         Ownership,
         OwnershipTransfer,
+        PermissionGrant,
+        ProposedAction,
         Review,
         ReviewComment,
+        SteeringAmendment,
         Task,
         TaskSpec,
     )

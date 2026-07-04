@@ -19,6 +19,8 @@ for wrapping external harnesses.
 - `Checkpoint`: the point where an agent needs a human decision.
 - `Artifact` and `Review`: delivery and acceptance records.
 - `Ledger` and `Audit`: append-only project state and replayable history.
+- Continuous control values: `task.amend`, `task.interrupt`,
+  `steering_log`, `PermissionGrant`, and checkpoint `proposed_actions`.
 - `AgentAdapter`: the explicit boundary from HLP into an agent harness or CLI.
 - `HarnessAdapter`: the projection boundary from harness events into HLP's
   human-facing semantics.
@@ -95,6 +97,13 @@ artifact = await client.commit_artifact(
     ),
     produced_by=run.agent_id,
 )
+
+await client.amend(
+    task.id,
+    by="user_alice",
+    text="Focus on authentication and permission boundaries.",
+    intent="constrain",
+)
 ```
 
 Use `HLPClient` directly when you already own the store, event bus, or adapter:
@@ -152,6 +161,11 @@ langgraph = LangGraphAdapter(
 )
 crew = CrewAIAdapter(crew=my_crew)
 ```
+
+The framework adapters above are delegate adapters by default. Unless the
+underlying framework object exposes a real pause/resume primitive, HLP
+`block`, `resume`, `steer`, `handoff`, and `cancel` are local contract records,
+not a guarantee that the framework runtime has been physically paused.
 
 OpenAI's Python SDK can be injected without making it a hard dependency:
 

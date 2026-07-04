@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **规范版本** | 0.2.0-draft |
-| **状态** | Draft — 等待参考实现验证 |
+| **状态** | Draft — 0.2.0 核心语义已由参考实现覆盖；独立 conformance suite 待补 |
 | **定位** | HLP-first：本项目核心协议和 SDK，下层通过既有 agent harness / capability 生态接入 |
 | **层级** | 人机责任闭环层 |
 | **设计稿** | [`docs/plans/2026-06-19-loops-protocol-stack.md`](../plans/2026-06-19-loops-protocol-stack.md) |

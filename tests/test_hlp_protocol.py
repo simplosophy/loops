@@ -1,13 +1,14 @@
 """HLP 参考实现测试。
 
-覆盖 spec §8 一致性级别的全部 7 条硬指标：
+覆盖 spec §8 一致性级别的全部 8 条硬指标：
 1. 7 个一等对象
-2. 21 个操作
+2. 23 个操作
 3. Task 状态机 §3.3
 4. 不可变性 §2.3
 5. 每操作产生 audit §4.2
 6. 前置条件 §4.3
 7. 层间契约 §5
+8. 0.2.0 连续控制：interrupt / amend / steer / state_patch
 
 端到端闭环覆盖 spec 附录 A 的 "Review PR #1234" 时序。
 
@@ -83,6 +84,9 @@ def test_human_loop_public_api_names_are_primary():
     assert "HumanLoopOperations" in hlp.__all__
     assert "HumanLoopStore" in hlp.__all__
     assert "ExternalRef" in hlp.__all__
+    assert "SteeringAmendment" in hlp.__all__
+    assert "PermissionGrant" in hlp.__all__
+    assert "ProposedAction" in hlp.__all__
     assert "AAPBridge" not in hlp.__all__
     assert "InMemoryAAPBridge" not in hlp.__all__
     assert "H" + "ACPOperations" not in hlp.__all__
@@ -110,6 +114,26 @@ def test_task_constraints_use_opaque_external_refs_not_capability_refs():
     assert capability.id == "cap:code-review"
     assert capability.version == "2.1.0"
     assert not hasattr(spec.constraints, "must_use_capabilities")
+
+
+def test_hlp_02_constraints_support_autonomy_and_permission_grants():
+    import loops.hlp as hlp
+
+    grant = hlp.PermissionGrant(
+        scope="fs:/repo:write",
+        decision="allow",
+        until="task",
+        granted_by="user_alice",
+    )
+    constraints = Constraints(
+        autonomy="plan_then_implement",
+        grants=(grant,),
+    )
+
+    assert constraints.autonomy == "plan_then_implement"
+    assert constraints.grants == (grant,)
+    with pytest.raises(Exception):
+        grant.scope = "net:*"  # type: ignore[misc]
 
 
 # ════════════════════════════════════════════════════════════
@@ -146,6 +170,73 @@ def test_check_transition_raises_on_illegal():
 def test_check_transition_same_state_idempotent():
     """同状态转移不视为非法 (幂等)。"""
     check_transition("in_progress", "in_progress")  # 不抛
+
+
+def test_task_amend_appends_steering_log_and_calls_adapter_steer():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+
+    amended = run(ops.task_amend(
+        task.id,
+        by=task.ownership.principal,
+        text="Focus review on auth boundary checks.",
+        intent="constrain",
+    ))
+
+    assert amended.state == "in_progress"
+    assert amended.spec.goal == "test goal"
+    assert len(amended.steering_log) == 1
+    assert amended.steering_log[0].text == "Focus review on auth boundary checks."
+    assert amended.steering_log[0].by == "alice"
+    steers = adapter.calls_of("steer")
+    assert len(steers) == 1
+    assert steers[0][1]["run_id"] == ops.store.run_of_task(task.id)
+    assert steers[0][1]["amendment"]["text"] == "Focus review on auth boundary checks."
+    assert [event.action for event in ops.store.audit_log.all()][-1] == "task.amended"
+
+
+def test_task_interrupt_raises_interrupt_checkpoint_and_blocks_run():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    run_id = ops.store.run_of_task(task.id)
+
+    ckpt = run(ops.task_interrupt(
+        task.id,
+        by=task.ownership.principal,
+        prompt="Pause now; I need to inspect the current state.",
+    ))
+
+    restored = run(ops.task_get(task.id))
+    assert ckpt.kind == "interrupt"
+    assert ckpt.raised_by == "human"
+    assert restored.state == "blocked"
+    assert restored.ownership.assignee == restored.ownership.principal
+    assert restored.checkpoints[-1] == ckpt.id
+    blocks = adapter.calls_of("block")
+    assert len(blocks) == 1
+    assert blocks[0][1]["run_id"] == run_id
+    assert blocks[0][1]["checkpoint_id"] == ckpt.id
+    assert [event.action for event in ops.store.audit_log.all()][-2:] == [
+        "task.interrupted",
+        "task.checkpoint.raised",
+    ]
+
+
+def test_agent_cannot_raise_interrupt_checkpoint_directly():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+
+    with pytest.raises(ProtocolError) as e:
+        run(ops.checkpoint_raise(
+            task_id=task.id,
+            kind="interrupt",
+            prompt="agent cannot interrupt",
+            raised_by="agent_test",
+        ))
+
+    assert e.value.code == "INVALID_SPEC"
 
 
 # ════════════════════════════════════════════════════════════
@@ -247,6 +338,23 @@ def test_checkpoint_resolve_requires_pending():
     assert e.value.code == "PRECONDITION_FAILED"
 
 
+def test_checkpoint_resolve_expired_checkpoint_uses_specific_error_code():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="ok?",
+        raised_by="agent",
+    ))
+    run(ops.checkpoint_expire(ckpt.id))
+
+    with pytest.raises(ProtocolError) as e:
+        run(ops.checkpoint_resolve(ckpt.id, by="alice", action="approve"))
+
+    assert e.value.code == "CHECKPOINT_EXPIRED"
+
+
 def test_checkpoint_resolve_adapter_failure_does_not_resolve_checkpoint():
     adapter = FailableAdapter("resume")
     ops = HumanLoopOperations(adapter=adapter)
@@ -328,6 +436,24 @@ def test_changes_requested_requires_requested_changes():
     assert e.value.code == "INVALID_SPEC"
 
 
+def test_plan_review_approved_returns_task_to_in_progress():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_review_ready())
+    agent = task.ownership.chain[-1].from_
+
+    review = run(ops.review_submit(
+        task_id=task.id,
+        artifact_id=task.artifacts[0],
+        reviewer="bob",
+        kind="plan",
+        verdict="approved",
+    ))
+
+    assert review.kind == "plan"
+    assert task.state == "in_progress"
+    assert task.ownership.assignee == agent
+
+
 # ════════════════════════════════════════════════════════════
 # §3 不可变性 (spec §2.3)
 # ════════════════════════════════════════════════════════════
@@ -393,6 +519,26 @@ def test_sealed_artifact_rejects_mutation():
     with pytest.raises(ProtocolError) as e:
         art.version = "v99"  # type: ignore[misc]
     assert e.value.code == "IMMUTABLE_VIOLATION"
+
+
+def test_sealed_artifact_and_review_cannot_be_unsealed():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_review_ready())
+    artifact = ops.store.get_artifact(task.artifacts[0])
+    review = run(ops.review_submit(
+        task_id=task.id,
+        artifact_id=task.artifacts[0],
+        reviewer="bob",
+        verdict="approved",
+    ))
+
+    with pytest.raises(ProtocolError) as artifact_error:
+        artifact._sealed = False
+    assert artifact_error.value.code == "IMMUTABLE_VIOLATION"
+
+    with pytest.raises(ProtocolError) as review_error:
+        review._sealed = False
+    assert review_error.value.code == "IMMUTABLE_VIOLATION"
 
 
 def test_artifact_reference_does_not_mutate_sealed_artifact():
@@ -585,8 +731,90 @@ def test_checkpoint_resolve_passes_full_resolution_payload_to_adapter():
         "choice": None,
         "input": "Use the conservative rollout plan.",
         "reassign_to": None,
+        "approved_actions": (),
+        "denied_actions": (),
+        "state_patch": None,
+        "edited_artifact_ref": None,
         "comment": "Keep blast radius small.",
     }
+
+
+def test_checkpoint_partial_actions_and_state_patch_pass_to_resume():
+    import loops.hlp as hlp
+
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="Approve proposed actions?",
+        raised_by="agent_test",
+        proposed_actions=(
+            hlp.ProposedAction(
+                id="write-tests",
+                kind="file_write",
+                summary="Add regression tests",
+                risk="low",
+            ),
+            hlp.ProposedAction(
+                id="push-main",
+                kind="shell",
+                summary="Push directly to main",
+                risk="high",
+            ),
+        ),
+    ))
+
+    run(ops.checkpoint_resolve(
+        ckpt.id,
+        by="alice",
+        action="approve",
+        approved_actions=("write-tests",),
+        denied_actions=("push-main",),
+        state_patch={"phase": "tests-only"},
+        edited_artifact_ref={"id": "art_manual", "version": "v2"},
+    ))
+
+    resumes = adapter.calls_of("resume")
+    assert resumes[-1][1]["resolution"]["approved_actions"] == ("write-tests",)
+    assert resumes[-1][1]["resolution"]["denied_actions"] == ("push-main",)
+    assert resumes[-1][1]["resolution"]["state_patch"] == {"phase": "tests-only"}
+    assert resumes[-1][1]["resolution"]["edited_artifact_ref"] == {
+        "id": "art_manual",
+        "version": "v2",
+    }
+
+
+def test_checkpoint_partial_actions_must_reference_proposed_actions():
+    import loops.hlp as hlp
+
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    ckpt = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="Approve?",
+        raised_by="agent_test",
+        proposed_actions=(
+            hlp.ProposedAction(
+                id="safe",
+                kind="tool_call",
+                summary="Run safe tool",
+                risk="low",
+            ),
+        ),
+    ))
+
+    with pytest.raises(ProtocolError) as e:
+        run(ops.checkpoint_resolve(
+            ckpt.id,
+            by="alice",
+            action="approve",
+            approved_actions=("unknown",),
+        ))
+
+    assert e.value.code == "INVALID_SPEC"
 
 
 def test_checkpoint_resolve_returns_ownership_to_blocked_agent():
@@ -631,6 +859,18 @@ def test_task_cancel_calls_adapter_before_completing_task():
     restored = run(ops.task_get(task.id))
     assert restored.state == "in_progress"
     assert not adapter.calls_of("cancel")
+
+
+def test_task_cancel_returns_ownership_to_principal():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    assert task.ownership.assignee == "agent_test"
+
+    cancelled = run(ops.task_cancel(task.id, by=task.ownership.principal))
+
+    assert cancelled.state == "completed"
+    assert cancelled.ownership.assignee == cancelled.ownership.principal
+    assert cancelled.ownership.chain[-1].to == cancelled.ownership.principal
 
 
 def test_ownership_transfer_handoff_updates_active_run_binding():
@@ -895,6 +1135,22 @@ def test_artifact_get_by_version():
     art_id = task.artifacts[0]
     v1 = run(ops.artifact_get(art_id, "v1"))
     assert v1.version == "v1"
+
+
+def test_artifact_get_missing_version_does_not_fall_back_to_latest():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    art = run(ops.artifact_commit(
+        task_id=task.id,
+        type="report",
+        payload=ArtifactPayload(kind="inline", uri="mem://v1", checksum="sha256:1"),
+        produced_by="agent",
+    ))
+
+    with pytest.raises(ProtocolError) as e:
+        run(ops.artifact_get(art.id, "v999"))
+
+    assert e.value.code == "NOT_FOUND"
 
 
 def test_ledger_history_is_append_only():

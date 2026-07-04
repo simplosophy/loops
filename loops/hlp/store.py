@@ -98,8 +98,9 @@ class HumanLoopStore:
     def _get_artifact_for_update(self, art_id: str, version: str | None = None) -> Artifact:
         if version is not None:
             art = self._artifact_versions.get((art_id, version))
-            if art is not None:
-                return art
+            if art is None:
+                raise ProtocolError("NOT_FOUND", f"artifact {art_id}@{version} not found")
+            return art
         art = self.artifacts.get(art_id)
         if art is None:
             raise ProtocolError("NOT_FOUND", f"artifact {art_id}@{version} not found")
@@ -162,3 +163,9 @@ class HumanLoopStore:
 
     def run_of_task(self, task_id: str) -> str | None:
         return self._task_runs.get(task_id)
+
+    def task_of_run(self, run_id: str) -> str | None:
+        for task_id, bound_run in self._task_runs.items():
+            if bound_run == run_id:
+                return task_id
+        return None

@@ -78,7 +78,7 @@ HLP 有两个方向的 adapter：
 
 | Adapter | 方向 | 作用 |
 | --- | --- | --- |
-| `AgentAdapter` | HLP -> harness | 委派任务、阻塞运行、恢复运行、handoff、取消运行 |
+| `AgentAdapter` | HLP -> harness | 委派任务、阻塞运行、恢复运行、steer、handoff、取消运行 |
 | `HarnessAdapter` | harness -> HLP | 把 harness 的人工审批、选择、输入、交付物事件投影为 HLP 对象 |
 
 关键 invariant：

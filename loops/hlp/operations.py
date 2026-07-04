@@ -18,8 +18,10 @@ from .objects import (
     Ledger,
     LedgerEntry,
     Ownership,
+    ProposedAction,
     Review,
     ReviewComment,
+    SteeringAmendment,
     Task,
     TaskSpec,
 )
@@ -29,7 +31,9 @@ from .types import (
     CheckpointKind,
     CheckpointResolutionAction,
     ProtocolError,
+    ReviewKind,
     ReviewVerdict,
+    SteeringIntent,
     TaskState,
 )
 from ._ids import gen_review_id
@@ -54,7 +58,7 @@ def _now() -> datetime:
 
 @dataclass
 class HumanLoopOperations:
-    """HLP 协议操作入口 (spec §4.1, 共 21 个)。
+    """HLP 协议操作入口 (spec §4.1, 共 23 个)。
 
     持有 store + audit + agent adapter，是协议层的 facade。
     上层 (transport/CLI) 调用这里；本类不感知 transport。
@@ -73,6 +77,7 @@ class HumanLoopOperations:
         type: str = "",
         acceptance_criteria: tuple[str, ...] = (),
         inputs: tuple[InputRef, ...] = (),
+        constraints: Any = None,
     ) -> Task:
         """task.create (spec §4.1)。state=created."""
         if not principal:
@@ -85,6 +90,7 @@ class HumanLoopOperations:
             goal=goal,
             acceptance_criteria=acceptance_criteria,
             inputs=inputs,
+            constraints=constraints,
         )
         task = Task(
             type=type,
@@ -160,6 +166,11 @@ class HumanLoopOperations:
         run_id = self.store.run_of_task(task_id)
         if run_id is not None:
             await self.adapter.cancel(run_id, f"cancelled by {by}")
+        if task.ownership.assignee != task.ownership.principal:
+            task.ownership = task.ownership.transfer(
+                task.ownership.principal,
+                via="reject",
+            )
         check_transition(task.state, "completed")
         task.state = "completed"
         self._audit(
@@ -167,6 +178,39 @@ class HumanLoopOperations:
             action="task.cancelled",
             subject=("task", task.id),
             task_id=task_id,
+        )
+        return task
+
+    async def task_amend(
+        self,
+        task_id: str,
+        *,
+        by: str,
+        text: str,
+        intent: SteeringIntent = "clarify",
+    ) -> Task:
+        """task.amend (HLP 0.2.0)：append steering without changing spec/state."""
+        task = self.store._get_task_for_update(task_id)
+        if task.state not in ("in_progress", "blocked"):
+            raise ProtocolError(
+                "PRECONDITION_FAILED",
+                f"cannot amend task in state {task.state!r}",
+            )
+        self._require_principal(task, by, "task amendment")
+        if not text:
+            raise ProtocolError("INVALID_SPEC", "amendment text is required")
+
+        amendment = SteeringAmendment(text=text, intent=intent, by=by)
+        run_id = self.store.run_of_task(task_id)
+        if run_id is not None:
+            await self.adapter.steer(run_id, amendment)
+        task.steering_log = (*task.steering_log, amendment)
+        self._audit(
+            actor=by,
+            action="task.amended",
+            subject=("task", task.id),
+            task_id=task.id,
+            after={"text": text, "intent": intent},
         )
         return task
 
@@ -178,6 +222,54 @@ class HumanLoopOperations:
         """task.list (spec §4.1)。"""
         return self.store.list_tasks()
 
+    async def task_interrupt(
+        self,
+        task_id: str,
+        *,
+        by: str,
+        prompt: str,
+    ) -> Checkpoint:
+        """task.interrupt (HLP 0.2.0)：human-initiated pause."""
+        task = self.store._get_task_for_update(task_id)
+        self._require_state(task, "in_progress")
+        self._require_principal(task, by, "task interrupt")
+        if not prompt:
+            raise ProtocolError("INVALID_SPEC", "interrupt prompt is required")
+
+        ckpt = Checkpoint(
+            task_id=task_id,
+            kind="interrupt",
+            prompt=prompt,
+            state="pending",
+            raised_by="human",
+        )
+        run_id = self.store.run_of_task(task_id)
+        if run_id is not None:
+            await self.adapter.block(run_id, ckpt.id, prompt)
+
+        self.store.put_checkpoint(ckpt)
+        task.checkpoints.append(ckpt.id)
+        check_transition(task.state, "blocked")
+        task.state = "blocked"
+        if task.ownership.assignee != task.ownership.principal:
+            task.ownership = task.ownership.transfer(
+                task.ownership.principal,
+                via="checkpoint",
+            )
+        self._audit(
+            actor=by,
+            action="task.interrupted",
+            subject=("task", task.id),
+            task_id=task_id,
+        )
+        self._audit(
+            actor="system",
+            action="task.checkpoint.raised",
+            subject=("checkpoint", ckpt.id),
+            task_id=task_id,
+        )
+        return ckpt
+
     # ────────────────── Checkpoint (spec §4.1) ──────────────────
 
     async def checkpoint_raise(
@@ -187,12 +279,18 @@ class HumanLoopOperations:
         kind: CheckpointKind,
         prompt: str,
         options: tuple[CheckpointOption, ...] = (),
+        proposed_actions: tuple[ProposedAction, ...] = (),
         context: tuple[Evidence, ...] = (),
         raised_by: str,
     ) -> Checkpoint:
         """checkpoint.raise (spec §4.1)。in_progress→blocked。"""
         task = self.store._get_task_for_update(task_id)
         self._require_state(task, "in_progress")
+        if kind == "interrupt":
+            raise ProtocolError(
+                "INVALID_SPEC",
+                "interrupt checkpoint must be raised through task.interrupt",
+            )
         if kind == "choice" and not options:
             raise ProtocolError("INVALID_SPEC", "choice checkpoint requires options")
 
@@ -201,8 +299,10 @@ class HumanLoopOperations:
             kind=kind,
             prompt=prompt,
             options=options,
+            proposed_actions=proposed_actions,
             context=context,
             state="pending",
+            raised_by="agent",
         )
         ckpt_raised_by = raised_by
         run_id = self.store.run_of_task(task_id)
@@ -237,11 +337,20 @@ class HumanLoopOperations:
         choice: str | None = None,
         input: str | None = None,
         reassign_to: str | None = None,
+        approved_actions: tuple[str, ...] = (),
+        denied_actions: tuple[str, ...] = (),
+        state_patch: dict[str, Any] | None = None,
+        edited_artifact_ref: dict[str, str] | None = None,
         comment: str | None = None,
     ) -> Checkpoint:
         """checkpoint.resolve (spec §4.1)。blocked→in_progress (approve/provide)
         或 blocked→completed (reject)。"""
         ckpt = self.store._get_checkpoint_for_update(ckpt_id)
+        if ckpt.state == "expired":
+            raise ProtocolError(
+                "CHECKPOINT_EXPIRED",
+                f"checkpoint {ckpt.id} is expired",
+            )
         if ckpt.state != "pending":
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -256,6 +365,8 @@ class HumanLoopOperations:
             choice=choice,
             input=input,
             reassign_to=reassign_to,
+            approved_actions=approved_actions,
+            denied_actions=denied_actions,
         )
 
         resolution = CheckpointResolution(
@@ -264,6 +375,10 @@ class HumanLoopOperations:
             choice=choice,
             input=input,
             reassign_to=reassign_to,
+            approved_actions=approved_actions,
+            denied_actions=denied_actions,
+            state_patch=state_patch,
+            edited_artifact_ref=edited_artifact_ref,
             comment=comment,
         )
         resume_payload = self._resolution_payload(resolution)
@@ -408,6 +523,7 @@ class HumanLoopOperations:
         artifact_id: str,
         reviewer: str,
         verdict: ReviewVerdict,
+        kind: ReviewKind = "deliverable",
         comments: tuple[ReviewComment, ...] = (),
         requested_changes: tuple[str, ...] = (),
     ) -> Review:
@@ -442,6 +558,7 @@ class HumanLoopOperations:
             task_id=task_id,
             artifact_id=artifact_id,
             reviewer=reviewer,
+            kind=kind,
             verdict=verdict,
             comments=comments,
             requested_changes=requested_changes,
@@ -453,7 +570,20 @@ class HumanLoopOperations:
             check_transition(task.state, "under_review")
             task.state = "under_review"
 
-        if verdict == "approved":
+        if kind == "plan" and verdict in ("approved", "changes_requested"):
+            check_transition(task.state, "in_progress")
+            task.state = "in_progress"
+            target_agent = self._last_assignee_before(
+                task,
+                to=task.ownership.principal,
+                via="handoff",
+            )
+            if target_agent is not None and task.ownership.assignee != target_agent:
+                task.ownership = task.ownership.transfer(
+                    target_agent,
+                    via="approve" if verdict == "approved" else "reject",
+                )
+        elif verdict == "approved":
             check_transition(task.state, "accepted")
             task.state = "accepted"
             check_transition(task.state, "completed")
@@ -477,9 +607,9 @@ class HumanLoopOperations:
             action="review.submitted",
             subject=("review", review.id),
             task_id=task_id,
-            after={"verdict": verdict},
+            after={"kind": kind, "verdict": verdict},
         )
-        if verdict == "approved":
+        if kind == "deliverable" and verdict == "approved":
             self._audit(
                 actor="system",
                 action="task.completed",
@@ -507,6 +637,7 @@ class HumanLoopOperations:
             task_id=original.task_id,
             artifact_id=original.artifact_id,
             reviewer=by,
+            kind=original.kind,
             verdict=original.verdict,
             comments=(comment,),
             at=_now(),
@@ -689,6 +820,14 @@ class HumanLoopOperations:
         if not self._is_human(actor):
             raise ProtocolError("UNAUTHORIZED", f"{role} must be a human actor")
 
+    def _require_principal(self, task: Task, actor: str, role: str) -> None:
+        self._require_human_actor(actor, role)
+        if actor != task.ownership.principal:
+            raise ProtocolError(
+                "UNAUTHORIZED",
+                f"{role} must be performed by task principal",
+            )
+
     def _validate_checkpoint_resolution(
         self,
         ckpt: Checkpoint,
@@ -697,6 +836,8 @@ class HumanLoopOperations:
         choice: str | None,
         input: str | None,
         reassign_to: str | None,
+        approved_actions: tuple[str, ...],
+        denied_actions: tuple[str, ...],
     ) -> None:
         if action == "choose":
             option_ids = {option.id for option in ckpt.options}
@@ -717,6 +858,13 @@ class HumanLoopOperations:
                     "INVALID_SPEC",
                     "reassign resolution requires an agent assignee",
                 )
+        action_ids = {proposed.id for proposed in ckpt.proposed_actions}
+        requested_ids = set(approved_actions) | set(denied_actions)
+        if requested_ids and not requested_ids.issubset(action_ids):
+            raise ProtocolError(
+                "INVALID_SPEC",
+                "approved_actions and denied_actions must reference proposed_actions",
+            )
 
     @staticmethod
     def _resolution_payload(resolution: CheckpointResolution) -> dict[str, Any]:
@@ -726,6 +874,10 @@ class HumanLoopOperations:
             "choice": resolution.choice,
             "input": resolution.input,
             "reassign_to": resolution.reassign_to,
+            "approved_actions": resolution.approved_actions,
+            "denied_actions": resolution.denied_actions,
+            "state_patch": resolution.state_patch,
+            "edited_artifact_ref": resolution.edited_artifact_ref,
             "comment": resolution.comment,
         }
 

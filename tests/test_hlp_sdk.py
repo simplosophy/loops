@@ -29,6 +29,7 @@ from loops.hlp import (
     ProcessAgentAdapter,
     PythonCallableAgentAdapter,
     ProcessResult,
+    ProtocolError,
     SQLiteHumanLoopStore,
 )
 from examples.hlp_e2e_demo import run_demo
@@ -229,6 +230,34 @@ def test_harness_adapter_projects_human_interaction_events_into_hlp_inbox():
         ("review", "submit_review", projected[0].id),
     ]
     assert inbox[0].title == "Review patch v1"
+
+
+def test_harness_event_projection_rejects_mismatched_task_correlation():
+    adapter = FakeHarnessAdapter()
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Wrap an existing harness",
+    ))
+    handle = run(client.delegate(task.id, "agent_harness"))
+    run(client.start(task.id))
+
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_approval",
+        task_id="task_other",
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="This event belongs to a different task.",
+    ))
+
+    try:
+        run(client.project_harness_events(handle.run_id))
+    except ProtocolError as exc:
+        assert exc.code == "CONFLICT"
+        assert "task correlation" in str(exc)
+    else:
+        raise AssertionError("expected ProtocolError for mismatched task correlation")
 
 
 def test_fake_agent_adapter_records_contract_calls():
@@ -678,6 +707,30 @@ def test_process_agent_adapter_rejects_mismatched_correlation_id():
         raise AssertionError("expected AgentAdapterError")
 
 
+def test_process_agent_adapter_requires_delegate_run_id():
+    async def runner(command, request, timeout):
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = ProcessAgentAdapter(
+        command=("agent", "run", "--json"),
+        name="strict-process",
+        runner=runner,
+    )
+
+    try:
+        run(adapter.delegate(
+            task_id="task_proc",
+            agent_id="agent_proc",
+            capability="code-review",
+            input={"goal": "review"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.operation == "delegate"
+        assert "run_id" in str(exc)
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
 def test_process_agent_adapter_wraps_unknown_run_for_resume():
     async def runner(command, request, timeout):
         return ProcessResult(exit_code=0, stdout="{}", stderr="")
@@ -1064,6 +1117,10 @@ def test_hlp_client_drives_process_adapter_block_and_resume():
         "choice": None,
         "input": None,
         "reassign_to": None,
+        "approved_actions": (),
+        "denied_actions": (),
+        "state_patch": None,
+        "edited_artifact_ref": None,
         "comment": None,
     }
 

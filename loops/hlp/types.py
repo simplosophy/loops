@@ -39,7 +39,7 @@ TaskState = Literal[
     "completed",
 ]
 
-CheckpointKind = Literal["approval", "choice", "input", "escalation"]
+CheckpointKind = Literal["approval", "choice", "input", "escalation", "interrupt"]
 CheckpointState = Literal["pending", "resolved", "expired"]
 
 CheckpointResolutionAction = Literal[
@@ -58,6 +58,16 @@ OwnershipTransferVia = Literal[
     "handoff",
 ]
 
+AutonomyTier = Literal[
+    "autonomous",
+    "plan_then_implement",
+    "confirm_each_action",
+    "read_only",
+]
+PermissionGrantDecision = Literal["allow", "deny"]
+SteeringIntent = Literal["redirect", "clarify", "constrain", "abort_hint"]
+ProposedActionRisk = Literal["low", "medium", "high"]
+ReviewKind = Literal["plan", "deliverable"]
 ReviewVerdict = Literal["approved", "changes_requested", "rejected"]
 ReviewCommentSeverity = Literal["blocker", "major", "minor", "nit"]
 

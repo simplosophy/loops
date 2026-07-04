@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 
 from .types import HarnessConformance, HarnessEventKind
@@ -113,6 +113,10 @@ class AgentAdapter(Protocol):
         """Resume a blocked run with the human resolution payload."""
         ...
 
+    async def steer(self, run_id: str, amendment: Any) -> None:
+        """Inject a steering amendment without restarting the run."""
+        ...
+
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
         """Handoff a run to another agent while preserving task correlation."""
         ...
@@ -194,6 +198,13 @@ class FakeAgentAdapter:
         self.calls.append((
             "resume",
             {"run_id": run_id, "resolution": resolution},
+        ))
+
+    async def steer(self, run_id: str, amendment: Any) -> None:
+        self._require_run(run_id, "steer")
+        self.calls.append((
+            "steer",
+            {"run_id": run_id, "amendment": _adapter_payload(amendment)},
         ))
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
@@ -316,7 +327,14 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         }
         payload = await self._execute("delegate", request)
         _validate_correlation(payload, task_id, self.name, "delegate")
-        run_id = str(payload.get("run_id") or self._next_run_id())
+        if not payload.get("run_id"):
+            raise AgentAdapterError(
+                self.name,
+                "delegate",
+                "delegate response must include run_id",
+                details={"payload": payload},
+            )
+        run_id = str(payload["run_id"])
         self._runs[run_id] = AgentRunHandle(
             run_id=run_id,
             task_id=task_id,
@@ -359,6 +377,17 @@ class ProcessAgentAdapter(FakeAgentAdapter):
             "correlation_id": handle.correlation_id,
         })
         await FakeAgentAdapter.resume(self, run_id, resolution)
+
+    async def steer(self, run_id: str, amendment: Any) -> None:
+        handle = self._require_run(run_id, "steer")
+        amendment_payload = _adapter_payload(amendment)
+        await self._execute("steer", {
+            "operation": "steer",
+            "run_id": run_id,
+            "amendment": amendment_payload,
+            "correlation_id": handle.correlation_id,
+        })
+        await FakeAgentAdapter.steer(self, run_id, amendment_payload)
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
         current = self._require_run(run_id, "handoff")
@@ -1654,6 +1683,12 @@ def _validate_correlation(
             "runtime returned mismatched correlation_id",
             details={"expected": expected, "actual": actual},
         )
+
+
+def _adapter_payload(value: Any) -> Any:
+    if is_dataclass(value):
+        return asdict(value)
+    return value
 
 
 def _hlp_payload(

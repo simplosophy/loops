@@ -11,15 +11,20 @@ from ._ids import (
     gen_task_id,
 )
 from .types import (
+    AutonomyTier,
     CheckpointKind,
     CheckpointResolutionAction,
     CheckpointState,
     HumanInboxAction,
     HumanInboxKind,
     OwnershipTransferVia,
+    PermissionGrantDecision,
     ProtocolError,
+    ProposedActionRisk,
     ReviewCommentSeverity,
+    ReviewKind,
     ReviewVerdict,
+    SteeringIntent,
     TaskState,
 )
 
@@ -67,9 +72,41 @@ class ExternalRef:
 
 
 @dataclass(frozen=True)
+class PermissionGrant:
+    """Append-only pre-authorization boundary (HLP 0.2.0)."""
+
+    scope: str
+    decision: PermissionGrantDecision
+    until: str | datetime = "task"
+    granted_by: str = ""
+    granted_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
 class Constraints:
     max_duration: str | None = None
     external_refs: tuple[ExternalRef, ...] = ()
+    autonomy: AutonomyTier = "autonomous"
+    grants: tuple[PermissionGrant, ...] = ()
+
+
+@dataclass(frozen=True)
+class SteeringAmendment:
+    """Append-only direction correction that never mutates Task.spec."""
+
+    text: str
+    intent: SteeringIntent = "clarify"
+    by: str = ""
+    at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
+class ProposedAction:
+    id: str
+    kind: str
+    summary: str
+    detail: dict[str, Any] | None = None
+    risk: ProposedActionRisk = "medium"
 
 
 @dataclass(frozen=True)
@@ -103,6 +140,10 @@ class CheckpointResolution:
     choice: str | None = None   # action=choose 时
     input: str | None = None    # action=provide 时
     reassign_to: str | None = None  # action=reassign 时
+    approved_actions: tuple[str, ...] = ()
+    denied_actions: tuple[str, ...] = ()
+    state_patch: dict[str, Any] | None = None
+    edited_artifact_ref: dict[str, str] | None = None
     comment: str | None = None
     at: datetime = field(default_factory=_now)
 
@@ -203,6 +244,7 @@ class Task:
     deadline: datetime | None = None
     checkpoints: list[str] = field(default_factory=list)     # ckpt_id 列表
     artifacts: list[str] = field(default_factory=list)       # art_id 列表
+    steering_log: tuple[SteeringAmendment, ...] = ()
 
     @property
     def is_terminal(self) -> bool:
@@ -218,9 +260,11 @@ class Checkpoint:
     kind: CheckpointKind = "approval"
     prompt: str = ""
     options: tuple[CheckpointOption, ...] = ()
+    proposed_actions: tuple[ProposedAction, ...] = ()
     context: tuple[Evidence, ...] = ()
     state: CheckpointState = "pending"
     raised_at: datetime = field(default_factory=_now)
+    raised_by: Literal["agent", "human", "system"] = "agent"
     expires_at: datetime | None = None
     resolution: CheckpointResolution | None = None
 
@@ -233,6 +277,7 @@ class Review:
     task_id: str = ""
     artifact_id: str = ""
     reviewer: str = ""
+    kind: ReviewKind = "deliverable"
     verdict: ReviewVerdict = "approved"
     comments: tuple[ReviewComment, ...] = ()
     requested_changes: tuple[str, ...] = ()
@@ -240,7 +285,7 @@ class Review:
     _sealed: bool = field(default=False, repr=False)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name != "_sealed" and getattr(self, "_sealed", False):
+        if getattr(self, "_sealed", False):
             raise ProtocolError(
                 "IMMUTABLE_VIOLATION",
                 f"review {self.id} is sealed; cannot modify {name}",
@@ -267,7 +312,7 @@ class Artifact:
     _sealed: bool = field(default=False, repr=False)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name != "_sealed" and getattr(self, "_sealed", False):
+        if getattr(self, "_sealed", False):
             raise ProtocolError(
                 "IMMUTABLE_VIOLATION",
                 f"artifact {self.id} is sealed; cannot modify {name}",

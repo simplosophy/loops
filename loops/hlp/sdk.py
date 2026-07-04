@@ -10,17 +10,19 @@ from .objects import (
     ArtifactPayload,
     Checkpoint,
     CheckpointOption,
+    Constraints,
     Evidence,
     HumanInboxItem,
     InputRef,
     LedgerEntry,
+    ProposedAction,
     Review,
     ReviewComment,
     Task,
 )
 from .operations import HumanLoopOperations
 from .store import HumanLoopStore
-from .types import CheckpointKind, CheckpointResolutionAction, ReviewVerdict
+from .types import CheckpointKind, CheckpointResolutionAction, ReviewKind, ReviewVerdict, SteeringIntent
 
 
 @dataclass
@@ -44,6 +46,7 @@ class HLPClient:
         type: str = "",
         acceptance_criteria: tuple[str, ...] = (),
         inputs: tuple[InputRef, ...] = (),
+        constraints: Constraints | None = None,
     ) -> Task:
         task = await self.operations.task_create(
             principal=principal,
@@ -51,6 +54,7 @@ class HLPClient:
             type=type,
             acceptance_criteria=acceptance_criteria,
             inputs=inputs,
+            constraints=constraints,
         )
         await self._after_mutation(
             "task.created",
@@ -102,6 +106,48 @@ class HLPClient:
         )
         return self.store.get_task(task.id)
 
+    async def amend(
+        self,
+        task_id: str,
+        *,
+        by: str,
+        text: str,
+        intent: SteeringIntent = "clarify",
+    ) -> Task:
+        task = await self.operations.task_amend(
+            task_id,
+            by=by,
+            text=text,
+            intent=intent,
+        )
+        await self._after_mutation(
+            "task.amended",
+            task_id=task.id,
+            subject=("task", task.id),
+            payload={"by": by, "intent": intent},
+        )
+        return self.store.get_task(task.id)
+
+    async def interrupt(
+        self,
+        task_id: str,
+        *,
+        by: str,
+        prompt: str,
+    ) -> Checkpoint:
+        checkpoint = await self.operations.task_interrupt(
+            task_id,
+            by=by,
+            prompt=prompt,
+        )
+        await self._after_mutation(
+            "task.interrupted",
+            task_id=task_id,
+            subject=("checkpoint", checkpoint.id),
+            payload={"by": by},
+        )
+        return self.store.get_checkpoint(checkpoint.id)
+
     async def get_task(self, task_id: str) -> Task:
         return await self.operations.task_get(task_id)
 
@@ -112,6 +158,7 @@ class HLPClient:
         kind: CheckpointKind,
         prompt: str,
         options: tuple[CheckpointOption, ...] = (),
+        proposed_actions: tuple[ProposedAction, ...] = (),
         context: tuple[Evidence, ...] = (),
         raised_by: str,
     ) -> Checkpoint:
@@ -120,6 +167,7 @@ class HLPClient:
             kind=kind,
             prompt=prompt,
             options=options,
+            proposed_actions=proposed_actions,
             context=context,
             raised_by=raised_by,
         )
@@ -140,6 +188,10 @@ class HLPClient:
         choice: str | None = None,
         input: str | None = None,
         reassign_to: str | None = None,
+        approved_actions: tuple[str, ...] = (),
+        denied_actions: tuple[str, ...] = (),
+        state_patch: dict[str, Any] | None = None,
+        edited_artifact_ref: dict[str, str] | None = None,
         comment: str | None = None,
     ) -> Checkpoint:
         checkpoint = await self.operations.checkpoint_resolve(
@@ -149,6 +201,10 @@ class HLPClient:
             choice=choice,
             input=input,
             reassign_to=reassign_to,
+            approved_actions=approved_actions,
+            denied_actions=denied_actions,
+            state_patch=state_patch,
+            edited_artifact_ref=edited_artifact_ref,
             comment=comment,
         )
         await self._after_mutation(
@@ -190,6 +246,7 @@ class HLPClient:
         artifact_id: str,
         reviewer: str,
         verdict: ReviewVerdict,
+        kind: ReviewKind = "deliverable",
         comments: tuple[ReviewComment, ...] = (),
         requested_changes: tuple[str, ...] = (),
     ) -> Review:
@@ -198,6 +255,7 @@ class HLPClient:
             artifact_id=artifact_id,
             reviewer=reviewer,
             verdict=verdict,
+            kind=kind,
             comments=comments,
             requested_changes=requested_changes,
         )
@@ -205,7 +263,7 @@ class HLPClient:
             "review.submitted",
             task_id=task_id,
             subject=("review", review.id),
-            payload={"verdict": verdict, "reviewer": reviewer},
+            payload={"kind": kind, "verdict": verdict, "reviewer": reviewer},
         )
         return self.store.get_review(review.id)
 
@@ -236,6 +294,7 @@ class HLPClient:
 
         projected: list[Any] = []
         for event in await self.adapter.observe(run_id):
+            self._validate_harness_event_correlation(run_id, event)
             if event.kind in ("needs_approval", "needs_choice", "needs_input"):
                 checkpoint_kind = {
                     "needs_approval": "approval",
@@ -317,6 +376,24 @@ class HLPClient:
             payload={"count": len(events)},
         )
         return events
+
+    def _validate_harness_event_correlation(self, run_id: str, event: Any) -> None:
+        if event.run_id and event.run_id != run_id:
+            from .types import ProtocolError
+
+            raise ProtocolError(
+                "CONFLICT",
+                f"harness event run correlation mismatch: expected {run_id}, got {event.run_id}",
+            )
+        expected_task = self.store.task_of_run(run_id)
+        if expected_task is not None and event.task_id != expected_task:
+            from .types import ProtocolError
+
+            raise ProtocolError(
+                "CONFLICT",
+                "harness event task correlation mismatch: "
+                f"expected {expected_task}, got {event.task_id}",
+            )
 
     async def _after_mutation(
         self,

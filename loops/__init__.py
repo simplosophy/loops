@@ -57,6 +57,8 @@ from loops.hlp import (
     OpenAIPythonSDKAdapter,
     Ownership,
     OwnershipTransfer,
+    PermissionGrant,
+    ProposedAction,
     ProcessAgentAdapter,
     ProcessResult,
     PromptCLIAdapter,
@@ -65,6 +67,7 @@ from loops.hlp import (
     Review,
     ReviewComment,
     SQLiteHumanLoopStore,
+    SteeringAmendment,
     Task,
     TaskSpec,
 )
@@ -119,6 +122,8 @@ __all__ = [
     "OpenAIPythonSDKAdapter",
     "Ownership",
     "OwnershipTransfer",
+    "PermissionGrant",
+    "ProposedAction",
     "ProcessAgentAdapter",
     "ProcessResult",
     "PromptCLIAdapter",
@@ -127,6 +132,7 @@ __all__ = [
     "Review",
     "ReviewComment",
     "SQLiteHumanLoopStore",
+    "SteeringAmendment",
     "Task",
     "TaskSpec",
 ]
