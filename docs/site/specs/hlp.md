@@ -456,6 +456,10 @@ AuditEvent:
   task_id: task_ | null
   before: object | null
   after: object | null
+  schema_version: string
+  profile: string
+  prev_hash: string
+  hash: string
 ```
 
 Rules:
@@ -463,6 +467,10 @@ Rules:
 - Every state-changing protocol operation **MUST** produce an audit event.
 - Audit events **MUST NEVER** be deleted or modified.
 - `seq` **MUST** be monotonically increasing within its audit scope.
+- `HLP-industrial` implementations **SHOULD** make AuditEvent records a
+  tamper-evident hash chain: `prev_hash` points to the previous event hash, and
+  `hash` is computed from canonical JSON for the event excluding the `hash`
+  field.
 
 ## Operations
 

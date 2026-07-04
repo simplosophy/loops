@@ -59,6 +59,8 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("idempotency_key", has_literal("idempotency_key")),
     ("permission_scope", has_literal("permission_scope")),
     ("Permission scope grammar", has_literal("Permission scope grammar")),
+    ("prev_hash", has_literal("prev_hash")),
+    ("tamper-evident", has_literal("tamper-evident")),
 ]
 
 

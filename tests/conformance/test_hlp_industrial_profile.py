@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -261,3 +262,22 @@ def test_proposed_action_carries_permission_scope_for_grant_matching():
     )
 
     assert action.permission_scope == "fs:/repo:*"
+
+
+def test_audit_log_is_tamper_evident_hash_chain():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    run(ops.task_amend(task.id, by="alice", text="Record hash chain."))
+
+    events = ops.store.audit_log.all()
+
+    assert ops.store.audit_log.verify_hash_chain()
+    assert events[0].prev_hash == ""
+    assert all(event.hash.startswith("sha256:") for event in events)
+    assert events[1].prev_hash == events[0].hash
+    assert events[-1].schema_version == "0.2"
+    assert events[-1].profile == "HLP-industrial"
+
+    ops.store.audit_log._events[1] = replace(events[1], action="tampered")
+
+    assert not ops.store.audit_log.verify_hash_chain()

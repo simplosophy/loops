@@ -431,12 +431,19 @@ AuditEvent:
   task_id: task_ | null        # 始终关联聚合根
   before: object | null
   after: object | null
+  schema_version: string
+  profile: string
+  prev_hash: string            # 空字符串表示链首
+  hash: string                 # sha256:<canonical event hash>
 ```
 
 **一致性约束**：
 - 每次协议操作（Task 状态转移、Checkpoint 变更、Ownership 转移、Artifact commit、Ledger write、Review submit）**MUST** 产生一条 AuditEvent。
 - AuditEvent **MUST NEVER** 删除或修改。
 - `seq` **MUST** 在其 scope（project/org）内单调递增，支持全局有序回放。
+- `HLP-industrial` 实现 **SHOULD** 让 AuditEvent 形成 tamper-evident hash
+  chain：`prev_hash` 指向上一事件 hash，`hash` 基于不含 `hash` 字段的 canonical
+  JSON 事件计算。
 
 ---
 

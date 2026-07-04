@@ -19,7 +19,8 @@ Profiles covered here:
 - `HLP-industrial` reference slice: per-task revision, task-scoped
   idempotency-key replay, stale revision conflicts before adapter calls, and
   stable replay for generated checkpoints/artifacts. It also covers permission
-  scope grammar, wildcard matching, expiry, and deny precedence.
+  scope grammar, wildcard matching, expiry, deny precedence, and tamper-evident
+  audit hash-chain verification.
 
 `HLP-compatible` and `HLP-integrated` do not imply `HLP-industrial`. Industrial
 claims additionally need a documented production profile for CAS, idempotency,

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import hashlib
+import json
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 from ._ids import gen_audit_id
+from .types import HLP_SCHEMA_VERSION
 
 
 def _now() -> datetime:
@@ -31,6 +34,10 @@ class AuditEvent:
     before: Any = None
     after: Any = None
     id: str = field(default_factory=gen_audit_id)
+    schema_version: str = HLP_SCHEMA_VERSION
+    profile: str = "HLP-industrial"
+    prev_hash: str = ""
+    hash: str = ""
 
 
 class AuditLog:
@@ -57,6 +64,7 @@ class AuditLog:
     ) -> AuditEvent:
         """追加一条审计事件，返回该事件。永不失败、永不阻塞业务 (spec §3.9)。"""
         self._seq += 1
+        prev_hash = self._events[-1].hash if self._events else ""
         event = AuditEvent(
             seq=self._seq,
             actor=actor,
@@ -65,7 +73,9 @@ class AuditLog:
             task_id=task_id,
             before=before,
             after=after,
+            prev_hash=prev_hash,
         )
+        object.__setattr__(event, "hash", _audit_event_hash(event))
         self._events.append(event)
         return event
 
@@ -94,6 +104,46 @@ class AuditLog:
         """全部事件，按 seq 升序。"""
         return list(self._events)
 
+    def verify_hash_chain(self) -> bool:
+        prev_hash = ""
+        for event in self._events:
+            if event.prev_hash != prev_hash:
+                return False
+            if event.hash != _audit_event_hash(event):
+                return False
+            prev_hash = event.hash
+        return True
+
     @property
     def count(self) -> int:
         return len(self._events)
+
+
+def _audit_event_hash(event: AuditEvent) -> str:
+    payload = {
+        field.name: _jsonable(getattr(event, field.name))
+        for field in fields(event)
+        if field.name != "hash"
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if is_dataclass(value):
+        return {
+            field.name: _jsonable(getattr(value, field.name))
+            for field in fields(value)
+        }
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _jsonable(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    return value
