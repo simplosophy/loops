@@ -1,0 +1,30 @@
+docs/site/public/favicon.svg
+  s_aaeb0b14f95bf9::t_6c70505db421a1 4,8-14,20-21,23-24,26-28,30-31
+docs/site/public/logo.svg
+  s_aaeb0b14f95bf9::t_a8a379e789fca0 4,8-14,20-21,23-24,26-28,30-31
+docs/site/public/og.svg
+  s_aaeb0b14f95bf9::t_31a996371e66d3 5,9-15,24-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "308d16f48bc965bbd9097da28204415e3dcdb93b",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_aaeb0b14f95bf9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2b6-c2ea-7690-8f9f-c7fbbb39b103",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
