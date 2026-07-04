@@ -1,0 +1,42 @@
+docs/notes/2026-07-04.md
+  s_38241583402686::t_0a04f3262be950 52-62
+docs/site/specs/hlp.md
+  s_38241583402686::t_f8b128e814e38b 565-584
+docs/specs/HLP.md
+  s_38241583402686::t_8ff9c4b2a7b46d 582-603
+loops/__init__.py
+  s_38241583402686::t_b9a0f280810a7f 39-40,106-107
+loops/hlp/__init__.py
+  s_38241583402686::t_772e1617a8bf68 75-76,120-121
+loops/hlp/types.py
+  s_38241583402686::t_90fe9b042e7f45 6-9,22-23,28-35,39-58
+scripts/check_release_metadata.py
+  s_38241583402686::t_9c906690ebeb87 16,72-88
+scripts/check_spec_site_sync.py
+  s_38241583402686::t_f2fedd4ffe4554 53-54
+tests/test_hlp_protocol.py
+  s_38241583402686::t_9722941dde3679 27-28,83-84,94-95,125-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "65d2953693de9afc5bc1c281ca4a4afff4d5f001",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
