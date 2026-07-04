@@ -94,6 +94,60 @@ def test_hlp_integrated_profile_rejects_mismatched_harness_correlation():
     with pytest.raises(ProtocolError) as exc:
         run(client.project_harness_events(handle.run_id))
     assert exc.value.code == "CONFLICT"
+    retained = run(adapter.peek_events(handle.run_id))
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in retained] == [
+        ("evt_000001", "Bad task id"),
+    ]
+
+
+def test_hlp_integrated_profile_cursor_ack_is_forward_only_per_run():
+    adapter = FakeHarnessAdapter()
+    run_id = run(adapter.delegate(
+        task_id="task_ack",
+        agent_id="agent_harness",
+        capability="conformance",
+        input={"goal": "ack"},
+    ))
+    other_run_id = run(adapter.delegate(
+        task_id="task_other",
+        agent_id="agent_harness",
+        capability="conformance",
+        input={"goal": "other"},
+    ))
+
+    adapter.queue_event(run_id, HarnessEvent(
+        kind="needs_input",
+        task_id="task_ack",
+        run_id=run_id,
+        agent_id="agent_harness",
+        prompt="First event",
+    ))
+    adapter.queue_event(run_id, HarnessEvent(
+        kind="needs_input",
+        task_id="task_ack",
+        run_id=run_id,
+        agent_id="agent_harness",
+        prompt="Second event",
+    ))
+    adapter.queue_event(other_run_id, HarnessEvent(
+        kind="needs_input",
+        task_id="task_other",
+        run_id=other_run_id,
+        agent_id="agent_harness",
+        prompt="Other run event",
+    ))
+
+    first = run(adapter.peek_events(run_id, limit=1))[0]
+    run(adapter.ack_events(run_id, through=first.cursor))
+
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in run(adapter.peek_events(run_id))] == [
+        ("evt_000002", "Second event"),
+    ]
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in run(adapter.peek_events(other_run_id))] == [
+        ("evt_000003", "Other run event"),
+    ]
+    with pytest.raises(AgentAdapterError):
+        run(adapter.ack_events(run_id, through=first.cursor))
 
 
 def test_hlp_integrated_profile_process_adapter_requires_external_run_id():

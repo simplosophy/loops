@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .adapters import AgentAdapter, AgentRunHandle, FakeAgentAdapter, HarnessAdapter
+from .adapters import AgentAdapter, AgentRunHandle, FakeAgentAdapter
 from .events import EventBus, HLPEvent, InMemoryEventBus
 from .objects import (
     Artifact,
@@ -22,7 +22,14 @@ from .objects import (
 )
 from .operations import HumanLoopOperations
 from .store import HumanLoopStore
-from .types import CheckpointKind, CheckpointResolutionAction, ReviewKind, ReviewVerdict, SteeringIntent
+from .types import (
+    CheckpointKind,
+    CheckpointResolutionAction,
+    ProtocolError,
+    ReviewKind,
+    ReviewVerdict,
+    SteeringIntent,
+)
 
 
 @dataclass
@@ -289,12 +296,29 @@ class HLPClient:
 
     async def project_harness_events(self, run_id: str) -> list[Any]:
         """Project existing harness events into HLP human-loop objects."""
-        if not isinstance(self.adapter, HarnessAdapter):
+        observe = getattr(self.adapter, "observe", None)
+        if observe is None:
             raise RuntimeError("adapter does not expose harness events")
 
+        peek_events = getattr(self.adapter, "peek_events", None)
+        ack_events = getattr(self.adapter, "ack_events", None)
+        reliable_delivery = callable(peek_events) and callable(ack_events)
+        events = (
+            await peek_events(run_id)
+            if reliable_delivery
+            else await observe(run_id)
+        )
+
         projected: list[Any] = []
-        for event in await self.adapter.observe(run_id):
+        for delivery in events:
+            cursor = delivery.cursor if reliable_delivery else ""
+            event = delivery.event if reliable_delivery else delivery
             self._validate_harness_event_correlation(run_id, event)
+            if reliable_delivery and not cursor:
+                raise ProtocolError(
+                    "INVALID_SPEC",
+                    "peeked harness event must include cursor",
+                )
             if event.kind in ("needs_approval", "needs_choice", "needs_input"):
                 checkpoint_kind = {
                     "needs_approval": "approval",
@@ -321,6 +345,8 @@ class HLPClient:
                     ),
                     produced_by=event.agent_id,
                 ))
+            if reliable_delivery:
+                await ack_events(run_id, through=cursor)
         return projected
 
     async def human_inbox(self, principal: str) -> list[HumanInboxItem]:
@@ -379,16 +405,12 @@ class HLPClient:
 
     def _validate_harness_event_correlation(self, run_id: str, event: Any) -> None:
         if event.run_id and event.run_id != run_id:
-            from .types import ProtocolError
-
             raise ProtocolError(
                 "CONFLICT",
                 f"harness event run correlation mismatch: expected {run_id}, got {event.run_id}",
             )
         expected_task = self.store.task_of_run(run_id)
         if expected_task is not None and event.task_id != expected_task:
-            from .types import ProtocolError
-
             raise ProtocolError(
                 "CONFLICT",
                 "harness event task correlation mismatch: "

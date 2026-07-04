@@ -260,6 +260,243 @@ def test_harness_event_projection_rejects_mismatched_task_correlation():
         raise AssertionError("expected ProtocolError for mismatched task correlation")
 
 
+def test_harness_event_projection_peeks_until_successful_ack():
+    adapter = FakeHarnessAdapter()
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Protect event delivery",
+    ))
+    handle = run(client.delegate(task.id, "agent_harness"))
+    run(client.start(task.id))
+
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_input",
+        task_id="task_other",
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="This should not be consumed on projection failure.",
+    ))
+
+    try:
+        run(client.project_harness_events(handle.run_id))
+    except ProtocolError as exc:
+        assert exc.code == "CONFLICT"
+    else:
+        raise AssertionError("expected ProtocolError for mismatched task correlation")
+
+    deliveries = run(adapter.peek_events(handle.run_id))
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in deliveries] == [
+        (
+            "evt_000001",
+            "This should not be consumed on projection failure.",
+        ),
+    ]
+
+    run(adapter.ack_events(handle.run_id, through=deliveries[0].cursor))
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_input",
+        task_id=task.id,
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="Need deployment target.",
+    ))
+
+    projected = run(client.project_harness_events(handle.run_id))
+
+    assert projected[0].prompt == "Need deployment target."
+    assert run(adapter.peek_events(handle.run_id)) == ()
+
+
+def test_fake_harness_peek_is_nondestructive_until_ack():
+    adapter = FakeHarnessAdapter()
+    run_id = run(adapter.delegate(
+        task_id="task_delivery",
+        agent_id="agent_harness",
+        capability="",
+        input={"goal": "delivery"},
+    ))
+
+    adapter.queue_event(run_id, HarnessEvent(
+        kind="needs_approval",
+        task_id="task_delivery",
+        run_id=run_id,
+        agent_id="agent_harness",
+        prompt="Approve?",
+    ))
+
+    first_peek = run(adapter.peek_events(run_id))
+    second_peek = run(adapter.peek_events(run_id))
+
+    assert first_peek == second_peek
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in first_peek] == [
+        ("evt_000001", "Approve?"),
+    ]
+
+    run(adapter.ack_events(run_id, through=first_peek[0].cursor))
+
+    assert run(adapter.peek_events(run_id)) == ()
+
+
+def test_project_harness_events_acks_only_successful_prefix():
+    adapter = FakeHarnessAdapter()
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Project prefix",
+    ))
+    handle = run(client.delegate(task.id, "agent_harness"))
+    run(client.start(task.id))
+
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_input",
+        task_id=task.id,
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="Need region.",
+    ))
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_input",
+        task_id="task_other",
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="This event should remain queued.",
+    ))
+
+    try:
+        run(client.project_harness_events(handle.run_id))
+    except ProtocolError as exc:
+        assert exc.code == "CONFLICT"
+    else:
+        raise AssertionError("expected ProtocolError for mismatched task correlation")
+
+    deliveries = run(adapter.peek_events(handle.run_id))
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in deliveries] == [
+        ("evt_000002", "This event should remain queued."),
+    ]
+
+
+def test_codex_harness_peek_ack_replays_until_ack():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join((
+                json.dumps({
+                    "type": "hlp.event",
+                    "run_id": "codex_run_delivery",
+                    "correlation_id": request["correlation_id"],
+                    "hlp": {
+                        "kind": "needs_input",
+                        "agent_id": request["agent_id"],
+                        "prompt": "Need target branch.",
+                    },
+                }),
+                json.dumps({
+                    "type": "turn.completed",
+                    "run_id": "codex_run_delivery",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }),
+            )),
+            stderr="",
+        )
+
+    adapter = CodexHarnessAdapter(
+        command=("codex", "exec", "--json"),
+        runner=runner,
+    )
+
+    run_id = run(adapter.delegate(
+        task_id="task_codex_delivery",
+        agent_id="agent_codex",
+        capability="event-delivery",
+        input={"goal": "delivery"},
+    ))
+    first_peek = run(adapter.peek_events(run_id))
+    second_peek = run(adapter.peek_events(run_id))
+
+    assert [(delivery.cursor, delivery.event.prompt) for delivery in first_peek] == [
+        ("evt_000001", "Need target branch."),
+    ]
+    assert second_peek == first_peek
+
+    run(adapter.ack_events(run_id, through=first_peek[0].cursor))
+
+    assert run(adapter.peek_events(run_id)) == ()
+    assert adapter._codex_events == {}
+
+
+class LegacyObserveHarness(FakeAgentAdapter):
+    def __init__(self):
+        super().__init__()
+        self._events = {}
+
+    def queue_event(self, run_id, event):
+        self._require_run(run_id, "queue_event")
+        self._events.setdefault(run_id, []).append(event)
+
+    async def observe(self, run_id):
+        self._require_run(run_id, "observe")
+        return tuple(self._events.pop(run_id, ()))
+
+
+def test_legacy_observe_adapter_still_projects_without_peek_ack():
+    adapter = LegacyObserveHarness()
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Legacy observe",
+    ))
+    handle = run(client.delegate(task.id, "agent_legacy"))
+    run(client.start(task.id))
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_approval",
+        task_id=task.id,
+        run_id=handle.run_id,
+        agent_id=handle.agent_id,
+        prompt="Approve legacy event?",
+    ))
+
+    projected = run(client.project_harness_events(handle.run_id))
+
+    assert projected[0].prompt == "Approve legacy event?"
+    assert not hasattr(adapter, "peek_events")
+
+
+def test_harness_event_projection_does_not_ack_run_correlation_failure():
+    adapter = FakeHarnessAdapter()
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Protect run correlation",
+    ))
+    handle = run(client.delegate(task.id, "agent_harness"))
+    run(client.start(task.id))
+
+    adapter.queue_event(handle.run_id, HarnessEvent(
+        kind="needs_input",
+        task_id=task.id,
+        run_id="run_other",
+        agent_id=handle.agent_id,
+        prompt="This run mismatch should remain queued.",
+    ))
+
+    try:
+        run(client.project_harness_events(handle.run_id))
+    except ProtocolError as exc:
+        assert exc.code == "CONFLICT"
+    else:
+        raise AssertionError("expected ProtocolError for mismatched run correlation")
+
+    assert [delivery.event.prompt for delivery in run(adapter.peek_events(handle.run_id))] == [
+        "This run mismatch should remain queued.",
+    ]
+
+
 def test_fake_agent_adapter_records_contract_calls():
     adapter = FakeAgentAdapter()
 

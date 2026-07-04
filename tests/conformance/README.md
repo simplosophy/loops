@@ -13,7 +13,14 @@ Profiles covered here:
 - `HLP-compatible`: object model, 23 operations, state machine, immutability,
   preconditions, audit, and replay.
 - `HLP-integrated`: adapter correlation, block/resume/steer contract calls, and
-  harness event projection into checkpoints and artifacts.
+  harness event projection into checkpoints and artifacts. Event-streaming
+  integrations must retain unacknowledged events when projection fails and move
+  per-run cursors forward only after successful projection.
+
+`HLP-compatible` and `HLP-integrated` do not imply `HLP-industrial`. Industrial
+claims additionally need a documented production profile for CAS, idempotency,
+durable outbox, reducer-ready audit payloads, permission grammar, schema
+envelopes, and version negotiation.
 
 The suite is intentionally offline. Real local CLI smoke tests remain opt-in
 because they depend on user-installed Codex/Kimi/Claude binaries and credentials.

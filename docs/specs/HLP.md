@@ -534,6 +534,30 @@ HLP。参考实现的上行公开边界命名为 `HarnessAdapter`。
 HLP **MUST NOT** 要求 harness 暴露 prompt、memory、tool trace、planner state
 等内部执行细节。HLP 只接收足以形成人类决策、验收和审计的语义事件。
 
+#### 5.2.1 可靠事件投递
+
+当 harness adapter 以事件流方式投影 human-facing 事件时，实现 **SHOULD** 支持
+非破坏式读取和显式确认：
+
+```yaml
+HarnessEventDelivery:
+  cursor: string              # run 内稳定、单调前进的确认游标
+  event: HarnessEvent         # needs_approval / needs_choice / needs_input / artifact
+```
+
+可选可靠投递扩展：
+
+| 方法 | 语义 |
+| --- | --- |
+| `peek_events(run_id, cursor?, limit?)` | 返回未确认的 `HarnessEventDelivery`，**MUST NOT** 消费事件 |
+| `ack_events(run_id, through)` | 确认同一 run 内直到 `through` 的前缀事件 |
+
+`HLP-integrated` 实现如果声明 event-streaming 能力，投影失败（correlation 冲突、
+前置条件失败、adapter/block/commit 失败等）**MUST NOT** ack 对应事件。成功投影
+后的事件 **SHOULD** 立即 ack；批量投影时 **MAY** ack 已成功的前缀，并保留失败事件
+及其后续事件。旧的 `observe(run_id)` 仍可作为嵌入式或测试用破坏式读取接口，但
+不能作为工业可靠投递的唯一证据。
+
 ### 5.3 HLP → Channel / UI
 
 HLP 只产出事件，不负责送达。以下事件 **MAY** 被转译为 channel 通知：
@@ -605,6 +629,8 @@ ProtocolError:
 - 实现记录 audit event 与业务操作 **SHOULD** 是原子的（audit 失败则业务回滚）。
 - 实现对 Task 状态转移 **MUST** 是原子的（状态、ownership、audit 三者一致）。
 - 当协议操作依赖外部 agent harness adapter 时，adapter 调用失败 **MUST NOT** 让 HLP 状态、ownership、checkpoint、audit 或 run binding 进入成功状态。生产实现 **SHOULD** 使用事务 outbox 与幂等 key；嵌入式实现 **MAY** 先调用 adapter，成功后再提交本地状态。
+- 当 harness event 通过可靠投递扩展投影到 HLP 时，实现 **MUST** 在投影成功后才
+  ack；投影失败时事件 **MUST** 保留为未确认状态。
 - SDK/read API **SHOULD** 返回 read snapshot，避免调用方绕过状态机和 audit 直接修改内部 aggregate。
 
 ---
@@ -653,11 +679,17 @@ HLP v1 的 Task 能否被 v2 的 agent 执行？语义版本 + 向后兼容的�
 7. 通过 §5 集成契约（若接入既有 agent harness 或 capability ecosystem）
 8. 支持 `task.interrupt`（人发起打断）与 `task.amend`（转向不重启）的完整语义，
    包括 `steer` adapter 动作与 `state_patch`/`edited_artifact_ref` resume 语义
+9. 若声明 event-streaming integration，必须支持 §5.2.1 的非破坏式
+   `HarnessEventDelivery` 投递与成功后 ack 语义
 
 实现 **MAY**：
 - 选择任意 transport（§7.1）
 - 自定义 Task `type` 和 Artifact `type` 扩展
 - 自行决定开放议题（§7）的策略
+
+`HLP-compatible` / `HLP-integrated` 不等同于 `HLP-industrial`。工业级声明需要
+额外证明 per-task CAS、idempotency key、durable outbox、reducer-ready audit
+payload、permission scope grammar、object/wire JSON schema 与 version negotiation。
 
 ---
 

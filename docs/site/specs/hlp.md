@@ -549,6 +549,31 @@ schema interpretation, authorization, and invocation belong to the agent
 harness, host platform, or L0 ecosystem. HLP may only store opaque external
 references needed for human decision evidence or audit replay.
 
+### Reliable Harness Event Delivery
+
+Harness adapters that project human-facing event streams **SHOULD** support
+non-destructive read plus explicit acknowledgement:
+
+```yaml
+HarnessEventDelivery:
+  cursor: string
+  event: HarnessEvent
+```
+
+| Method | Meaning |
+| --- | --- |
+| `peek_events(run_id, cursor?, limit?)` | Return unacknowledged `HarnessEventDelivery` values without consuming them |
+| `ack_events(run_id, through)` | Acknowledge the per-run event prefix through `through` |
+
+An `HLP-integrated` implementation that claims event-streaming support **MUST
+NOT** acknowledge an event when projection fails due to correlation mismatch,
+precondition failure, adapter failure, or commit failure. After successful
+projection, the implementation **SHOULD** acknowledge the event immediately. In
+batch projection, it **MAY** acknowledge the successful prefix and retain the
+failed event plus later events. Legacy `observe(run_id)` may remain available as
+a destructive embedded/test helper, but it is not sufficient evidence for
+industrial reliable delivery.
+
 ## Errors
 
 | Code | Meaning |
@@ -585,6 +610,10 @@ the field for a transport-specific reason.
 State transition, ownership update, and audit append **SHOULD** be atomic from
 the caller's perspective.
 
+When harness events use reliable delivery, event acknowledgement **MUST** happen
+only after successful HLP projection. Failed projection **MUST** leave the event
+unacknowledged.
+
 ## Conformance
 
 An implementation claiming HLP 0.2.0-draft compatibility **MUST**:
@@ -601,6 +630,14 @@ An implementation claiming HLP 0.2.0-draft compatibility **MUST**:
 8. Support the full semantics of `task.interrupt` (human-initiated pause) and
    `task.amend` (steering without restart), including the `steer` adapter
    action and `state_patch` / `edited_artifact_ref` resume semantics.
+9. If claiming event-streaming integration, support non-destructive
+   `HarnessEventDelivery` projection and acknowledge events only after
+   successful HLP projection.
+
+`HLP-compatible` and `HLP-integrated` claims do not imply `HLP-industrial`.
+Industrial claims additionally require per-task CAS, idempotency keys, durable
+outbox, reducer-ready audit payloads, permission scope grammar, object/wire
+JSON schemas, and version negotiation evidence.
 
 ## Open Issues
 

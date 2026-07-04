@@ -52,6 +52,9 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("AgentAdapter steer", has_adapter_steer),
     ("ProtocolError wire object", has_literal("ProtocolError")),
     ("schema_version", has_literal("schema_version")),
+    ("HarnessEventDelivery", has_literal("HarnessEventDelivery")),
+    ("peek_events", has_literal("peek_events")),
+    ("HLP-industrial", has_literal("HLP-industrial")),
 ]
 
 

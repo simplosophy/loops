@@ -73,6 +73,16 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
 - permission scope grammar、deny precedence、grant expiry 和授权主体规则。
 - object/wire JSON schema、error object、version negotiation。
 
+状态：
+- 已完成 reference slice：`HarnessEventDelivery(cursor, event)`、可选
+  `peek_events` / `ack_events`、Fake/Codex harness adapter 支持非破坏式读取，
+  `HLPClient.project_harness_events` 成功投影后才 ack，失败保留未确认事件。
+- 已完成文档边界：`HLP-compatible` / `HLP-integrated` 不等同于
+  `HLP-industrial`；工业声明还需要 CAS、idempotency、durable outbox、
+  reducer-ready audit、permission grammar、schema 与 version negotiation 证据。
+- 未完成：per-task CAS / idempotency key / durable outbox；该部分需要单独设计
+  `Task.revision`、operation fingerprint、幂等记录和 adapter 幂等上下文。
+
 ## 本轮执行边界
 
 本轮先完成 Phase 1 的代码、测试、架构文档同步和 notes。Phase 2/3 只记录后续

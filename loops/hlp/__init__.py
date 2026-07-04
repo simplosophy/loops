@@ -15,6 +15,7 @@ from .adapters import (
     HarnessAdapter,
     HarnessCapabilities,
     HarnessEvent,
+    HarnessEventDelivery,
     HermesCLIAdapter,
     HermsCLIAdapter,
     InMemoryAgentAdapter,
@@ -26,6 +27,7 @@ from .adapters import (
     ProcessResult,
     PromptCLIAdapter,
     PythonCallableAgentAdapter,
+    ReliableHarnessEventAdapter,
 )
 from .audit import AuditEvent, AuditLog
 from .events import EventBus, HLPEvent, InMemoryEventBus
@@ -116,6 +118,7 @@ __all__ = [
     "HarnessCapabilities",
     "HarnessConformance",
     "HarnessEvent",
+    "HarnessEventDelivery",
     "HarnessEventKind",
     "HLP_SCHEMA_VERSION",
     "HLP_SPEC_VERSION",
@@ -147,6 +150,7 @@ __all__ = [
     "PromptCLIAdapter",
     "ProtocolError",
     "PythonCallableAgentAdapter",
+    "ReliableHarnessEventAdapter",
     "Review",
     "ReviewComment",
     "SteeringAmendment",

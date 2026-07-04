@@ -13,10 +13,15 @@ Normative keywords on this site follow RFC 2119 usage: **MUST**, **MUST NOT**,
 | --- | --- |
 | HLP-compatible | The implementation supports the HLP object model, operations, state machine, immutability, and audit requirements. |
 | HLP-integrated | The implementation is HLP-compatible and preserves HLP contracts through one or more agent/capability adapters. |
+| HLP-industrial | A separate production profile covering CAS, idempotency, durable outbox, reducer-ready audit, permission grammar, schema envelopes, and version negotiation. |
 
 Do not claim HLP integration if the lower harness loses HLP task correlation,
 lets agents bypass human checkpoints, or cannot project human-facing harness
 events into HLP objects.
+
+Do not claim `HLP-compatible` or `HLP-integrated` as evidence for
+`HLP-industrial`; the industrial profile requires explicit production
+consistency and durability evidence.
 
 ## Executable Suite
 
@@ -31,8 +36,9 @@ claim: required objects, all 23 operations, state transitions, immutable records
 preconditions, audit query/replay, and the 0.2.0 continuous-control values.
 
 `tests/conformance/test_hlp_integrated_profile.py` exercises the HLP-integrated
-claim: adapter correlation, checkpoint/artifact projection, resume payloads, and
-fail-fast behavior when an external process adapter does not return a run id.
+claim: adapter correlation, checkpoint/artifact projection, resume payloads,
+reliable event cursor acknowledgement, and fail-fast behavior when an external
+process adapter does not return a run id.
 
 ## HLP 0.2.0-draft Requirements
 
@@ -67,6 +73,7 @@ contracts it uses:
 | TaskID correlation | Every delegated run/event carries the HLP `Task.id` as correlation. |
 | Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
 | Harness event projection | Approval, input, choice, and artifact events become HLP checkpoints or artifacts. |
+| Reliable event delivery | Event-streaming adapters retain unacknowledged events on projection failure and acknowledge only successful per-run prefixes. |
 | Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |
 | External evidence reference | Capability evidence, when used, is stored as opaque external references without transport endpoints. |
 
