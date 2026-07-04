@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -8,7 +9,11 @@ from loops.hlp import (
     ArtifactPayload,
     FakeAgentAdapter,
     HumanLoopOperations,
+    PermissionGrant,
     ProtocolError,
+    ProposedAction,
+    is_permission_scope_pre_authorized,
+    permission_scope_matches,
 )
 
 
@@ -196,3 +201,63 @@ def test_artifact_commit_replay_returns_same_artifact_and_does_not_create_v2():
     assert replay == first
     assert replay.version == "v1"
     assert run(ops.task_get(task.id)).artifacts == [first.id]
+
+
+def test_permission_scope_grammar_normalizes_and_rejects_invalid_scopes():
+    grant = PermissionGrant(
+        scope=" fs:/repo/main:* ",
+        decision="allow",
+        granted_by="user_alice",
+    )
+
+    assert grant.scope == "fs:/repo/main:*"
+    assert permission_scope_matches("fs:/repo/main:*", "fs:/repo/main/file.py")
+    assert not permission_scope_matches("fs:/repo/main:*", "net:https://example.com")
+
+    with pytest.raises(ProtocolError) as exc:
+        PermissionGrant(scope="fs repo write", decision="allow", granted_by="user_alice")
+    assert exc.value.code == "INVALID_SPEC"
+
+
+def test_permission_scope_deny_precedence_and_expiry():
+    now = datetime.now(timezone.utc)
+    grants = (
+        PermissionGrant(
+            scope="fs:/repo:*",
+            decision="allow",
+            until="task",
+            granted_by="user_alice",
+        ),
+        PermissionGrant(
+            scope="fs:/repo/secrets:*",
+            decision="deny",
+            until="task",
+            granted_by="user_alice",
+        ),
+        PermissionGrant(
+            scope="net:https://api.example.com/*",
+            decision="allow",
+            until=now - timedelta(seconds=1),
+            granted_by="user_alice",
+        ),
+    )
+
+    assert is_permission_scope_pre_authorized(grants, "fs:/repo/src/app.py", at=now)
+    assert not is_permission_scope_pre_authorized(grants, "fs:/repo/secrets/key.txt", at=now)
+    assert not is_permission_scope_pre_authorized(
+        grants,
+        "net:https://api.example.com/users",
+        at=now,
+    )
+    assert not is_permission_scope_pre_authorized(grants, "tool:mcp/git.apply", at=now)
+
+
+def test_proposed_action_carries_permission_scope_for_grant_matching():
+    action = ProposedAction(
+        id="apply_patch",
+        kind="tool",
+        summary="Apply generated patch",
+        permission_scope="fs:/repo:*",
+    )
+
+    assert action.permission_scope == "fs:/repo:*"

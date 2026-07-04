@@ -10,6 +10,7 @@ from ._ids import (
     gen_ledger_id,
     gen_task_id,
 )
+from .permissions import normalize_permission_scope
 from .types import (
     AutonomyTier,
     CheckpointKind,
@@ -81,6 +82,9 @@ class PermissionGrant:
     granted_by: str = ""
     granted_at: datetime = field(default_factory=_now)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "scope", normalize_permission_scope(self.scope))
+
 
 @dataclass(frozen=True)
 class Constraints:
@@ -105,8 +109,17 @@ class ProposedAction:
     id: str
     kind: str
     summary: str
+    permission_scope: str | None = None
     detail: dict[str, Any] | None = None
     risk: ProposedActionRisk = "medium"
+
+    def __post_init__(self) -> None:
+        if self.permission_scope is not None:
+            object.__setattr__(
+                self,
+                "permission_scope",
+                normalize_permission_scope(self.permission_scope),
+            )
 
 
 @dataclass(frozen=True)

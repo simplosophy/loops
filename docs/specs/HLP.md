@@ -79,8 +79,8 @@ HLP 是**只前进协议**（forward-only protocol）：
   向 `steering_log` 追加 amendment（不改 `spec`）；需要彻底重启时才
   `task.cancel` + 新建。
 - `steering_log` **MUST** append-only，amendment **MUST NEVER** 删除或修改。
-- `PermissionGrant` **MUST** append-only；撤销靠追加 `decision="deny"` 条目，
-  同 scope 以 last-write-wins 取生效决策。
+- `PermissionGrant` **MUST** append-only；撤销靠追加 active matching
+  `decision="deny"` 条目，授权判断中 deny 优先于 allow。
 - Artifact 创建后 **MUST NOT** 修改。要改就 commit 新版本。
 - Ledger 条目 **MUST NOT** 删除。纠错靠追加新条目。
 - Review 提交后 **MUST NOT** 修改。要改意见就追加新 Review。
@@ -159,6 +159,16 @@ PermissionGrant:
   until: "session" | "task" | timestamp  # 生效区间
   granted_by: user_
   granted_at: timestamp
+
+Permission scope grammar:
+  scope: "*" | namespace ":" target ["*"]
+  namespace: [a-z][a-z0-9_-]*
+  target: non-empty string without whitespace
+
+`scope` 保存前 **MUST** trim/normalize。`*` 只能作为全局 scope 或后缀通配符；
+`fs:/repo:*` 这类后缀通配 **MAY** 匹配 `fs:/repo/file.py`。授权判断时，过期
+grant **MUST** 被忽略；active matching deny **MUST** 优先于 active matching allow；
+没有 active allow 时视为未预授权。
 
 ExternalRef:
   kind: string                 # 如 "capability", "dataset", "policy"
@@ -270,6 +280,7 @@ ProposedAction:
   id: string                   # REQUIRED
   kind: string                 # "shell" | "file_write" | "tool_call" | "plan_step" | ...
   summary: string              # REQUIRED, 给人看的一句话
+  permission_scope: string | null  # 用于和 PermissionGrant 确定性匹配
   detail: object | null        # 实现定义详情 (命令、diff 预览等)
   risk: "low" | "medium" | "high"
 

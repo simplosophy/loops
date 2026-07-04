@@ -84,6 +84,8 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
   task-scoped `idempotency_key`、canonical request fingerprint 与 replay 记录。
   当前覆盖 `task.amend`、`task.interrupt`、`checkpoint.resolve` 和
   `artifact.commit`，并通过 SQLite snapshot 持久化 reference idempotency records。
+- 已完成 reference slice：permission scope grammar、normalize/match helper、
+  grant expiry、active deny precedence，以及 `ProposedAction.permission_scope`。
 - 未完成：durable outbox 与 adapter 幂等上下文；这部分需要把 operation id /
   idempotency context 传入外部 harness，解决 adapter side effect 成功但本地提交前
   崩溃的重复副作用问题。

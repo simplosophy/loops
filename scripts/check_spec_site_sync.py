@@ -57,6 +57,8 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("HLP-industrial", has_literal("HLP-industrial")),
     ("expected_task_revision", has_literal("expected_task_revision")),
     ("idempotency_key", has_literal("idempotency_key")),
+    ("permission_scope", has_literal("permission_scope")),
+    ("Permission scope grammar", has_literal("Permission scope grammar")),
 ]
 
 

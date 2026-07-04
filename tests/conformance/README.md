@@ -18,7 +18,8 @@ Profiles covered here:
   per-run cursors forward only after successful projection.
 - `HLP-industrial` reference slice: per-task revision, task-scoped
   idempotency-key replay, stale revision conflicts before adapter calls, and
-  stable replay for generated checkpoints/artifacts.
+  stable replay for generated checkpoints/artifacts. It also covers permission
+  scope grammar, wildcard matching, expiry, and deny precedence.
 
 `HLP-compatible` and `HLP-integrated` do not imply `HLP-industrial`. Industrial
 claims additionally need a documented production profile for CAS, idempotency,

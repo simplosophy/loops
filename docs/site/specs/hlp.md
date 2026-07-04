@@ -85,8 +85,8 @@ HLP is forward-only:
 - `steering_log` **MUST** be append-only; amendments **MUST NEVER** be deleted
   or modified.
 - `PermissionGrant` entries **MUST** be append-only; revocation appends a
-  `decision="deny"` entry, and the effective decision per scope is
-  last-write-wins.
+  matching active `decision="deny"` entry. Authorization evaluation gives deny
+  precedence over allow.
 - Artifact versions **MUST NOT** change after `artifact.commit`.
 - Review records **MUST NOT** change after `review.submit`.
 - Ledger entries **MUST NOT** be deleted.
@@ -166,6 +166,17 @@ PermissionGrant:
   granted_by: user_
   granted_at: timestamp
 
+Permission scope grammar:
+  scope: "*" | namespace ":" target ["*"]
+  namespace: [a-z][a-z0-9_-]*
+  target: non-empty string without whitespace
+
+`scope` **MUST** be trimmed and normalized before storage. `*` is valid only as
+a global scope or suffix wildcard; `fs:/repo:*` **MAY** match
+`fs:/repo/file.py`. Expired grants **MUST** be ignored. Active matching denies
+**MUST** take precedence over active matching allows. No active allow means the
+scope is not pre-authorized.
+
 ExternalRef:
   kind: string
   namespace: string
@@ -182,9 +193,9 @@ Rules:
 - `steering_log` **MUST** be append-only. `task.amend` is callable in
   `in_progress` or `blocked` and **MUST NOT** be called in a terminal state.
 - `autonomy` sets a baseline autonomy tier; `grants` refine it (allow-always /
-  deny). The effective decision per scope is last-write-wins. A harness **MUST**
-  consult `grants` before executing a proposed action: an allowed scope **MAY**
-  skip a checkpoint; a denied scope **MUST NOT** execute.
+  deny). A harness **MUST** consult active matching `grants` before executing a
+  proposed action: an allowed scope **MAY** skip a checkpoint; a denied scope
+  **MUST NOT** execute.
 - `external_refs` **MAY** record opaque external evidence for human decisions
   and audit, but HLP **MUST NOT** interpret or invoke referenced systems.
 - `ownership.principal` **MUST** be set at creation and **MUST NEVER** change.
@@ -271,6 +282,7 @@ ProposedAction:
   id: string
   kind: string
   summary: string
+  permission_scope: string | null
   detail: object | null
   risk: "low" | "medium" | "high"
 

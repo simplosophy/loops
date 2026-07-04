@@ -59,6 +59,11 @@ from .objects import (
     TaskSpec,
 )
 from .operations import HumanLoopOperations
+from .permissions import (
+    is_permission_scope_pre_authorized,
+    normalize_permission_scope,
+    permission_scope_matches,
+)
 from .sdk import HLPClient
 from .sqlite_store import SQLiteHumanLoopStore
 from .state_machine import (
@@ -137,6 +142,7 @@ __all__ = [
     "InMemoryEventBus",
     "InputRef",
     "IdempotencyRecord",
+    "is_permission_scope_pre_authorized",
     "KimiCLIAdapter",
     "Ledger",
     "LedgerEntry",
@@ -146,6 +152,8 @@ __all__ = [
     "Ownership",
     "OwnershipTransfer",
     "PermissionGrant",
+    "permission_scope_matches",
+    "normalize_permission_scope",
     "ProposedAction",
     "ProcessAgentAdapter",
     "ProcessResult",

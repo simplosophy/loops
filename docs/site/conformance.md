@@ -43,7 +43,8 @@ process adapter does not return a run id.
 `tests/conformance/test_hlp_industrial_profile.py` exercises the current
 industrial reference slice: per-task revision, stale revision conflicts before
 adapter calls, task-scoped idempotency-key replay, and stable replay for
-generated checkpoints and artifacts.
+generated checkpoints and artifacts. It also covers permission scope grammar,
+wildcard matching, grant expiry, and deny precedence.
 
 ## HLP 0.2.0-draft Requirements
 
@@ -80,6 +81,7 @@ contracts it uses:
 | Harness event projection | Approval, input, choice, and artifact events become HLP checkpoints or artifacts. |
 | Reliable event delivery | Event-streaming adapters retain unacknowledged events on projection failure and acknowledge only successful per-run prefixes. |
 | Task CAS and idempotency | Task aggregate mutations expose `revision`, reject stale `expected_task_revision`, and replay matching `idempotency_key` requests without duplicate side effects. |
+| Permission scope grammar | Grants normalize scope strings, ignore expired grants, and give active matching deny entries precedence over allow entries. |
 | Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |
 | External evidence reference | Capability evidence, when used, is stored as opaque external references without transport endpoints. |
 
