@@ -1,0 +1,62 @@
+README.md
+  s_38241583402686::t_b87daaaa41d608 225-226,229-238
+docs/notes/2026-07-04.md
+  s_38241583402686::t_bd18454230e54a 28-51
+docs/plans/2026-07-04-hlp-industrial-hardening.md
+  s_38241583402686::t_8425dcd23e8a96 63-64
+docs/site/conformance.md
+  s_38241583402686::t_210440fb283905 21-36,84-90
+docs/site/specs/hlp.md
+  s_38241583402686::t_a0c0829b746436 11
+docs/specs/HLP.md
+  s_38241583402686::t_efee6a8ec57ed0 6
+package-lock.json
+  s_38241583402686::t_fb32e8b02b58d4 3,9
+package.json
+  s_38241583402686::t_c1cd056002f4d6 3,10
+pyproject.toml
+  s_38241583402686::t_460abe9cf986eb 3
+scripts/check_release_metadata.py
+  s_38241583402686::t_3c5862288c4193 1-108
+scripts/check_spec_site_sync.py
+  s_a010c2c9f8172b::t_7aca0ad6cd9b58 1-82
+tests/conformance/README.md
+  s_38241583402686::t_9b0d47840ee73d 1-19
+tests/conformance/test_hlp_compatible_profile.py
+  s_38241583402686::t_6aac2f3f13d16c 1-303
+tests/conformance/test_hlp_integrated_profile.py
+  s_38241583402686::t_0f10bd9ff55235 1-119
+uv.lock
+  s_38241583402686::t_a7adbed16c56eb 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "21ac0f645bc5a0db492714fa5b2b7e398b03f195",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    },
+    "s_a010c2c9f8172b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c4e-ba8d-7350-9be6-7bb297e416b2",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
