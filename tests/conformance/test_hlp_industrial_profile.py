@@ -13,12 +13,18 @@ from loops.hlp import (
     HLP_SCHEMA_VERSION,
     HLP_SPEC_VERSION,
     FakeAgentAdapter,
+    HLPClient,
     HumanLoopOperations,
     PermissionGrant,
     ProtocolError,
     ProposedAction,
     ArtifactRef,
+    AdapterOperationContext,
+    AdapterOutboxRecord,
     OwnershipTransfer,
+    ProcessAgentAdapter,
+    ProcessResult,
+    SQLiteHumanLoopStore,
     is_permission_scope_pre_authorized,
     negotiate_hlp_version,
     permission_scope_matches,
@@ -307,6 +313,8 @@ def test_json_schema_registry_covers_industrial_wire_objects():
         "HarnessEventDelivery",
         "PermissionGrant",
         "ProposedAction",
+        "AdapterOperationContext",
+        "AdapterOutboxRecord",
         "VersionNegotiation",
     }
 
@@ -327,6 +335,25 @@ def test_json_schema_registry_covers_industrial_wire_objects():
         "schema_version": HLP_SCHEMA_VERSION,
         "profile": HLP_PROFILE,
     })
+
+    adapter_context = AdapterOperationContext(
+        operation_id="op_schema",
+        task_id="task_schema",
+        correlation_id="task_schema",
+        operation="task.amend",
+        idempotency_key=None,
+        request_fingerprint="fingerprint",
+        task_revision=4,
+    )
+    validate_wire_object("AdapterOperationContext", to_wire(adapter_context))
+    validate_wire_object("AdapterOutboxRecord", to_wire(AdapterOutboxRecord(
+        operation_id="op_schema",
+        task_id="task_schema",
+        operation="task.amend",
+        request_fingerprint="fingerprint",
+        context=adapter_context,
+        request={"adapter_action": "steer"},
+    )))
 
     schema = schema_for("ProtocolError")
     assert schema["properties"]["spec_version"]["const"] == HLP_SPEC_VERSION
@@ -398,3 +425,256 @@ def test_version_negotiation_selects_shared_profile_and_fails_fast():
 
     assert exc.value.code == "VERSION_UNSUPPORTED"
     validate_wire_object("VersionNegotiation", negotiated.to_dict())
+
+
+def test_adapter_context_is_passed_to_steer_block_and_resume():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    run(ops.task_amend(
+        task.id,
+        by="alice",
+        text="Use the stable outbox context.",
+        expected_task_revision=revision,
+        idempotency_key="ctx-amend",
+    ))
+    checkpoint = run(ops.task_interrupt(
+        task.id,
+        by="alice",
+        prompt="Pause with outbox context.",
+        expected_task_revision=revision + 1,
+        idempotency_key="ctx-interrupt",
+    ))
+    blocked_revision = run(ops.task_get(task.id)).revision
+    run(ops.checkpoint_resolve(
+        checkpoint.id,
+        by="alice",
+        action="approve",
+        expected_task_revision=blocked_revision,
+        idempotency_key="ctx-resolve",
+    ))
+
+    steer_context = adapter.calls_of("steer")[0][1]["operation_context"]
+    block_context = adapter.calls_of("block")[0][1]["operation_context"]
+    resume_context = adapter.calls_of("resume")[0][1]["operation_context"]
+
+    assert steer_context["operation"] == "task.amend"
+    assert block_context["operation"] == "task.interrupt"
+    assert resume_context["operation"] == "checkpoint.resolve"
+    assert steer_context["operation_id"].startswith("op_")
+    assert block_context["idempotency_key"] == "ctx-interrupt"
+    assert resume_context["task_id"] == task.id
+    records = ops.store.adapter_outbox_records()
+    assert len(records) == 3
+    assert all(record.state == "succeeded" for record in records)
+
+
+def test_outbox_is_persisted_before_adapter_side_effect():
+    class InspectingAdapter(FakeAgentAdapter):
+        def __init__(self, ops):
+            super().__init__()
+            self.ops = ops
+            self.state_seen_before_side_effect = None
+
+        async def steer(self, run_id, amendment, *, context=None):
+            self.state_seen_before_side_effect = (
+                self.ops.store.get_adapter_outbox_record(context.operation_id).state
+            )
+            await super().steer(run_id, amendment, context=context)
+
+    ops = HumanLoopOperations()
+    adapter = InspectingAdapter(ops)
+    ops.adapter = adapter
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    run(ops.task_amend(
+        task.id,
+        by="alice",
+        text="Outbox first.",
+        expected_task_revision=revision,
+        idempotency_key="outbox-first",
+    ))
+
+    assert adapter.state_seen_before_side_effect == "pending"
+
+
+def test_retry_reuses_checkpoint_id_from_pending_adapter_outbox():
+    class FailAfterSideEffectAdapter(FakeAgentAdapter):
+        def __init__(self):
+            super().__init__()
+            self.block_checkpoint_ids = []
+
+        async def block(self, run_id, checkpoint_id, reason, *, context=None):
+            self.block_checkpoint_ids.append(checkpoint_id)
+            if len(self.block_checkpoint_ids) == 1:
+                raise RuntimeError("simulated crash after adapter side effect")
+            await super().block(run_id, checkpoint_id, reason, context=context)
+
+    adapter = FailAfterSideEffectAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    with pytest.raises(RuntimeError):
+        run(ops.task_interrupt(
+            task.id,
+            by="alice",
+            prompt="Reuse checkpoint id.",
+            expected_task_revision=revision,
+            idempotency_key="pending-outbox-retry",
+        ))
+
+    checkpoint = run(ops.task_interrupt(
+        task.id,
+        by="alice",
+        prompt="Reuse checkpoint id.",
+        expected_task_revision=revision,
+        idempotency_key="pending-outbox-retry",
+    ))
+
+    assert adapter.block_checkpoint_ids == [
+        adapter.block_checkpoint_ids[0],
+        adapter.block_checkpoint_ids[0],
+    ]
+    assert checkpoint.id == adapter.block_checkpoint_ids[0]
+    assert ops.store.adapter_outbox_records()[0].state == "succeeded"
+
+
+def test_retry_reuses_amendment_payload_from_pending_adapter_outbox():
+    class FailAfterSideEffectAdapter(FakeAgentAdapter):
+        def __init__(self):
+            super().__init__()
+            self.steer_amendments = []
+
+        async def steer(self, run_id, amendment, *, context=None):
+            self.steer_amendments.append(amendment)
+            if len(self.steer_amendments) == 1:
+                raise RuntimeError("simulated crash after adapter side effect")
+            await super().steer(run_id, amendment, context=context)
+
+    adapter = FailAfterSideEffectAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    with pytest.raises(RuntimeError):
+        run(ops.task_amend(
+            task.id,
+            by="alice",
+            text="Reuse amendment payload.",
+            expected_task_revision=revision,
+            idempotency_key="pending-amend-retry",
+        ))
+
+    amended = run(ops.task_amend(
+        task.id,
+        by="alice",
+        text="Reuse amendment payload.",
+        expected_task_revision=revision,
+        idempotency_key="pending-amend-retry",
+    ))
+
+    assert adapter.steer_amendments[1] == adapter.steer_amendments[0]
+    assert amended.steering_log[0].at.isoformat() == adapter.steer_amendments[0]["at"]
+    assert ops.store.adapter_outbox_records()[0].state == "succeeded"
+
+
+def test_sqlite_restart_retries_pending_adapter_outbox_with_context(tmp_path):
+    class FailAfterSideEffectAdapter(FakeAgentAdapter):
+        async def block(self, run_id, checkpoint_id, reason, *, context=None):
+            self._require_run(run_id, "block", context=context)
+            raise RuntimeError("simulated crash after adapter side effect")
+
+    db_path = tmp_path / "hlp-outbox.db"
+    first = HLPClient(
+        store=SQLiteHumanLoopStore(db_path),
+        adapter=FailAfterSideEffectAdapter(),
+    )
+    task = run(first.create_task(principal="user_alice", goal="Recover outbox"))
+    run(first.delegate(task.id, "agent_worker"))
+    run(first.start(task.id))
+    revision = run(first.get_task(task.id)).revision
+
+    with pytest.raises(RuntimeError):
+        run(first.interrupt(
+            task.id,
+            by="user_alice",
+            prompt="Persist pending outbox.",
+            expected_task_revision=revision,
+            idempotency_key="sqlite-pending-outbox",
+        ))
+
+    restarted_store = SQLiteHumanLoopStore(db_path)
+    pending = restarted_store.adapter_outbox_records()[0]
+    assert pending.state == "pending"
+
+    second_adapter = FakeAgentAdapter()
+    second = HLPClient(
+        store=restarted_store,
+        adapter=second_adapter,
+    )
+    checkpoint = run(second.interrupt(
+        task.id,
+        by="user_alice",
+        prompt="Persist pending outbox.",
+        expected_task_revision=revision,
+        idempotency_key="sqlite-pending-outbox",
+    ))
+
+    block_call = second_adapter.calls_of("block")[0][1]
+    assert checkpoint.id == pending.request["checkpoint_id"]
+    assert block_call["checkpoint_id"] == pending.request["checkpoint_id"]
+    assert block_call["operation_context"]["operation_id"] == pending.operation_id
+    assert restarted_store.adapter_outbox_records()[0].state == "succeeded"
+
+
+def test_process_adapter_serializes_hlp_operation_context():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["request"] = request
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout='{"run_id":"run_process","correlation_id":"task_outbox"}',
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = ProcessAgentAdapter(
+        command=("agent", "run", "--json"),
+        name="industrial-process",
+        runner=runner,
+    )
+    run_id = run(adapter.delegate(
+        task_id="task_outbox",
+        agent_id="agent_proc",
+        capability="industrial",
+        input={"goal": "ctx"},
+    ))
+    context = AdapterOperationContext(
+        operation_id="op_test",
+        task_id="task_outbox",
+        correlation_id="task_outbox",
+        operation="task.amend",
+        idempotency_key="idem",
+        request_fingerprint="fingerprint",
+        task_revision=3,
+    )
+
+    run(adapter.steer(run_id, {"text": "ctx"}, context=context))
+
+    assert captured["request"]["operation_context"] == {
+        "operation_id": "op_test",
+        "task_id": "task_outbox",
+        "correlation_id": "task_outbox",
+        "operation": "task.amend",
+        "idempotency_key": "idem",
+        "request_fingerprint": "fingerprint",
+        "task_revision": 3,
+        "schema_version": HLP_SCHEMA_VERSION,
+        "profile": HLP_PROFILE,
+    }

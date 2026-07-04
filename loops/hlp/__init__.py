@@ -33,6 +33,8 @@ from .audit import AuditEvent, AuditLog
 from .events import EventBus, HLPEvent, InMemoryEventBus
 from .host import HLPHost
 from .objects import (
+    AdapterOperationContext,
+    AdapterOutboxRecord,
     Artifact,
     ArtifactPayload,
     ArtifactProvenance,
@@ -109,6 +111,8 @@ __all__ = [
     "AgentAdapter",
     "AgentAdapterError",
     "AgentRunHandle",
+    "AdapterOperationContext",
+    "AdapterOutboxRecord",
     "Artifact",
     "ArtifactPayload",
     "ArtifactProvenance",

@@ -9,6 +9,8 @@ from typing import Any
 
 from .audit import AuditEvent, AuditLog
 from .objects import (
+    AdapterOperationContext,
+    AdapterOutboxRecord,
     Artifact,
     ArtifactPayload,
     ArtifactProvenance,
@@ -39,6 +41,8 @@ _DATACLASS_TYPES = {
     cls.__name__: cls
     for cls in (
         Artifact,
+        AdapterOperationContext,
+        AdapterOutboxRecord,
         ArtifactPayload,
         ArtifactProvenance,
         ArtifactRef,
@@ -86,6 +90,7 @@ class SQLiteHumanLoopStore(HumanLoopStore):
             "artifact_references": self._artifact_references,
             "task_runs": self._task_runs,
             "idempotency_records": self._idempotency_records,
+            "adapter_outbox": self._adapter_outbox,
         }
         with self._connect() as conn:
             conn.execute("delete from hlp_snapshot")
@@ -122,6 +127,7 @@ class SQLiteHumanLoopStore(HumanLoopStore):
         self._artifact_references = snapshot.get("artifact_references", {})
         self._task_runs = snapshot.get("task_runs", {})
         self._idempotency_records = snapshot.get("idempotency_records", {})
+        self._adapter_outbox = snapshot.get("adapter_outbox", {})
         events = snapshot.get("audit_events", [])
         self.audit_log = AuditLog()
         self.audit_log._events = list(events)

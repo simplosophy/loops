@@ -64,6 +64,9 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("HLP_JSON_SCHEMAS", has_literal("HLP_JSON_SCHEMAS")),
     ("VERSION_UNSUPPORTED", has_literal("VERSION_UNSUPPORTED")),
     ("VersionNegotiation", has_literal("VersionNegotiation")),
+    ("AdapterOperationContext", has_literal("AdapterOperationContext")),
+    ("AdapterOutboxRecord", has_literal("AdapterOutboxRecord")),
+    ("operation_context", has_literal("operation_context")),
 ]
 
 

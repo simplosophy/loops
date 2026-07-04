@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 
+from .objects import AdapterOperationContext
+from .schema import to_wire
 from .types import HarnessConformance, HarnessEventKind
 
 
@@ -113,15 +115,34 @@ class AgentAdapter(Protocol):
         """Delegate a task to an agent and return the runtime run id."""
         ...
 
-    async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
+    async def block(
+        self,
+        run_id: str,
+        checkpoint_id: str,
+        reason: str,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
         """Block a run until the HLP checkpoint is resolved."""
         ...
 
-    async def resume(self, run_id: str, resolution: Any) -> None:
+    async def resume(
+        self,
+        run_id: str,
+        resolution: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
         """Resume a blocked run with the human resolution payload."""
         ...
 
-    async def steer(self, run_id: str, amendment: Any) -> None:
+    async def steer(
+        self,
+        run_id: str,
+        amendment: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
         """Inject a steering amendment without restarting the run."""
         ...
 
@@ -213,25 +234,57 @@ class FakeAgentAdapter:
         ))
         return run_id
 
-    async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
-        self._require_run(run_id, "block")
+    async def block(
+        self,
+        run_id: str,
+        checkpoint_id: str,
+        reason: str,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        self._require_run(run_id, "block", context=context)
         self.calls.append((
             "block",
-            {"run_id": run_id, "checkpoint_id": checkpoint_id, "reason": reason},
+            {
+                "run_id": run_id,
+                "checkpoint_id": checkpoint_id,
+                "reason": reason,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
         ))
 
-    async def resume(self, run_id: str, resolution: Any) -> None:
-        self._require_run(run_id, "resume")
+    async def resume(
+        self,
+        run_id: str,
+        resolution: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        self._require_run(run_id, "resume", context=context)
         self.calls.append((
             "resume",
-            {"run_id": run_id, "resolution": resolution},
+            {
+                "run_id": run_id,
+                "resolution": resolution,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
         ))
 
-    async def steer(self, run_id: str, amendment: Any) -> None:
-        self._require_run(run_id, "steer")
+    async def steer(
+        self,
+        run_id: str,
+        amendment: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        self._require_run(run_id, "steer", context=context)
         self.calls.append((
             "steer",
-            {"run_id": run_id, "amendment": _adapter_payload(amendment)},
+            {
+                "run_id": run_id,
+                "amendment": _adapter_payload(amendment),
+                "operation_context": to_wire(context) if context is not None else None,
+            },
         ))
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
@@ -279,8 +332,22 @@ class FakeAgentAdapter:
     def calls_of(self, method: str) -> list[tuple[str, dict[str, Any]]]:
         return [call for call in self.calls if call[0] == method]
 
-    def _require_run(self, run_id: str, operation: str) -> AgentRunHandle:
+    def _require_run(
+        self,
+        run_id: str,
+        operation: str,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> AgentRunHandle:
         handle = self._runs.get(run_id)
+        if handle is None and context is not None:
+            handle = AgentRunHandle(
+                run_id=run_id,
+                task_id=context.task_id,
+                agent_id="",
+                correlation_id=context.correlation_id,
+            )
+            self._runs[run_id] = handle
         if handle is None:
             raise AgentAdapterError(
                 self.__class__.__name__,
@@ -437,37 +504,59 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         ))
         return run_id
 
-    async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
-        handle = self._require_run(run_id, "block")
+    async def block(
+        self,
+        run_id: str,
+        checkpoint_id: str,
+        reason: str,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "block", context=context)
         await self._execute("block", {
             "operation": "block",
             "run_id": run_id,
             "checkpoint_id": checkpoint_id,
             "reason": reason,
             "correlation_id": handle.correlation_id,
+            "operation_context": to_wire(context) if context is not None else None,
         })
-        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason)
+        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason, context=context)
 
-    async def resume(self, run_id: str, resolution: Any) -> None:
-        handle = self._require_run(run_id, "resume")
+    async def resume(
+        self,
+        run_id: str,
+        resolution: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "resume", context=context)
         await self._execute("resume", {
             "operation": "resume",
             "run_id": run_id,
             "resolution": resolution,
             "correlation_id": handle.correlation_id,
+            "operation_context": to_wire(context) if context is not None else None,
         })
-        await FakeAgentAdapter.resume(self, run_id, resolution)
+        await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
 
-    async def steer(self, run_id: str, amendment: Any) -> None:
-        handle = self._require_run(run_id, "steer")
+    async def steer(
+        self,
+        run_id: str,
+        amendment: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "steer", context=context)
         amendment_payload = _adapter_payload(amendment)
         await self._execute("steer", {
             "operation": "steer",
             "run_id": run_id,
             "amendment": amendment_payload,
             "correlation_id": handle.correlation_id,
+            "operation_context": to_wire(context) if context is not None else None,
         })
-        await FakeAgentAdapter.steer(self, run_id, amendment_payload)
+        await FakeAgentAdapter.steer(self, run_id, amendment_payload, context=context)
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
         current = self._require_run(run_id, "handoff")
@@ -1160,32 +1249,47 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         ))
         return run_id
 
-    async def block(self, run_id: str, checkpoint_id: str, reason: str) -> None:
-        handle = self._require_run(run_id, "block")
+    async def block(
+        self,
+        run_id: str,
+        checkpoint_id: str,
+        reason: str,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "block", context=context)
         payload = await self._execute("block", {
             "operation": "block",
             "run_id": run_id,
             "checkpoint_id": checkpoint_id,
             "reason": reason,
             "correlation_id": handle.correlation_id,
+            "operation_context": to_wire(context) if context is not None else None,
         })
         events = _pop_codex_events(payload)
         _validate_correlation(payload, handle.correlation_id, self.name, "block")
         self._queue_codex_events(run_id, events)
-        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason)
+        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason, context=context)
 
-    async def resume(self, run_id: str, resolution: Any) -> None:
-        handle = self._require_run(run_id, "resume")
+    async def resume(
+        self,
+        run_id: str,
+        resolution: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "resume", context=context)
         payload = await self._execute("resume", {
             "operation": "resume",
             "run_id": run_id,
             "resolution": resolution,
             "correlation_id": handle.correlation_id,
+            "operation_context": to_wire(context) if context is not None else None,
         })
         events = _pop_codex_events(payload)
         _validate_correlation(payload, handle.correlation_id, self.name, "resume")
         self._queue_codex_events(run_id, events)
-        await FakeAgentAdapter.resume(self, run_id, resolution)
+        await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
 
     async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
         current = self._require_run(run_id, "handoff")

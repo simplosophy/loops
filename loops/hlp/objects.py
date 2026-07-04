@@ -214,6 +214,34 @@ class HumanInboxItem:
 
 
 @dataclass(frozen=True)
+class AdapterOperationContext:
+    """Idempotency context passed to outbound adapter side effects."""
+
+    operation_id: str
+    task_id: str
+    correlation_id: str
+    operation: str
+    idempotency_key: str | None
+    request_fingerprint: str
+    task_revision: int
+
+
+@dataclass
+class AdapterOutboxRecord:
+    """SDK-local durable intent for an outbound adapter operation."""
+
+    operation_id: str
+    task_id: str
+    operation: str
+    request_fingerprint: str
+    context: AdapterOperationContext
+    request: dict[str, Any]
+    state: Literal["pending", "succeeded", "failed"] = "pending"
+    created_at: datetime = field(default_factory=_now)
+    updated_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
 class IdempotencyRecord:
     """Stored result for replaying a task-scoped mutating operation."""
 

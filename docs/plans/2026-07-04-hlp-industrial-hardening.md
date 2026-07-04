@@ -92,9 +92,10 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
   `validate_wire_object`、`negotiate_hlp_version`，覆盖一等对象、核心工业
   wire shape、dataclass alias/RFC3339 serialization 和 spec/schema/profile
   fail-fast version negotiation。
-- 未完成：durable outbox 与 adapter 幂等上下文；这部分需要把 operation id /
-  idempotency context 传入外部 harness，解决 adapter side effect 成功但本地提交前
-  崩溃的重复副作用问题。
+- 已完成 reference slice：`AdapterOperationContext` 与 `AdapterOutboxRecord`。
+  `task.amend`、`task.interrupt`、`checkpoint.raise`、`checkpoint.resolve`
+  在 adapter side effect 前持久化 outbox intent，向 fake/process/Codex adapter
+  传入 `operation_context`，本地提交成功后标记 outbox `succeeded`。
 
 ## 本轮执行边界
 

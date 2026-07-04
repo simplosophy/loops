@@ -521,8 +521,9 @@ canonical request fingerprint **MUST** return the original result without
 rerunning preconditions, adapter calls, audit appends, or SDK event publication.
 The same key with a different fingerprint **MUST** return `CONFLICT`. The
 reference implementation covers task.amend, task.interrupt,
-checkpoint.resolve, and artifact.commit; durable outbox and adapter
-idempotency context remain follow-up `HLP-industrial` work.
+checkpoint.resolve, and artifact.commit for CAS/idempotency replay. Adapter
+outbox context covers the external side-effect boundary for task.amend,
+task.interrupt, checkpoint.raise, and checkpoint.resolve.
 
 ## Operation Preconditions
 
@@ -652,7 +653,12 @@ errors default to non-retryable unless an implementation explicitly overrides
 the field for a transport-specific reason.
 
 State transition, ownership update, and audit append **SHOULD** be atomic from
-the caller's perspective.
+the caller's perspective. When protocol operations call an external agent
+harness adapter, implementations **SHOULD** persist an adapter outbox intent
+before the side effect, pass a stable `operation_context` /
+`AdapterOperationContext` with `operation_id`, `correlation_id`,
+`idempotency_key`, request fingerprint, and Task revision, and mark the outbox
+record `succeeded` after the local HLP mutation commits.
 
 When harness events use reliable delivery, event acknowledgement **MUST** happen
 only after successful HLP projection. Failed projection **MUST** leave the event
@@ -677,6 +683,8 @@ for:
 - `HarnessEventDelivery`
 - `PermissionGrant`
 - `ProposedAction`
+- `AdapterOperationContext`
+- `AdapterOutboxRecord`
 - `VersionNegotiation`
 
 `to_wire()` **MUST** convert dataclasses into JSON-compatible objects: timestamps

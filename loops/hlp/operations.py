@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field, fields, is_dataclass
@@ -12,6 +14,8 @@ from .objects import (
     ArtifactPayload,
     ArtifactProvenance,
     ArtifactRef,
+    AdapterOperationContext,
+    AdapterOutboxRecord,
     Checkpoint,
     CheckpointOption,
     CheckpointResolution,
@@ -58,6 +62,7 @@ class _TaskOperationContext:
     fingerprint: str
     revision_before: int
     audit_seq_before: int
+    operation_id: str
 
 
 # ════════════════════════════════════════════════════════════
@@ -239,7 +244,23 @@ class HumanLoopOperations:
         amendment = SteeringAmendment(text=text, intent=intent, by=by)
         run_id = self.store.run_of_task(task_id)
         if run_id is not None:
-            await self.adapter.steer(run_id, amendment)
+            adapter_context = self._adapter_context(task, idempotency)
+            outbox_request = self._prepare_adapter_outbox(
+                adapter_context,
+                {
+                    "adapter_action": "steer",
+                    "run_id": run_id,
+                    "amendment": _jsonable(amendment),
+                },
+            )
+            amendment_payload = outbox_request["amendment"]
+            amendment = _steering_amendment_from_outbox(amendment_payload)
+            await self._call_adapter_with_context(
+                self.adapter.steer,
+                run_id,
+                amendment_payload,
+                context=adapter_context,
+            )
         task.steering_log = (*task.steering_log, amendment)
         self._audit(
             actor=by,
@@ -296,7 +317,24 @@ class HumanLoopOperations:
         )
         run_id = self.store.run_of_task(task_id)
         if run_id is not None:
-            await self.adapter.block(run_id, ckpt.id, prompt)
+            adapter_context = self._adapter_context(task, idempotency)
+            outbox_request = self._prepare_adapter_outbox(
+                adapter_context,
+                {
+                    "adapter_action": "block",
+                    "run_id": run_id,
+                    "checkpoint_id": ckpt.id,
+                    "reason": prompt,
+                },
+            )
+            ckpt.id = str(outbox_request["checkpoint_id"])
+            await self._call_adapter_with_context(
+                self.adapter.block,
+                run_id,
+                ckpt.id,
+                outbox_request["reason"],
+                context=adapter_context,
+            )
 
         self.store.put_checkpoint(ckpt)
         task.checkpoints.append(ckpt.id)
@@ -358,8 +396,51 @@ class HumanLoopOperations:
         )
         ckpt_raised_by = raised_by
         run_id = self.store.run_of_task(task_id)
+        adapter_context: AdapterOperationContext | None = None
         if run_id is not None:
-            await self.adapter.block(run_id, ckpt.id, prompt)
+            request_fingerprint = _fingerprint({
+                "operation": "checkpoint.raise",
+                "request": {
+                    "kind": kind,
+                    "prompt": prompt,
+                    "options": options,
+                    "proposed_actions": proposed_actions,
+                    "context": context,
+                    "raised_by": raised_by,
+                },
+            })
+            adapter_context = AdapterOperationContext(
+                operation_id=_adapter_operation_id(
+                    task.id,
+                    "checkpoint.raise",
+                    None,
+                    request_fingerprint,
+                    task.revision,
+                ),
+                task_id=task.id,
+                correlation_id=task.id,
+                operation="checkpoint.raise",
+                idempotency_key=None,
+                request_fingerprint=request_fingerprint,
+                task_revision=task.revision,
+            )
+            outbox_request = self._prepare_adapter_outbox(
+                adapter_context,
+                {
+                    "adapter_action": "block",
+                    "run_id": run_id,
+                    "checkpoint_id": ckpt.id,
+                    "reason": prompt,
+                },
+            )
+            ckpt.id = str(outbox_request["checkpoint_id"])
+            await self._call_adapter_with_context(
+                self.adapter.block,
+                run_id,
+                ckpt.id,
+                outbox_request["reason"],
+                context=adapter_context,
+            )
 
         self.store.put_checkpoint(ckpt)
         task.checkpoints.append(ckpt.id)
@@ -379,6 +460,9 @@ class HumanLoopOperations:
             task_id=task_id,
         )
         self.store.bump_task_revision(task)
+        if adapter_context is not None:
+            self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
+            self._flush_store_if_available()
         return ckpt
 
     async def checkpoint_resolve(
@@ -460,7 +544,21 @@ class HumanLoopOperations:
         resume_payload = self._resolution_payload(resolution)
         run_id = self.store.run_of_task(task.id)
         if run_id is not None:
-            await self.adapter.resume(run_id, resume_payload)
+            adapter_context = self._adapter_context(task, idempotency)
+            self._prepare_adapter_outbox(
+                adapter_context,
+                {
+                    "adapter_action": "resume",
+                    "run_id": run_id,
+                    "resolution": _jsonable(resume_payload),
+                },
+            )
+            await self._call_adapter_with_context(
+                self.adapter.resume,
+                run_id,
+                resume_payload,
+                context=adapter_context,
+            )
 
         ckpt.resolution = resolution
         ckpt.state = "resolved"
@@ -930,6 +1028,13 @@ class HumanLoopOperations:
             fingerprint=fingerprint,
             revision_before=task.revision,
             audit_seq_before=self.store.audit_log.count,
+            operation_id=_adapter_operation_id(
+                task.id,
+                operation,
+                idempotency_key,
+                fingerprint,
+                task.revision,
+            ),
         )
 
     def _commit_task_operation(
@@ -939,19 +1044,93 @@ class HumanLoopOperations:
         result: Any,
     ) -> None:
         self.store.bump_task_revision(task)
-        if context.key is None:
-            return
-        self.store.put_idempotency_record(IdempotencyRecord(
+        if context.key is not None:
+            self.store.put_idempotency_record(IdempotencyRecord(
+                task_id=task.id,
+                key=context.key,
+                operation=context.operation,
+                request_fingerprint=context.fingerprint,
+                revision_before=context.revision_before,
+                revision_after=task.revision,
+                result=deepcopy(result),
+                audit_seq_start=context.audit_seq_before + 1,
+                audit_seq_end=self.store.audit_log.count,
+            ))
+        if self._has_adapter_outbox_record(context.operation_id):
+            self.store.mark_adapter_outbox_succeeded(context.operation_id)
+            self._flush_store_if_available()
+
+    def _adapter_context(
+        self,
+        task: Task,
+        context: _TaskOperationContext,
+    ) -> AdapterOperationContext:
+        return AdapterOperationContext(
+            operation_id=context.operation_id,
             task_id=task.id,
-            key=context.key,
+            correlation_id=task.id,
             operation=context.operation,
+            idempotency_key=context.key,
             request_fingerprint=context.fingerprint,
-            revision_before=context.revision_before,
-            revision_after=task.revision,
-            result=deepcopy(result),
-            audit_seq_start=context.audit_seq_before + 1,
-            audit_seq_end=self.store.audit_log.count,
+            task_revision=context.revision_before,
+        )
+
+    def _prepare_adapter_outbox(
+        self,
+        adapter_context: AdapterOperationContext,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        try:
+            existing = self.store.get_adapter_outbox_record(adapter_context.operation_id)
+        except ProtocolError as exc:
+            if exc.code != "NOT_FOUND":
+                raise
+        else:
+            if (
+                existing.request_fingerprint != adapter_context.request_fingerprint
+                or existing.operation != adapter_context.operation
+            ):
+                raise ProtocolError(
+                    "CONFLICT",
+                    "adapter outbox operation id conflicts with a different request",
+                    details={"operation_id": adapter_context.operation_id},
+                )
+            return deepcopy(existing.request)
+        self.store.put_adapter_outbox_record(AdapterOutboxRecord(
+            operation_id=adapter_context.operation_id,
+            task_id=adapter_context.task_id,
+            operation=adapter_context.operation,
+            request_fingerprint=adapter_context.request_fingerprint,
+            context=adapter_context,
+            request=request,
         ))
+        self._flush_store_if_available()
+        return deepcopy(request)
+
+    def _has_adapter_outbox_record(self, operation_id: str) -> bool:
+        try:
+            self.store.get_adapter_outbox_record(operation_id)
+        except ProtocolError as exc:
+            if exc.code == "NOT_FOUND":
+                return False
+            raise
+        return True
+
+    async def _call_adapter_with_context(
+        self,
+        method: Any,
+        *args: Any,
+        context: AdapterOperationContext,
+    ) -> Any:
+        signature = inspect.signature(method)
+        if "context" in signature.parameters:
+            return await method(*args, context=context)
+        return await method(*args)
+
+    def _flush_store_if_available(self) -> None:
+        flush = getattr(self.store, "flush", None)
+        if flush is not None:
+            flush()
 
     def _require_state(self, task: Task, expected: TaskState) -> None:
         """前置条件：要求 task 处于某状态 (spec §4.3)。"""
@@ -1116,6 +1295,44 @@ def _fingerprint(value: Any) -> str:
         _jsonable(value),
         sort_keys=True,
         separators=(",", ":"),
+    )
+
+
+def _adapter_operation_id(
+    task_id: str,
+    operation: str,
+    idempotency_key: str | None,
+    fingerprint: str,
+    revision: int,
+) -> str:
+    seed = json.dumps(
+        {
+            "task_id": task_id,
+            "operation": operation,
+            "idempotency_key": idempotency_key,
+            "request_fingerprint": fingerprint,
+            "task_revision": revision,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "op_" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
+
+
+def _steering_amendment_from_outbox(value: Any) -> SteeringAmendment:
+    if not isinstance(value, dict):
+        raise ProtocolError(
+            "INVALID_SPEC",
+            "adapter outbox amendment payload must be an object",
+        )
+    at = value.get("at", _now())
+    if isinstance(at, str):
+        at = datetime.fromisoformat(at)
+    return SteeringAmendment(
+        text=str(value["text"]),
+        intent=value.get("intent", "clarify"),
+        by=str(value.get("by", "")),
+        at=at,
     )
 
 

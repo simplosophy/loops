@@ -2,9 +2,19 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from .audit import AuditLog
-from .objects import Artifact, ArtifactRef, Checkpoint, IdempotencyRecord, Ledger, Review, Task
+from .objects import (
+    AdapterOutboxRecord,
+    Artifact,
+    ArtifactRef,
+    Checkpoint,
+    IdempotencyRecord,
+    Ledger,
+    Review,
+    Task,
+)
 from .types import ProtocolError
 
 
@@ -39,6 +49,7 @@ class HumanLoopStore:
     _task_runs: dict[str, str] = field(default_factory=dict, repr=False)
     # task-scoped idempotency records, keyed by (task_id, idempotency_key)
     _idempotency_records: dict[tuple[str, str], IdempotencyRecord] = field(default_factory=dict, repr=False)
+    _adapter_outbox: dict[str, AdapterOutboxRecord] = field(default_factory=dict, repr=False)
 
     # ── Task ──
     def put_task(self, task: Task) -> None:
@@ -69,6 +80,29 @@ class HumanLoopStore:
 
     def put_idempotency_record(self, record: IdempotencyRecord) -> None:
         self._idempotency_records[(record.task_id, record.key)] = record
+
+    def put_adapter_outbox_record(self, record: AdapterOutboxRecord) -> None:
+        self._adapter_outbox[record.operation_id] = record
+
+    def get_adapter_outbox_record(self, operation_id: str) -> AdapterOutboxRecord:
+        record = self._adapter_outbox.get(operation_id)
+        if record is None:
+            raise ProtocolError("NOT_FOUND", f"adapter outbox {operation_id} not found")
+        return _snapshot(record)
+
+    def _get_adapter_outbox_record_for_update(self, operation_id: str) -> AdapterOutboxRecord:
+        record = self._adapter_outbox.get(operation_id)
+        if record is None:
+            raise ProtocolError("NOT_FOUND", f"adapter outbox {operation_id} not found")
+        return record
+
+    def mark_adapter_outbox_succeeded(self, operation_id: str) -> None:
+        record = self._get_adapter_outbox_record_for_update(operation_id)
+        record.state = "succeeded"
+        record.updated_at = datetime.now(timezone.utc)
+
+    def adapter_outbox_records(self) -> list[AdapterOutboxRecord]:
+        return [_snapshot(record) for record in self._adapter_outbox.values()]
 
     # ── Checkpoint ──
     def put_checkpoint(self, ckpt: Checkpoint) -> None:

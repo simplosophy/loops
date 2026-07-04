@@ -494,8 +494,9 @@ idempotency_key: string | null          # 可选，task-scoped
 fingerprint **MUST** 返回首次操作结果，且 **MUST NOT** 再次执行前置条件、adapter
 调用、audit append 或 SDK event publish。同一 key + 不同 fingerprint **MUST**
 返回 `CONFLICT`。参考实现当前覆盖 `task.amend`、`task.interrupt`、
-`checkpoint.resolve` 与 `artifact.commit`；durable outbox 与 adapter 幂等上下文仍属
-后续 `HLP-industrial` profile 工作。
+`checkpoint.resolve` 与 `artifact.commit` 的 CAS/idempotency replay；adapter
+outbox context 覆盖 `task.amend`、`task.interrupt`、`checkpoint.raise` 与
+`checkpoint.resolve` 的外部 side effect 边界。
 
 ### 4.2 操作 → audit action 映射
 
@@ -667,7 +668,7 @@ ProtocolError:
 
 - 实现记录 audit event 与业务操作 **SHOULD** 是原子的（audit 失败则业务回滚）。
 - 实现对 Task 状态转移 **MUST** 是原子的（状态、ownership、audit 三者一致）。
-- 当协议操作依赖外部 agent harness adapter 时，adapter 调用失败 **MUST NOT** 让 HLP 状态、ownership、checkpoint、audit 或 run binding 进入成功状态。生产实现 **SHOULD** 使用事务 outbox 与幂等 key；嵌入式实现 **MAY** 先调用 adapter，成功后再提交本地状态。
+- 当协议操作依赖外部 agent harness adapter 时，adapter 调用失败 **MUST NOT** 让 HLP 状态、ownership、checkpoint、audit 或 run binding 进入成功状态。生产实现 **SHOULD** 在外部 side effect 前持久化 adapter outbox intent，并向 adapter 传入稳定 `operation_context` / `AdapterOperationContext`（`operation_id`、`correlation_id`、`idempotency_key`、request fingerprint、Task revision），使外部 harness 能够对 retry 去重；本地 HLP mutation 成功提交后 **SHOULD** 将 outbox record 标记为 `succeeded`。
 - 当 harness event 通过可靠投递扩展投影到 HLP 时，实现 **MUST** 在投影成功后才
   ack；投影失败时事件 **MUST** 保留为未确认状态。
 - SDK/read API **SHOULD** 返回 read snapshot，避免调用方绕过状态机和 audit 直接修改内部 aggregate。
@@ -690,6 +691,8 @@ ProtocolError:
 - `HarnessEventDelivery`
 - `PermissionGrant`
 - `ProposedAction`
+- `AdapterOperationContext`
+- `AdapterOutboxRecord`
 - `VersionNegotiation`
 
 `to_wire()` **MUST** 把 dataclass 转为 JSON-compatible object：时间戳使用 RFC3339
