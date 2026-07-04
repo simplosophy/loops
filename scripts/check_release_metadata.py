@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSION = "0.2.0"
 EXPECTED_SPEC_VERSION = "0.2.0-draft"
+EXPECTED_SCHEMA_VERSION = "0.2"
 EXPECTED_CNAME = "ontheloops.com"
 
 
@@ -67,6 +68,23 @@ def main() -> int:
     for label, version in lock_versions.items():
         if version != EXPECTED_VERSION:
             fail(errors, f"{label} is {version!r}; expected {EXPECTED_VERSION!r}")
+
+    sys.path.insert(0, str(ROOT))
+    try:
+        from loops.hlp import HLP_SCHEMA_VERSION, HLP_SPEC_VERSION
+    except Exception as exc:  # pragma: no cover - diagnostic path
+        fail(errors, f"could not import HLP version constants: {exc}")
+    else:
+        if HLP_SPEC_VERSION != EXPECTED_SPEC_VERSION:
+            fail(
+                errors,
+                f"loops.hlp.HLP_SPEC_VERSION is {HLP_SPEC_VERSION!r}; expected {EXPECTED_SPEC_VERSION!r}",
+            )
+        if HLP_SCHEMA_VERSION != EXPECTED_SCHEMA_VERSION:
+            fail(
+                errors,
+                f"loops.hlp.HLP_SCHEMA_VERSION is {HLP_SCHEMA_VERSION!r}; expected {EXPECTED_SCHEMA_VERSION!r}",
+            )
 
     cname = read_text("docs/site/public/CNAME").strip()
     if cname != EXPECTED_CNAME:

@@ -579,7 +579,28 @@ ExternalRef:
 | `DEADLINE_EXCEEDED` | 408 | Task 超时 |
 | `CHECKPOINT_EXPIRED` | 410 | 操作已过期的 checkpoint |
 
-### 6.2 一致性要求
+### 6.2 错误对象
+
+实现通过 transport 暴露错误时 **MUST** 使用稳定错误对象。参考实现的
+`ProtocolError.to_dict()` 使用该 wire shape：
+
+```yaml
+ProtocolError:
+  code: ErrorCode
+  message: string
+  details: object
+  retryable: boolean
+  operation_id: string | null
+  correlation_id: task_ | string | null
+  spec_version: "0.2.0-draft"
+  schema_version: "0.2"
+```
+
+`CONFLICT` / `DEADLINE_EXCEEDED` 默认 **MAY** retry；前置条件、权限、不可变性和
+对象不存在错误默认不可 retry。实现 **MAY** 根据具体 transport 或 adapter failure
+覆盖 `retryable`，但必须在错误对象中显式给出。
+
+### 6.3 一致性要求
 
 - 实现记录 audit event 与业务操作 **SHOULD** 是原子的（audit 失败则业务回滚）。
 - 实现对 Task 状态转移 **MUST** 是原子的（状态、ownership、audit 三者一致）。

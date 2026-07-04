@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Literal
 
 
+HLP_SPEC_VERSION = "0.2.0-draft"
+HLP_SCHEMA_VERSION = "0.2"
+
+
 # ── 错误码 (HLP spec §6.1) ──
 ErrorCode = Literal[
     "INVALID_SPEC",
@@ -15,14 +19,43 @@ ErrorCode = Literal[
     "CHECKPOINT_EXPIRED",
 ]
 
+_RETRYABLE_ERROR_CODES = frozenset({"CONFLICT", "DEADLINE_EXCEEDED"})
+
 
 class ProtocolError(Exception):
     """HLP 协议错误。code 对应 spec §6.1 错误码。"""
 
-    def __init__(self, code: ErrorCode, message: str = "") -> None:
+    def __init__(
+        self,
+        code: ErrorCode,
+        message: str = "",
+        *,
+        details: dict | None = None,
+        retryable: bool | None = None,
+    ) -> None:
         super().__init__(f"[{code}] {message}" if message else code)
         self.code = code
         self.message = message
+        self.details = details or {}
+        self.retryable = retryable if retryable is not None else code in _RETRYABLE_ERROR_CODES
+
+    def to_dict(
+        self,
+        *,
+        operation_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> dict:
+        """Return the stable wire shape for protocol errors."""
+        return {
+            "code": self.code,
+            "message": self.message,
+            "details": self.details,
+            "retryable": self.retryable,
+            "operation_id": operation_id,
+            "correlation_id": correlation_id,
+            "spec_version": HLP_SPEC_VERSION,
+            "schema_version": HLP_SCHEMA_VERSION,
+        }
 
 
 # ── Literal 类型别名 (spec §3) ──

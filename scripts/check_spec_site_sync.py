@@ -50,6 +50,8 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("state_patch", has_literal("state_patch")),
     ("Review.kind", has_literal("Review.kind")),
     ("AgentAdapter steer", has_adapter_steer),
+    ("ProtocolError wire object", has_literal("ProtocolError")),
+    ("schema_version", has_literal("schema_version")),
 ]
 
 

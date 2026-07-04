@@ -562,6 +562,26 @@ references needed for human decision evidence or audit replay.
 | `DEADLINE_EXCEEDED` | Task deadline exceeded |
 | `CHECKPOINT_EXPIRED` | Checkpoint can no longer be resolved |
 
+When an implementation exposes errors over a transport, it **MUST** use a stable
+wire object:
+
+```yaml
+ProtocolError:
+  code: ErrorCode
+  message: string
+  details: object
+  retryable: boolean
+  operation_id: string | null
+  correlation_id: task_ | string | null
+  spec_version: "0.2.0-draft"
+  schema_version: "0.2"
+```
+
+`CONFLICT` and `DEADLINE_EXCEEDED` default to retryable. Preconditions,
+authorization, immutability, not-found, invalid-spec, and expired-checkpoint
+errors default to non-retryable unless an implementation explicitly overrides
+the field for a transport-specific reason.
+
 State transition, ownership update, and audit append **SHOULD** be atomic from
 the caller's perspective.
 

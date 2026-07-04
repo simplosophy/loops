@@ -24,6 +24,8 @@ import pytest
 from loops.hlp import (
     AgentAdapterError,
     FakeAgentAdapter,
+    HLP_SCHEMA_VERSION,
+    HLP_SPEC_VERSION,
     HumanLoopOperations,
     ProtocolError,
     TaskSpec,
@@ -78,6 +80,8 @@ class FailableAdapter(FakeAgentAdapter):
 def test_human_loop_public_api_names_are_primary():
     import loops.hlp as hlp
 
+    assert hlp.HLP_SPEC_VERSION == "0.2.0-draft"
+    assert hlp.HLP_SCHEMA_VERSION == "0.2"
     assert hlp.HumanLoopOperations is hlp.operations.HumanLoopOperations
     assert hlp.HumanLoopStore is hlp.store.HumanLoopStore
     assert hlp.ExternalRef is ExternalRef
@@ -87,6 +91,8 @@ def test_human_loop_public_api_names_are_primary():
     assert "SteeringAmendment" in hlp.__all__
     assert "PermissionGrant" in hlp.__all__
     assert "ProposedAction" in hlp.__all__
+    assert "HLP_SPEC_VERSION" in hlp.__all__
+    assert "HLP_SCHEMA_VERSION" in hlp.__all__
     assert "AAPBridge" not in hlp.__all__
     assert "InMemoryAAPBridge" not in hlp.__all__
     assert "H" + "ACPOperations" not in hlp.__all__
@@ -114,6 +120,34 @@ def test_task_constraints_use_opaque_external_refs_not_capability_refs():
     assert capability.id == "cap:code-review"
     assert capability.version == "2.1.0"
     assert not hasattr(spec.constraints, "must_use_capabilities")
+
+
+def test_protocol_error_serializes_stable_wire_shape():
+    err = ProtocolError(
+        "CONFLICT",
+        "checkpoint already resolved",
+        details={"checkpoint_id": "ckpt_123"},
+        retryable=False,
+    )
+
+    assert err.to_dict(
+        operation_id="op_123",
+        correlation_id="task_123",
+    ) == {
+        "code": "CONFLICT",
+        "message": "checkpoint already resolved",
+        "details": {"checkpoint_id": "ckpt_123"},
+        "retryable": False,
+        "operation_id": "op_123",
+        "correlation_id": "task_123",
+        "spec_version": HLP_SPEC_VERSION,
+        "schema_version": HLP_SCHEMA_VERSION,
+    }
+
+
+def test_protocol_error_retryable_defaults_by_error_code():
+    assert ProtocolError("CONFLICT").retryable is True
+    assert ProtocolError("PRECONDITION_FAILED").retryable is False
 
 
 def test_hlp_02_constraints_support_autonomy_and_permission_grants():
