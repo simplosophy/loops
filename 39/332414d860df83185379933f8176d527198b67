@@ -1,0 +1,30 @@
+docs/site/public/favicon.svg
+  s_aaeb0b14f95bf9::t_cdcac02bd0119b 11
+docs/site/public/logo.svg
+  s_aaeb0b14f95bf9::t_a4bdc134fde433 11
+docs/site/public/og.svg
+  s_aaeb0b14f95bf9::t_bf199d1b3903b0 5,16-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "39332414d860df83185379933f8176d527198b67",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_aaeb0b14f95bf9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef2b6-c2ea-7690-8f9f-c7fbbb39b103",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
