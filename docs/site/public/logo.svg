@@ -1,21 +1,32 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loops mark">
   <title>Loops</title>
   <defs>
-    <linearGradient id="lp-ring" x1="14" y1="14" x2="50" y2="50" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#A78BFA"/>
-      <stop offset="0.55" stop-color="#8B5CF6"/>
+    <linearGradient id="lp-left" x1="12" y1="16" x2="31" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="lp-right" x1="35" y1="16" x2="52" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="lp-check" x1="28" y1="10" x2="37" y2="19" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
       <stop offset="1" stop-color="#22D3EE"/>
     </linearGradient>
   </defs>
 
-  <rect x="4" y="4" width="56" height="56" rx="13" fill="#101014" stroke="#2F2F38" stroke-width="1"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#101014" stroke="#2F2F38" stroke-width="1"/>
 
-  <!-- HLP loop: full ring with a checkpoint gap at the top -->
-  <path d="M37.5 17 A16 16 0 1 1 26.5 17" stroke="url(#lp-ring)" stroke-width="7" stroke-linecap="round"/>
+  <path d="M30 16H22C16.5 16 12 20.5 12 26V31" stroke="url(#lp-left)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 41V42C12 47.5 16.5 52 22 52H29" stroke="url(#lp-left)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M39 16H42C47.5 16 52 20.5 52 26V42C52 47.5 47.5 52 42 52H39" stroke="url(#lp-right)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- Cyan diamond = checkpoint / boundary contract (◆ defined by HLP) -->
-  <rect x="27.4" y="8.4" width="9.2" height="9.2" rx="1.4" transform="rotate(45 32 13)" fill="#22D3EE"/>
+  <rect x="28" y="10" width="8.6" height="8.6" rx="1.5" transform="rotate(45 32.3 14.3)" fill="url(#lp-check)"/>
 
-  <!-- Work node the loop runs around -->
-  <circle cx="32" cy="32" r="4" fill="#F97316"/>
+  <circle cx="15" cy="36" r="7.5" fill="#101014" stroke="url(#lp-left)" stroke-width="4.2"/>
+  <circle cx="15" cy="36" r="3.7" fill="#F97316"/>
+
+  <circle cx="28.5" cy="51.5" r="1.7" fill="#8B5CF6"/>
+  <circle cx="32" cy="51.5" r="1.7" fill="#7C3AED"/>
+  <circle cx="35.5" cy="51.5" r="1.7" fill="#3B82F6"/>
 </svg>
