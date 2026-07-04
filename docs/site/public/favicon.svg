@@ -1,15 +1,12 @@
 <svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loops favicon">
   <title>Loops</title>
   <defs>
-    <linearGradient id="fv-top" x1="13" y1="14" x2="52" y2="41" gradientUnits="userSpaceOnUse">
+    <linearGradient id="fv-loop" x1="10" y1="37" x2="54" y2="55" gradientUnits="userSpaceOnUse">
       <stop stop-color="#22D3EE"/>
-      <stop offset="1" stop-color="#3B82F6"/>
+      <stop offset="0.5" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#A855F7"/>
     </linearGradient>
-    <linearGradient id="fv-bottom" x1="13" y1="28" x2="50" y2="53" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#A855F7"/>
-      <stop offset="1" stop-color="#3B82F6"/>
-    </linearGradient>
-    <linearGradient id="fv-human" x1="24" y1="22" x2="40" y2="48" gradientUnits="userSpaceOnUse">
+    <linearGradient id="fv-human" x1="24" y1="10" x2="40" y2="37" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F59E0B"/>
       <stop offset="1" stop-color="#F97316"/>
     </linearGradient>
@@ -17,16 +14,16 @@
 
   <rect x="4" y="4" width="56" height="56" rx="14" fill="#101014" stroke="#2F2F38" stroke-width="1"/>
 
-  <path d="M14 28V25C14 18.9 18.9 14 25 14H39C45.1 14 50 18.9 50 25V37" stroke="url(#fv-top)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M50 40L45.5 35.5H54.5L50 40Z" fill="#3B82F6"/>
+  <circle cx="32" cy="16.5" r="6.2" fill="url(#fv-human)"/>
+  <path d="M21.5 34.8C21.5 27.6 25.8 24 32 24C38.2 24 42.5 27.6 42.5 34.8C42.5 36.4 41.2 37.6 39.6 37.6H24.4C22.8 37.6 21.5 36.4 21.5 34.8Z" fill="url(#fv-human)"/>
 
-  <path d="M50 42C50 48.1 45.1 53 39 53H25C18.9 53 14 48.1 14 42V30" stroke="url(#fv-bottom)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M14 28L9.5 32.5H18.5L14 28Z" fill="#A855F7"/>
+  <path d="M12 48C12 39.4 22.2 38.2 32 46C41.8 53.8 52 52.6 52 44C52 35.4 41.8 34.2 32 42C22.2 49.8 12 56.6 12 48Z" stroke="url(#fv-loop)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <rect x="28.2" y="10.2" width="8.2" height="8.2" rx="1.4" transform="rotate(45 32.3 14.3)" fill="#22D3EE"/>
-  <circle cx="32" cy="28" r="6" fill="url(#fv-human)"/>
-  <path d="M21.5 44.5C21.5 37.5 25.8 34 32 34C38.2 34 42.5 37.5 42.5 44.5C42.5 46.2 41.2 47.5 39.5 47.5H24.5C22.8 47.5 21.5 46.2 21.5 44.5Z" fill="url(#fv-human)"/>
+  <path d="M25.7 39.6L34.4 43.9L27.4 49.6Z" fill="#22D3EE"/>
+  <path d="M39.1 48.4L46.8 47.6L41.6 54.6Z" fill="#8B5CF6"/>
 
-  <circle cx="32" cy="53" r="4.2" fill="#101014" stroke="#2F2F38" stroke-width="1"/>
-  <circle cx="32" cy="53" r="2.5" fill="#8B5CF6"/>
+  <circle cx="12" cy="48" r="4.6" fill="#101014"/>
+  <circle cx="12" cy="48" r="2.9" fill="#22D3EE"/>
+  <circle cx="52" cy="44" r="4.6" fill="#101014"/>
+  <circle cx="52" cy="44" r="2.9" fill="#22D3EE"/>
 </svg>
