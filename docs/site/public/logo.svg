@@ -14,16 +14,14 @@
 
   <rect x="4" y="4" width="56" height="56" rx="14" fill="#101014" stroke="#2F2F38" stroke-width="1"/>
 
-  <circle cx="32" cy="16.5" r="6.2" fill="url(#lp-human)"/>
-  <path d="M21.5 34.8C21.5 27.6 25.8 24 32 24C38.2 24 42.5 27.6 42.5 34.8C42.5 36.4 41.2 37.6 39.6 37.6H24.4C22.8 37.6 21.5 36.4 21.5 34.8Z" fill="url(#lp-human)"/>
+  <circle cx="32" cy="15.8" r="5.8" fill="url(#lp-human)"/>
+  <path d="M22 34.8C22 27.9 26 24.4 32 24.4C38 24.4 42 27.9 42 34.8C42 36.2 40.8 37.4 39.4 37.4H24.6C23.2 37.4 22 36.2 22 34.8Z" fill="url(#lp-human)"/>
 
-  <path d="M12 48C12 39.4 22.2 38.2 32 46C41.8 53.8 52 52.6 52 44C52 35.4 41.8 34.2 32 42C22.2 49.8 12 56.6 12 48Z" stroke="url(#lp-loop)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 47C12 39 22 39 32 47C42 55 52 55 52 47" stroke="url(#lp-loop)" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M52 47C52 39 42 39 32 47C22 55 12 55 12 47" stroke="url(#lp-loop)" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <path d="M25.7 39.6L34.4 43.9L27.4 49.6Z" fill="#22D3EE"/>
-  <path d="M39.1 48.4L46.8 47.6L41.6 54.6Z" fill="#8B5CF6"/>
-
-  <circle cx="12" cy="48" r="4.6" fill="#101014"/>
-  <circle cx="12" cy="48" r="2.9" fill="#22D3EE"/>
-  <circle cx="52" cy="44" r="4.6" fill="#101014"/>
-  <circle cx="52" cy="44" r="2.9" fill="#22D3EE"/>
+  <circle cx="12" cy="47" r="4.2" fill="#101014"/>
+  <circle cx="12" cy="47" r="2.6" fill="#22D3EE"/>
+  <circle cx="52" cy="47" r="4.2" fill="#101014"/>
+  <circle cx="52" cy="47" r="2.6" fill="#22D3EE"/>
 </svg>
