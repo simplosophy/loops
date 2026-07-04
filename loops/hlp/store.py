@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 
 from .audit import AuditLog
-from .objects import Artifact, ArtifactRef, Checkpoint, Ledger, Review, Task
+from .objects import Artifact, ArtifactRef, Checkpoint, IdempotencyRecord, Ledger, Review, Task
 from .types import ProtocolError
 
 
@@ -37,6 +37,8 @@ class HumanLoopStore:
     _artifact_references: dict[str, tuple[ArtifactRef, ...]] = field(default_factory=dict, repr=False)
     # task 的 run_id 映射（由 operations 维护，用于 checkpoint 联动）
     _task_runs: dict[str, str] = field(default_factory=dict, repr=False)
+    # task-scoped idempotency records, keyed by (task_id, idempotency_key)
+    _idempotency_records: dict[tuple[str, str], IdempotencyRecord] = field(default_factory=dict, repr=False)
 
     # ── Task ──
     def put_task(self, task: Task) -> None:
@@ -53,6 +55,20 @@ class HumanLoopStore:
 
     def list_tasks(self) -> list[Task]:
         return [_snapshot(task) for task in self.tasks.values()]
+
+    def bump_task_revision(self, task: Task) -> None:
+        task.revision += 1
+
+    def get_idempotency_record(
+        self,
+        task_id: str,
+        key: str,
+    ) -> IdempotencyRecord | None:
+        record = self._idempotency_records.get((task_id, key))
+        return _snapshot(record) if record is not None else None
+
+    def put_idempotency_record(self, record: IdempotencyRecord) -> None:
+        self._idempotency_records[(record.task_id, record.key)] = record
 
     # ── Checkpoint ──
     def put_checkpoint(self, ckpt: Checkpoint) -> None:

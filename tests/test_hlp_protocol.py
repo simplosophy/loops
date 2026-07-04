@@ -95,6 +95,7 @@ def test_human_loop_public_api_names_are_primary():
     assert "HLP_SCHEMA_VERSION" in hlp.__all__
     assert "HarnessEventDelivery" in hlp.__all__
     assert "ReliableHarnessEventAdapter" in hlp.__all__
+    assert "IdempotencyRecord" in hlp.__all__
     assert "AAPBridge" not in hlp.__all__
     assert "InMemoryAAPBridge" not in hlp.__all__
     assert "H" + "ACPOperations" not in hlp.__all__

@@ -40,6 +40,11 @@ claim: adapter correlation, checkpoint/artifact projection, resume payloads,
 reliable event cursor acknowledgement, and fail-fast behavior when an external
 process adapter does not return a run id.
 
+`tests/conformance/test_hlp_industrial_profile.py` exercises the current
+industrial reference slice: per-task revision, stale revision conflicts before
+adapter calls, task-scoped idempotency-key replay, and stable replay for
+generated checkpoints and artifacts.
+
 ## HLP 0.2.0-draft Requirements
 
 An implementation claiming HLP compatibility **MUST**:
@@ -74,6 +79,7 @@ contracts it uses:
 | Checkpoint-to-Block | `checkpoint.raise` blocks the corresponding run; `checkpoint.resolve` resumes it. |
 | Harness event projection | Approval, input, choice, and artifact events become HLP checkpoints or artifacts. |
 | Reliable event delivery | Event-streaming adapters retain unacknowledged events on projection failure and acknowledge only successful per-run prefixes. |
+| Task CAS and idempotency | Task aggregate mutations expose `revision`, reject stale `expected_task_revision`, and replay matching `idempotency_key` requests without duplicate side effects. |
 | Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |
 | External evidence reference | Capability evidence, when used, is stored as opaque external references without transport endpoints. |
 

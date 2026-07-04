@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from copy import deepcopy
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +16,7 @@ from .objects import (
     CheckpointOption,
     CheckpointResolution,
     Evidence,
+    IdempotencyRecord,
     InputRef,
     Ledger,
     LedgerEntry,
@@ -43,6 +46,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@dataclass(frozen=True)
+class _TaskOperationReplay:
+    result: Any
+
+
+@dataclass(frozen=True)
+class _TaskOperationContext:
+    key: str | None
+    operation: str
+    fingerprint: str
+    revision_before: int
+    audit_seq_before: int
+
+
 # ════════════════════════════════════════════════════════════
 # HLP 协议操作 (spec §4)
 #
@@ -66,6 +83,7 @@ class HumanLoopOperations:
 
     store: HumanLoopStore = field(default_factory=HumanLoopStore)
     adapter: AgentAdapter = field(default_factory=FakeAgentAdapter)
+    last_operation_replayed: bool = field(default=False, init=False)
 
     # ────────────────── Task (spec §4.1) ──────────────────
 
@@ -139,6 +157,7 @@ class HumanLoopOperations:
             after={"assignee": agent_id},
         )
         self.store.bind_run(task_id, run_id)
+        self.store.bump_task_revision(task)
         return task
 
     async def task_start(self, task_id: str) -> Task:
@@ -153,6 +172,7 @@ class HumanLoopOperations:
             subject=("task", task.id),
             task_id=task_id,
         )
+        self.store.bump_task_revision(task)
         return task
 
     async def task_cancel(self, task_id: str, by: str) -> Task:
@@ -179,6 +199,7 @@ class HumanLoopOperations:
             subject=("task", task.id),
             task_id=task_id,
         )
+        self.store.bump_task_revision(task)
         return task
 
     async def task_amend(
@@ -188,9 +209,24 @@ class HumanLoopOperations:
         by: str,
         text: str,
         intent: SteeringIntent = "clarify",
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Task:
         """task.amend (HLP 0.2.0)：append steering without changing spec/state."""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "task.amend",
+            {
+                "by": by,
+                "text": text,
+                "intent": intent,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if task.state not in ("in_progress", "blocked"):
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -212,6 +248,7 @@ class HumanLoopOperations:
             task_id=task.id,
             after={"text": text, "intent": intent},
         )
+        self._commit_task_operation(task, idempotency, task)
         return task
 
     async def task_get(self, task_id: str) -> Task:
@@ -228,9 +265,23 @@ class HumanLoopOperations:
         *,
         by: str,
         prompt: str,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Checkpoint:
         """task.interrupt (HLP 0.2.0)：human-initiated pause."""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "task.interrupt",
+            {
+                "by": by,
+                "prompt": prompt,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         self._require_state(task, "in_progress")
         self._require_principal(task, by, "task interrupt")
         if not prompt:
@@ -268,6 +319,7 @@ class HumanLoopOperations:
             subject=("checkpoint", ckpt.id),
             task_id=task_id,
         )
+        self._commit_task_operation(task, idempotency, ckpt)
         return ckpt
 
     # ────────────────── Checkpoint (spec §4.1) ──────────────────
@@ -326,6 +378,7 @@ class HumanLoopOperations:
             subject=("checkpoint", ckpt.id),
             task_id=task_id,
         )
+        self.store.bump_task_revision(task)
         return ckpt
 
     async def checkpoint_resolve(
@@ -342,10 +395,34 @@ class HumanLoopOperations:
         state_patch: dict[str, Any] | None = None,
         edited_artifact_ref: dict[str, str] | None = None,
         comment: str | None = None,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Checkpoint:
         """checkpoint.resolve (spec §4.1)。blocked→in_progress (approve/provide)
         或 blocked→completed (reject)。"""
         ckpt = self.store._get_checkpoint_for_update(ckpt_id)
+        task = self.store._get_task_for_update(ckpt.task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "checkpoint.resolve",
+            {
+                "checkpoint_id": ckpt_id,
+                "by": by,
+                "action": action,
+                "choice": choice,
+                "input": input,
+                "reassign_to": reassign_to,
+                "approved_actions": approved_actions,
+                "denied_actions": denied_actions,
+                "state_patch": state_patch,
+                "edited_artifact_ref": edited_artifact_ref,
+                "comment": comment,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if ckpt.state == "expired":
             raise ProtocolError(
                 "CHECKPOINT_EXPIRED",
@@ -356,7 +433,6 @@ class HumanLoopOperations:
                 "PRECONDITION_FAILED",
                 f"cannot resolve checkpoint in state {ckpt.state!r}",
             )
-        task = self.store._get_task_for_update(ckpt.task_id)
         self._require_state(task, "blocked")
         self._require_human_actor(by, "checkpoint resolver")
         self._validate_checkpoint_resolution(
@@ -412,6 +488,7 @@ class HumanLoopOperations:
             task_id=task.id,
             after=resume_payload,
         )
+        self._commit_task_operation(task, idempotency, ckpt)
         return ckpt
 
     async def checkpoint_expire(self, ckpt_id: str) -> Checkpoint:
@@ -431,6 +508,7 @@ class HumanLoopOperations:
             subject=("checkpoint", ckpt.id),
             task_id=task.id,
         )
+        self.store.bump_task_revision(task)
         return ckpt
 
     # ────────────────── Ownership (spec §4.1) ──────────────────
@@ -473,6 +551,7 @@ class HumanLoopOperations:
             task_id=task.id,
             after={"assignee": to, "via": via},
         )
+        self.store.bump_task_revision(task)
         return task
 
     async def ownership_delegate(
@@ -512,6 +591,7 @@ class HumanLoopOperations:
             task_id=task.id,
             after={"delegatee": to_agent},
         )
+        self.store.bump_task_revision(task)
         return task
 
     # ────────────────── Review (spec §4.1) ──────────────────
@@ -617,6 +697,7 @@ class HumanLoopOperations:
                 task_id=task_id,
                 after={"review_id": review.id},
             )
+        self.store.bump_task_revision(task)
         return review
 
     async def review_comment(
@@ -661,6 +742,8 @@ class HumanLoopOperations:
         payload: ArtifactPayload,
         produced_by: str,
         parent_version: str | None = None,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Artifact:
         """artifact.commit (spec §4.1, §3.7)。
 
@@ -669,6 +752,20 @@ class HumanLoopOperations:
         参考：in_progress 状态下 commit 触发 review_ready。
         """
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "artifact.commit",
+            {
+                "type": type,
+                "payload": payload,
+                "produced_by": produced_by,
+                "parent_version": parent_version,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         # spec §4.3: artifact.commit 要求 in_progress 或返工态
         if task.state not in ("in_progress",):
             raise ProtocolError(
@@ -702,6 +799,7 @@ class HumanLoopOperations:
             task_id=task_id,
             after={"version": version},
         )
+        self._commit_task_operation(task, idempotency, art)
         return art
 
     async def artifact_get(self, art_id: str, version: str | None = None) -> Artifact:
@@ -779,6 +877,81 @@ class HumanLoopOperations:
         return self.store.audit_log.replay(task_id)
 
     # ────────────────── 内部辅助 ──────────────────
+
+    def _begin_task_operation(
+        self,
+        task: Task,
+        operation: str,
+        request: dict[str, Any],
+        *,
+        expected_task_revision: int | None,
+        idempotency_key: str | None,
+    ) -> _TaskOperationContext | _TaskOperationReplay:
+        fingerprint = _fingerprint({
+            "operation": operation,
+            "request": request,
+        })
+        self.last_operation_replayed = False
+        if idempotency_key is not None:
+            record = self.store.get_idempotency_record(task.id, idempotency_key)
+            if record is not None:
+                if (
+                    record.operation != operation
+                    or record.request_fingerprint != fingerprint
+                ):
+                    raise ProtocolError(
+                        "CONFLICT",
+                        "idempotency key was already used for a different request",
+                        details={
+                            "task_id": task.id,
+                            "idempotency_key": idempotency_key,
+                        },
+                    )
+                self.last_operation_replayed = True
+                return _TaskOperationReplay(result=record.result)
+
+        if (
+            expected_task_revision is not None
+            and task.revision != expected_task_revision
+        ):
+            raise ProtocolError(
+                "CONFLICT",
+                "task revision conflict",
+                details={
+                    "task_id": task.id,
+                    "expected_task_revision": expected_task_revision,
+                    "actual_task_revision": task.revision,
+                },
+            )
+
+        return _TaskOperationContext(
+            key=idempotency_key,
+            operation=operation,
+            fingerprint=fingerprint,
+            revision_before=task.revision,
+            audit_seq_before=self.store.audit_log.count,
+        )
+
+    def _commit_task_operation(
+        self,
+        task: Task,
+        context: _TaskOperationContext,
+        result: Any,
+    ) -> None:
+        self.store.bump_task_revision(task)
+        if context.key is None:
+            return
+        self.store.put_idempotency_record(IdempotencyRecord(
+            task_id=task.id,
+            key=context.key,
+            operation=context.operation,
+            request_fingerprint=context.fingerprint,
+            revision_before=context.revision_before,
+            revision_after=task.revision,
+            result=deepcopy(result),
+            audit_seq_start=context.audit_seq_before + 1,
+            audit_seq_end=self.store.audit_log.count,
+        ))
 
     def _require_state(self, task: Task, expected: TaskState) -> None:
         """前置条件：要求 task 处于某状态 (spec §4.3)。"""
@@ -936,3 +1109,31 @@ class HumanLoopOperations:
             verdict="approved",
         )
         return task
+
+
+def _fingerprint(value: Any) -> str:
+    return json.dumps(
+        _jsonable(value),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if is_dataclass(value):
+        return {
+            field.name: _jsonable(getattr(value, field.name))
+            for field in fields(value)
+        }
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _jsonable(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    return value

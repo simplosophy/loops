@@ -1504,6 +1504,53 @@ def test_sqlite_store_persists_hlp_state_across_restart(tmp_path):
     ]
 
 
+def test_sqlite_store_persists_idempotency_records_across_restart(tmp_path):
+    db_path = tmp_path / "hlp-idempotency.db"
+    first_adapter = FakeAgentAdapter()
+    first_bus = InMemoryEventBus()
+    first = HLPClient(
+        store=SQLiteHumanLoopStore(db_path),
+        adapter=first_adapter,
+        event_bus=first_bus,
+    )
+
+    task = run(first.create_task(
+        principal="user_alice",
+        goal="Persist idempotency",
+    ))
+    run(first.delegate(task.id, "agent_persistent"))
+    run(first.start(task.id))
+    revision = run(first.get_task(task.id)).revision
+    amended = run(first.amend(
+        task.id,
+        by="user_alice",
+        text="Replay must not steer twice.",
+        expected_task_revision=revision,
+        idempotency_key="amend-once",
+    ))
+
+    second_adapter = FakeAgentAdapter()
+    second_bus = InMemoryEventBus()
+    second = HLPClient(
+        store=SQLiteHumanLoopStore(db_path),
+        adapter=second_adapter,
+        event_bus=second_bus,
+    )
+    replayed = run(second.amend(
+        task.id,
+        by="user_alice",
+        text="Replay must not steer twice.",
+        expected_task_revision=revision,
+        idempotency_key="amend-once",
+    ))
+
+    assert replayed == amended
+    assert len(first_adapter.calls_of("steer")) == 1
+    assert second_adapter.calls_of("steer") == []
+    assert [event.action for event in first_bus.events].count("task.amended") == 1
+    assert second_bus.events == []
+
+
 def test_hlp_e2e_demo_runs_without_external_services():
     result = run(run_demo())
 

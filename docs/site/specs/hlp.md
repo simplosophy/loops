@@ -126,6 +126,7 @@ Task:
   state: TaskState
   parent_task: task_ | null
   created_at: timestamp
+  revision: integer
   deadline: timestamp | null
   checkpoints: [ckpt_]
   artifacts: [art_]
@@ -481,6 +482,27 @@ HLP operation names follow `<object>.<verb>`. A conforming implementation
 | Ledger | `ledger.history` | any authorized actor | Read key history |
 | Audit | `audit.query` | any authorized actor | Query audit events |
 | Audit | `audit.replay` | any authorized actor | Replay task history |
+
+In the industrial profile, operations that mutate a Task aggregate **SHOULD**
+accept:
+
+```yaml
+expected_task_revision: integer | null
+idempotency_key: string | null
+```
+
+When `expected_task_revision` is present, implementations **MUST** compare it
+with the current `Task.revision` before calling external adapters or writing
+state. A mismatch **MUST** return `CONFLICT`. A successful Task aggregate
+mutation **MUST** advance `revision` exactly once.
+
+When `idempotency_key` is present, the same task-scoped key plus the same
+canonical request fingerprint **MUST** return the original result without
+rerunning preconditions, adapter calls, audit appends, or SDK event publication.
+The same key with a different fingerprint **MUST** return `CONFLICT`. The
+reference implementation covers task.amend, task.interrupt,
+checkpoint.resolve, and artifact.commit; durable outbox and adapter
+idempotency context remain follow-up `HLP-industrial` work.
 
 ## Operation Preconditions
 

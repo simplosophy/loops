@@ -120,6 +120,7 @@ Task:
   state: TaskState             # REQUIRED
   parent_task: task_ | null    # OPTIONAL, 支持子任务拆分
   created_at: timestamp        # REQUIRED
+  revision: integer            # REQUIRED, per-task CAS token, 初始 0
   deadline: timestamp | null   # OPTIONAL
   checkpoints: [ckpt_]         # 挂载的 Checkpoint ID
   artifacts: [art_]            # 产出的 Artifact ID
@@ -459,6 +460,24 @@ AuditEvent:
 | | `ledger.history` | any | 回溯 key 变更 |
 | **Audit** | `audit.query` | any | 按 task/actor/action 查 |
 | | `audit.replay` | any | 回放 Task 完整历史 |
+
+工业 profile 中，修改 Task aggregate 的操作 **SHOULD** 接受：
+
+```yaml
+expected_task_revision: integer | null  # 可选 CAS token
+idempotency_key: string | null          # 可选，task-scoped
+```
+
+若提供 `expected_task_revision`，实现 **MUST** 在调用外部 adapter 或写入状态前比较
+当前 `Task.revision`；不一致时 **MUST** 返回 `CONFLICT`。成功的 Task aggregate
+修改 **MUST** 让 `revision` 只前进一次。
+
+若提供 `idempotency_key`，同一 task 内同一 key + 同一 canonical request
+fingerprint **MUST** 返回首次操作结果，且 **MUST NOT** 再次执行前置条件、adapter
+调用、audit append 或 SDK event publish。同一 key + 不同 fingerprint **MUST**
+返回 `CONFLICT`。参考实现当前覆盖 `task.amend`、`task.interrupt`、
+`checkpoint.resolve` 与 `artifact.commit`；durable outbox 与 adapter 幂等上下文仍属
+后续 `HLP-industrial` profile 工作。
 
 ### 4.2 操作 → audit action 映射
 

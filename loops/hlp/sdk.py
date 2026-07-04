@@ -120,14 +120,18 @@ class HLPClient:
         by: str,
         text: str,
         intent: SteeringIntent = "clarify",
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Task:
         task = await self.operations.task_amend(
             task_id,
             by=by,
             text=text,
             intent=intent,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        await self._after_mutation(
+        await self._after_mutation_unless_replay(
             "task.amended",
             task_id=task.id,
             subject=("task", task.id),
@@ -141,13 +145,17 @@ class HLPClient:
         *,
         by: str,
         prompt: str,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Checkpoint:
         checkpoint = await self.operations.task_interrupt(
             task_id,
             by=by,
             prompt=prompt,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        await self._after_mutation(
+        await self._after_mutation_unless_replay(
             "task.interrupted",
             task_id=task_id,
             subject=("checkpoint", checkpoint.id),
@@ -200,6 +208,8 @@ class HLPClient:
         state_patch: dict[str, Any] | None = None,
         edited_artifact_ref: dict[str, str] | None = None,
         comment: str | None = None,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Checkpoint:
         checkpoint = await self.operations.checkpoint_resolve(
             checkpoint_id,
@@ -213,8 +223,10 @@ class HLPClient:
             state_patch=state_patch,
             edited_artifact_ref=edited_artifact_ref,
             comment=comment,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        await self._after_mutation(
+        await self._after_mutation_unless_replay(
             "checkpoint.resolved",
             task_id=checkpoint.task_id,
             subject=("checkpoint", checkpoint.id),
@@ -230,6 +242,8 @@ class HLPClient:
         payload: ArtifactPayload,
         produced_by: str,
         parent_version: str | None = None,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Artifact:
         artifact = await self.operations.artifact_commit(
             task_id=task_id,
@@ -237,8 +251,10 @@ class HLPClient:
             payload=payload,
             produced_by=produced_by,
             parent_version=parent_version,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        await self._after_mutation(
+        await self._after_mutation_unless_replay(
             "artifact.committed",
             task_id=task_id,
             subject=("artifact", artifact.id),
@@ -429,6 +445,24 @@ class HLPClient:
         if flush is not None:
             flush()
         await self._publish_event(
+            action,
+            task_id=task_id,
+            subject=subject,
+            payload=payload,
+        )
+
+    async def _after_mutation_unless_replay(
+        self,
+        action: str,
+        *,
+        task_id: str,
+        subject: tuple[str, str],
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if self.operations.last_operation_replayed:
+            self.operations.last_operation_replayed = False
+            return
+        await self._after_mutation(
             action,
             task_id=task_id,
             subject=subject,

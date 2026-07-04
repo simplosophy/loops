@@ -80,8 +80,13 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
 - 已完成文档边界：`HLP-compatible` / `HLP-integrated` 不等同于
   `HLP-industrial`；工业声明还需要 CAS、idempotency、durable outbox、
   reducer-ready audit、permission grammar、schema 与 version negotiation 证据。
-- 未完成：per-task CAS / idempotency key / durable outbox；该部分需要单独设计
-  `Task.revision`、operation fingerprint、幂等记录和 adapter 幂等上下文。
+- 已完成 reference slice：`Task.revision`、`expected_task_revision` CAS、
+  task-scoped `idempotency_key`、canonical request fingerprint 与 replay 记录。
+  当前覆盖 `task.amend`、`task.interrupt`、`checkpoint.resolve` 和
+  `artifact.commit`，并通过 SQLite snapshot 持久化 reference idempotency records。
+- 未完成：durable outbox 与 adapter 幂等上下文；这部分需要把 operation id /
+  idempotency context 传入外部 harness，解决 adapter side effect 成功但本地提交前
+  崩溃的重复副作用问题。
 
 ## 本轮执行边界
 

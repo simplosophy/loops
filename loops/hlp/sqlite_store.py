@@ -19,6 +19,7 @@ from .objects import (
     Constraints,
     Evidence,
     InputRef,
+    IdempotencyRecord,
     Ledger,
     LedgerEntry,
     Ownership,
@@ -48,6 +49,7 @@ _DATACLASS_TYPES = {
         Constraints,
         Evidence,
         InputRef,
+        IdempotencyRecord,
         Ledger,
         LedgerEntry,
         Ownership,
@@ -83,6 +85,7 @@ class SQLiteHumanLoopStore(HumanLoopStore):
             "artifact_versions": self._artifact_versions,
             "artifact_references": self._artifact_references,
             "task_runs": self._task_runs,
+            "idempotency_records": self._idempotency_records,
         }
         with self._connect() as conn:
             conn.execute("delete from hlp_snapshot")
@@ -118,6 +121,7 @@ class SQLiteHumanLoopStore(HumanLoopStore):
         self._artifact_versions = snapshot.get("artifact_versions", {})
         self._artifact_references = snapshot.get("artifact_references", {})
         self._task_runs = snapshot.get("task_runs", {})
+        self._idempotency_records = snapshot.get("idempotency_records", {})
         events = snapshot.get("audit_events", [])
         self.audit_log = AuditLog()
         self.audit_log._events = list(events)

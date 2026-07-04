@@ -200,6 +200,21 @@ class HumanInboxItem:
     created_at: datetime = field(default_factory=_now)
 
 
+@dataclass(frozen=True)
+class IdempotencyRecord:
+    """Stored result for replaying a task-scoped mutating operation."""
+
+    task_id: str
+    key: str
+    operation: str
+    request_fingerprint: str
+    revision_before: int
+    revision_after: int
+    result: Any
+    audit_seq_start: int
+    audit_seq_end: int
+
+
 # ════════════════════════════════════════════════════════════
 # 可变状态对象 —— 持有协议运行时状态
 # ════════════════════════════════════════════════════════════
@@ -241,6 +256,7 @@ class Task:
     state: TaskState = "created"
     parent_task: str | None = None
     created_at: datetime = field(default_factory=_now)
+    revision: int = 0
     deadline: datetime | None = None
     checkpoints: list[str] = field(default_factory=list)     # ckpt_id 列表
     artifacts: list[str] = field(default_factory=list)       # art_id 列表
