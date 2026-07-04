@@ -222,8 +222,20 @@ id and maps explicit Codex HLP events such as `needs_approval`, `needs_input`,
 
 ## Verification
 
+Default offline release verification:
+
 ```bash
 uv run pytest -q
+uv run pytest tests/conformance -q
+uv run python scripts/check_release_metadata.py
+uv run python scripts/check_spec_site_sync.py
+npm run build
+npm run verify:site
+```
+
+Opt-in CLI smoke tests require installed local agent CLIs:
+
+```bash
 uv run loops-hlp-demo
 uv run loops-hlp-adapters-demo
 uv run loops-hlp-harness-demo

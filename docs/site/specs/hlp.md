@@ -8,7 +8,7 @@ outline: [2, 3]
 | Field | Value |
 | --- | --- |
 | Version | 0.2.0-draft |
-| Status | Draft; 0.2.0 core semantics are covered by the reference implementation, with an executable conformance suite still pending |
+| Status | Draft; 0.2.0 core semantics are covered by the reference implementation and offline conformance suite |
 | Layer | HLP SDK layer above existing agent harness and capability routes |
 | Document type | Full protocol specification |
 | Primary concern | Human-owned work delegated to autonomous agent harnesses |

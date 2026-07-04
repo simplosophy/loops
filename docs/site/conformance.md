@@ -18,6 +18,22 @@ Do not claim HLP integration if the lower harness loses HLP task correlation,
 lets agents bypass human checkpoints, or cannot project human-facing harness
 events into HLP objects.
 
+## Executable Suite
+
+The repository includes an offline conformance suite for the 0.2.0-draft line:
+
+```bash
+uv run pytest tests/conformance -q
+```
+
+`tests/conformance/test_hlp_compatible_profile.py` exercises the HLP-compatible
+claim: required objects, all 23 operations, state transitions, immutable records,
+preconditions, audit query/replay, and the 0.2.0 continuous-control values.
+
+`tests/conformance/test_hlp_integrated_profile.py` exercises the HLP-integrated
+claim: adapter correlation, checkpoint/artifact projection, resume payloads, and
+fail-fast behavior when an external process adapter does not return a run id.
+
 ## HLP 0.2.0-draft Requirements
 
 An implementation claiming HLP compatibility **MUST**:
@@ -65,13 +81,13 @@ Before publishing a compatibility claim, produce evidence for:
 | Evidence | HLP-compatible | HLP-integrated |
 | --- | --- | --- |
 | Public API or protocol description | Required | Required |
-| State machine tests | Required | Required |
-| Immutable record tests | Required | Required |
-| Error semantic tests | Required | Required |
-| Audit replay demonstration | Required | Required |
-| Cross-harness correlation trace | Recommended | Required |
-| Checkpoint block/resume trace | Recommended | Required |
-| Harness event projection trace | Recommended | Required when wrapping an existing harness |
+| State machine tests | Required, covered by `tests/conformance` | Required |
+| Immutable record tests | Required, covered by `tests/conformance` | Required |
+| Error semantic tests | Required, covered by `tests/conformance` | Required |
+| Audit replay demonstration | Required, covered by `tests/conformance` | Required |
+| Cross-harness correlation trace | Recommended | Required, covered by `tests/conformance` |
+| Checkpoint block/resume trace | Recommended | Required, covered by `tests/conformance` |
+| Harness event projection trace | Recommended | Required when wrapping an existing harness; covered by `tests/conformance` |
 | Capability provenance trace | Optional | Required only when the integration claims capability evidence support |
 
 ## Non-Conforming Patterns

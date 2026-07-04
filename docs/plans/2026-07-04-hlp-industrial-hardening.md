@@ -60,6 +60,8 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
 - 统一 `SDK version` 与 `Spec version` 的公开说明。
 - 增加 source spec 与 site spec 同步检查，消除 validated/waiting 文案漂移。
 
+状态：已新增离线 conformance suite；release verification 脚本与默认离线命令入口已落地。
+
 ## Phase 3: Industrial Profile
 
 目标：定义而非隐式假设生产一致性能力。
