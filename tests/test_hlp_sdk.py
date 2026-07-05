@@ -1522,7 +1522,12 @@ def test_sqlite_store_persists_idempotency_records_across_restart(tmp_path):
         principal="user_alice",
         goal="Persist idempotency",
     ))
-    run(first.delegate(task.id, "agent_persistent"))
+    handle = run(first.delegate(
+        task.id,
+        "agent_persistent",
+        expected_task_revision=task.revision,
+        idempotency_key="delegate-once",
+    ))
     run(first.start(task.id))
     revision = run(first.get_task(task.id)).revision
     amended = run(first.amend(
@@ -1540,6 +1545,12 @@ def test_sqlite_store_persists_idempotency_records_across_restart(tmp_path):
         adapter=second_adapter,
         event_bus=second_bus,
     )
+    replayed_handle = run(second.delegate(
+        task.id,
+        "agent_persistent",
+        expected_task_revision=task.revision,
+        idempotency_key="delegate-once",
+    ))
     replayed = run(second.amend(
         task.id,
         by="user_alice",
@@ -1548,11 +1559,255 @@ def test_sqlite_store_persists_idempotency_records_across_restart(tmp_path):
         idempotency_key="amend-once",
     ))
 
+    assert replayed_handle == handle
     assert replayed == amended
+    assert len(first_adapter.calls_of("delegate")) == 1
+    assert second_adapter.calls_of("delegate") == []
     assert len(first_adapter.calls_of("steer")) == 1
     assert second_adapter.calls_of("steer") == []
+    assert [event.action for event in first_bus.events].count("task.delegated") == 1
     assert [event.action for event in first_bus.events].count("task.amended") == 1
     assert second_bus.events == []
+
+
+def test_sdk_replay_covers_primary_task_mutations_without_duplicate_events():
+    adapter = FakeAgentAdapter()
+    bus = InMemoryEventBus()
+    client = HLPClient(adapter=adapter, event_bus=bus)
+
+    task = run(client.create_task(principal="user_alice", goal="Replay SDK operations"))
+    handle = run(client.delegate(
+        task.id,
+        "agent_worker",
+        expected_task_revision=task.revision,
+        idempotency_key="sdk-delegate",
+    ))
+    replayed_handle = run(client.delegate(
+        task.id,
+        "agent_worker",
+        expected_task_revision=task.revision,
+        idempotency_key="sdk-delegate",
+    ))
+    assert replayed_handle == handle
+
+    assigned_revision = run(client.get_task(task.id)).revision
+    started = run(client.start(
+        task.id,
+        expected_task_revision=assigned_revision,
+        idempotency_key="sdk-start",
+    ))
+    replayed_start = run(client.start(
+        task.id,
+        expected_task_revision=assigned_revision,
+        idempotency_key="sdk-start",
+    ))
+    assert replayed_start == started
+
+    in_progress_revision = run(client.get_task(task.id)).revision
+    checkpoint = run(client.raise_checkpoint(
+        task_id=task.id,
+        kind="approval",
+        prompt="Approve SDK replay?",
+        raised_by="agent_worker",
+        expected_task_revision=in_progress_revision,
+        idempotency_key="sdk-raise",
+    ))
+    replayed_checkpoint = run(client.raise_checkpoint(
+        task_id=task.id,
+        kind="approval",
+        prompt="Approve SDK replay?",
+        raised_by="agent_worker",
+        expected_task_revision=in_progress_revision,
+        idempotency_key="sdk-raise",
+    ))
+    assert replayed_checkpoint == checkpoint
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.commit_artifact(
+        task_id=task.id,
+        type="report",
+        payload=ArtifactPayload(
+            kind="inline",
+            uri="mem://sdk-replay",
+            checksum="sha256:sdk-replay",
+        ),
+        produced_by="agent_worker",
+    ))
+    review_revision = run(client.get_task(task.id)).revision
+    review = run(client.submit_review(
+        task_id=task.id,
+        artifact_id=artifact.id,
+        reviewer="user_alice",
+        verdict="approved",
+        expected_task_revision=review_revision,
+        idempotency_key="sdk-review",
+    ))
+    replayed_review = run(client.submit_review(
+        task_id=task.id,
+        artifact_id=artifact.id,
+        reviewer="user_alice",
+        verdict="approved",
+        expected_task_revision=review_revision,
+        idempotency_key="sdk-review",
+    ))
+    assert replayed_review == review
+
+    actions = [event.action for event in bus.events]
+    assert actions.count("task.delegated") == 1
+    assert actions.count("task.started") == 1
+    assert actions.count("checkpoint.raised") == 1
+    assert actions.count("review.submitted") == 1
+    assert len(adapter.calls_of("delegate")) == 1
+    assert len(adapter.calls_of("block")) == 1
+
+
+def test_sdk_delayed_replay_returns_first_mutation_result():
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter, event_bus=InMemoryEventBus())
+
+    delegate_task = run(client.create_task(
+        principal="user_alice",
+        goal="Replay delegate after handoff",
+    ))
+    handle = run(client.delegate(
+        delegate_task.id,
+        "agent_worker",
+        expected_task_revision=delegate_task.revision,
+        idempotency_key="sdk-delayed-delegate",
+    ))
+    run(client.operations.ownership_transfer(
+        delegate_task.id,
+        "agent_writer",
+        "handoff",
+        actor="agent_worker",
+    ))
+    assert client.store.run_of_task(delegate_task.id) != handle.run_id
+    replayed_handle = run(client.delegate(
+        delegate_task.id,
+        "agent_worker",
+        expected_task_revision=delegate_task.revision,
+        idempotency_key="sdk-delayed-delegate",
+    ))
+    assert replayed_handle.run_id == handle.run_id
+
+    start_task = run(client.create_task(
+        principal="user_alice",
+        goal="Replay start after blocking",
+    ))
+    run(client.delegate(start_task.id, "agent_worker"))
+    assigned_revision = run(client.get_task(start_task.id)).revision
+    started = run(client.start(
+        start_task.id,
+        expected_task_revision=assigned_revision,
+        idempotency_key="sdk-delayed-start",
+    ))
+    run(client.raise_checkpoint(
+        task_id=start_task.id,
+        kind="approval",
+        prompt="Block after start.",
+        raised_by="agent_worker",
+    ))
+    replayed_start = run(client.start(
+        start_task.id,
+        expected_task_revision=assigned_revision,
+        idempotency_key="sdk-delayed-start",
+    ))
+    assert replayed_start == started
+    assert replayed_start.state == "in_progress"
+    assert run(client.get_task(start_task.id)).state == "blocked"
+
+    amend_task = run(client.create_task(
+        principal="user_alice",
+        goal="Replay amend after blocking",
+    ))
+    run(client.delegate(amend_task.id, "agent_worker"))
+    run(client.start(amend_task.id))
+    amend_revision = run(client.get_task(amend_task.id)).revision
+    amended = run(client.amend(
+        amend_task.id,
+        by="user_alice",
+        text="Keep this result stable.",
+        expected_task_revision=amend_revision,
+        idempotency_key="sdk-delayed-amend",
+    ))
+    run(client.raise_checkpoint(
+        task_id=amend_task.id,
+        kind="approval",
+        prompt="Block after amend.",
+        raised_by="agent_worker",
+    ))
+    replayed_amend = run(client.amend(
+        amend_task.id,
+        by="user_alice",
+        text="Keep this result stable.",
+        expected_task_revision=amend_revision,
+        idempotency_key="sdk-delayed-amend",
+    ))
+    assert replayed_amend == amended
+    assert replayed_amend.state == "in_progress"
+    assert run(client.get_task(amend_task.id)).state == "blocked"
+
+    interrupt_task = run(client.create_task(
+        principal="user_alice",
+        goal="Replay interrupt after resolve",
+    ))
+    run(client.delegate(interrupt_task.id, "agent_worker"))
+    run(client.start(interrupt_task.id))
+    interrupt_revision = run(client.get_task(interrupt_task.id)).revision
+    interrupted = run(client.interrupt(
+        interrupt_task.id,
+        by="user_alice",
+        prompt="Pause once.",
+        expected_task_revision=interrupt_revision,
+        idempotency_key="sdk-delayed-interrupt",
+    ))
+    run(client.resolve_checkpoint(
+        interrupted.id,
+        by="user_alice",
+        action="approve",
+    ))
+    replayed_interrupt = run(client.interrupt(
+        interrupt_task.id,
+        by="user_alice",
+        prompt="Pause once.",
+        expected_task_revision=interrupt_revision,
+        idempotency_key="sdk-delayed-interrupt",
+    ))
+    assert replayed_interrupt == interrupted
+    assert replayed_interrupt.state == "pending"
+    assert client.store.get_checkpoint(interrupted.id).state == "resolved"
+
+    raise_task = run(client.create_task(
+        principal="user_alice",
+        goal="Replay checkpoint after resolve",
+    ))
+    run(client.delegate(raise_task.id, "agent_worker"))
+    run(client.start(raise_task.id))
+    raise_revision = run(client.get_task(raise_task.id)).revision
+    checkpoint = run(client.raise_checkpoint(
+        task_id=raise_task.id,
+        kind="approval",
+        prompt="Raise once.",
+        raised_by="agent_worker",
+        expected_task_revision=raise_revision,
+        idempotency_key="sdk-delayed-raise",
+    ))
+    run(client.resolve_checkpoint(
+        checkpoint.id,
+        by="user_alice",
+        action="approve",
+    ))
+    replayed_checkpoint = run(client.raise_checkpoint(
+        task_id=raise_task.id,
+        kind="approval",
+        prompt="Raise once.",
+        raised_by="agent_worker",
+        expected_task_revision=raise_revision,
+        idempotency_key="sdk-delayed-raise",
+    ))
+    assert replayed_checkpoint == checkpoint
+    assert replayed_checkpoint.state == "pending"
+    assert client.store.get_checkpoint(checkpoint.id).state == "resolved"
 
 
 def test_hlp_e2e_demo_runs_without_external_services():

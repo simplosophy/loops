@@ -497,11 +497,15 @@ idempotency_key: string | null          # 可选，task-scoped
 若提供 `idempotency_key`，同一 task 内同一 key + 同一 canonical request
 fingerprint **MUST** 返回首次操作结果，且 **MUST NOT** 再次执行前置条件、adapter
 调用、audit append 或 SDK event publish。同一 key + 不同 fingerprint **MUST**
-返回 `CONFLICT`。参考实现当前覆盖 `task.amend`、`task.interrupt`、
-`checkpoint.resolve` 与 `artifact.commit` 的 CAS/idempotency replay；adapter
-outbox context 覆盖 `task.assign`、`task.cancel`、`task.amend`、
+返回 `CONFLICT`。参考实现当前覆盖所有会推进现有 `Task.revision` 的 Task
+aggregate mutation：`task.assign`、`task.start`、`task.cancel`、`task.amend`、
 `task.interrupt`、`checkpoint.raise`、`checkpoint.resolve`、
-`ownership.transfer` handoff 与 `ownership.delegate` 的外部 side effect 边界。
+`checkpoint.expire`、`ownership.transfer`、`ownership.delegate`、
+`artifact.commit` 与 `review.submit`。`task.create` 创建新 aggregate；`ledger.write`、
+`review.comment` 与 `artifact.reference` 不推进 Task aggregate revision。adapter outbox
+context 覆盖 `task.assign`、`task.cancel`、`task.amend`、`task.interrupt`、
+`checkpoint.raise`、`checkpoint.resolve`、`ownership.transfer` handoff 与
+`ownership.delegate` 的外部 side effect 边界。
 
 ### 4.2 操作 → audit action 映射
 

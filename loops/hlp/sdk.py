@@ -78,14 +78,21 @@ class HLPClient:
         *,
         capability: str = "",
         input: dict[str, Any] | None = None,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> AgentRunHandle:
         await self.operations.task_assign(
             task_id,
             agent_id,
             capability=capability,
             input=input,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        run_id = self.store.run_of_task(task_id)
+        if self.operations.last_operation_replayed:
+            run_id = self._adapter_result_run_id()
+        else:
+            run_id = self.store.run_of_task(task_id)
         if run_id is None:
             raise RuntimeError(f"adapter did not bind a run for task {task_id}")
         handle = AgentRunHandle(
@@ -95,7 +102,7 @@ class HLPClient:
             correlation_id=task_id,
             capability=capability,
         )
-        await self._after_mutation(
+        await self._after_mutation_unless_replay(
             "task.delegated",
             task_id=task_id,
             subject=("run", run_id),
@@ -103,15 +110,25 @@ class HLPClient:
         )
         return handle
 
-    async def start(self, task_id: str) -> Task:
-        task = await self.operations.task_start(task_id)
-        await self._after_mutation(
+    async def start(
+        self,
+        task_id: str,
+        *,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> Task:
+        task = await self.operations.task_start(
+            task_id,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        replayed = await self._after_mutation_unless_replay(
             "task.started",
             task_id=task.id,
             subject=("task", task.id),
             payload={"assignee": task.ownership.assignee},
         )
-        return self.store.get_task(task.id)
+        return task if replayed else self.store.get_task(task.id)
 
     async def amend(
         self,
@@ -131,13 +148,13 @@ class HLPClient:
             expected_task_revision=expected_task_revision,
             idempotency_key=idempotency_key,
         )
-        await self._after_mutation_unless_replay(
+        replayed = await self._after_mutation_unless_replay(
             "task.amended",
             task_id=task.id,
             subject=("task", task.id),
             payload={"by": by, "intent": intent},
         )
-        return self.store.get_task(task.id)
+        return task if replayed else self.store.get_task(task.id)
 
     async def interrupt(
         self,
@@ -155,13 +172,13 @@ class HLPClient:
             expected_task_revision=expected_task_revision,
             idempotency_key=idempotency_key,
         )
-        await self._after_mutation_unless_replay(
+        replayed = await self._after_mutation_unless_replay(
             "task.interrupted",
             task_id=task_id,
             subject=("checkpoint", checkpoint.id),
             payload={"by": by},
         )
-        return self.store.get_checkpoint(checkpoint.id)
+        return checkpoint if replayed else self.store.get_checkpoint(checkpoint.id)
 
     async def get_task(self, task_id: str) -> Task:
         return await self.operations.task_get(task_id)
@@ -176,6 +193,8 @@ class HLPClient:
         proposed_actions: tuple[ProposedAction, ...] = (),
         context: tuple[Evidence, ...] = (),
         raised_by: str,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Checkpoint:
         checkpoint = await self.operations.checkpoint_raise(
             task_id=task_id,
@@ -185,14 +204,16 @@ class HLPClient:
             proposed_actions=proposed_actions,
             context=context,
             raised_by=raised_by,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        await self._after_mutation(
+        replayed = await self._after_mutation_unless_replay(
             "checkpoint.raised",
             task_id=task_id,
             subject=("checkpoint", checkpoint.id),
             payload={"kind": kind, "raised_by": raised_by},
         )
-        return self.store.get_checkpoint(checkpoint.id)
+        return checkpoint if replayed else self.store.get_checkpoint(checkpoint.id)
 
     async def resolve_checkpoint(
         self,
@@ -226,13 +247,13 @@ class HLPClient:
             expected_task_revision=expected_task_revision,
             idempotency_key=idempotency_key,
         )
-        await self._after_mutation_unless_replay(
+        replayed = await self._after_mutation_unless_replay(
             "checkpoint.resolved",
             task_id=checkpoint.task_id,
             subject=("checkpoint", checkpoint.id),
             payload={"by": by, "action": action, "choice": choice},
         )
-        return self.store.get_checkpoint(checkpoint.id)
+        return checkpoint if replayed else self.store.get_checkpoint(checkpoint.id)
 
     async def commit_artifact(
         self,
@@ -254,13 +275,13 @@ class HLPClient:
             expected_task_revision=expected_task_revision,
             idempotency_key=idempotency_key,
         )
-        await self._after_mutation_unless_replay(
+        replayed = await self._after_mutation_unless_replay(
             "artifact.committed",
             task_id=task_id,
             subject=("artifact", artifact.id),
             payload={"version": artifact.version, "produced_by": produced_by},
         )
-        return self.store.get_artifact(artifact.id, artifact.version)
+        return artifact if replayed else self.store.get_artifact(artifact.id, artifact.version)
 
     async def submit_review(
         self,
@@ -272,6 +293,8 @@ class HLPClient:
         kind: ReviewKind = "deliverable",
         comments: tuple[ReviewComment, ...] = (),
         requested_changes: tuple[str, ...] = (),
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Review:
         review = await self.operations.review_submit(
             task_id=task_id,
@@ -281,14 +304,16 @@ class HLPClient:
             kind=kind,
             comments=comments,
             requested_changes=requested_changes,
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
         )
-        await self._after_mutation(
+        replayed = await self._after_mutation_unless_replay(
             "review.submitted",
             task_id=task_id,
             subject=("review", review.id),
             payload={"kind": kind, "verdict": verdict, "reviewer": reviewer},
         )
-        return self.store.get_review(review.id)
+        return review if replayed else self.store.get_review(review.id)
 
     async def write_ledger(
         self,
@@ -458,16 +483,28 @@ class HLPClient:
         task_id: str,
         subject: tuple[str, str],
         payload: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> bool:
         if self.operations.last_operation_replayed:
             self.operations.last_operation_replayed = False
-            return
+            return True
         await self._after_mutation(
             action,
             task_id=task_id,
             subject=subject,
             payload=payload,
         )
+        return False
+
+    def _adapter_result_run_id(self) -> str:
+        operation_id = self.operations.last_operation_id
+        if operation_id is None:
+            raise RuntimeError("replayed adapter operation id was not recorded")
+        record = self.store.get_adapter_outbox_record(operation_id)
+        if not isinstance(record.result, str):
+            raise RuntimeError(
+                "replayed adapter operation did not record a run id result"
+            )
+        return record.result
 
     async def _publish_event(
         self,

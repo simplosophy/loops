@@ -96,8 +96,14 @@ class HumanLoopStore:
             raise ProtocolError("NOT_FOUND", f"adapter outbox {operation_id} not found")
         return record
 
-    def mark_adapter_outbox_succeeded(self, operation_id: str) -> None:
+    def mark_adapter_outbox_succeeded(
+        self,
+        operation_id: str,
+        *,
+        result: object = None,
+    ) -> None:
         record = self._get_adapter_outbox_record_for_update(operation_id)
+        record.result = result
         record.state = "succeeded"
         record.updated_at = datetime.now(timezone.utc)
 

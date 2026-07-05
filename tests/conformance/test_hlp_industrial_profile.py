@@ -220,6 +220,224 @@ def test_artifact_commit_replay_returns_same_artifact_and_does_not_create_v2():
     assert run(ops.task_get(task.id)).artifacts == [first.id]
 
 
+def test_task_assign_replay_does_not_delegate_or_audit_twice():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops.task_create(principal="alice", goal="Assign once"))
+
+    first = run(ops.task_assign(
+        task.id,
+        "agent_worker",
+        capability="write",
+        input={"goal": "Assign once"},
+        expected_task_revision=task.revision,
+        idempotency_key="assign-once",
+    ))
+    replay = run(ops.task_assign(
+        task.id,
+        "agent_worker",
+        capability="write",
+        input={"goal": "Assign once"},
+        expected_task_revision=task.revision,
+        idempotency_key="assign-once",
+    ))
+
+    assert replay == first
+    assert len(adapter.calls_of("delegate")) == 1
+    assert [event.action for event in ops.store.audit_log.all()].count("task.assigned") == 1
+    assert run(ops.task_get(task.id)).revision == 1
+
+
+def test_task_start_replay_does_not_start_or_audit_twice():
+    ops = HumanLoopOperations()
+    task = run(ops.task_create(principal="alice", goal="Start once"))
+    assigned = run(ops.task_assign(task.id, "agent_worker"))
+    assigned_revision = assigned.revision
+
+    first = run(ops.task_start(
+        task.id,
+        expected_task_revision=assigned_revision,
+        idempotency_key="start-once",
+    ))
+    replay = run(ops.task_start(
+        task.id,
+        expected_task_revision=assigned_revision,
+        idempotency_key="start-once",
+    ))
+
+    assert replay == first
+    assert [event.action for event in ops.store.audit_log.all()].count("task.started") == 1
+    assert run(ops.task_get(task.id)).revision == assigned_revision + 1
+
+
+def test_task_cancel_stale_revision_conflicts_before_adapter_call():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+
+    with pytest.raises(ProtocolError) as exc:
+        run(ops.task_cancel(
+            task.id,
+            by="alice",
+            expected_task_revision=1,
+            idempotency_key="cancel-stale",
+        ))
+
+    assert exc.value.code == "CONFLICT"
+    assert adapter.calls_of("cancel") == []
+    assert run(ops.task_get(task.id)).state == "in_progress"
+
+
+def test_checkpoint_raise_replay_returns_same_checkpoint_and_blocks_once():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    first = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="Approve once?",
+        raised_by="agent_worker",
+        expected_task_revision=revision,
+        idempotency_key="raise-once",
+    ))
+    replay = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="Approve once?",
+        raised_by="agent_worker",
+        expected_task_revision=revision,
+        idempotency_key="raise-once",
+    ))
+
+    assert replay == first
+    assert len(adapter.calls_of("block")) == 1
+    assert len(run(ops.task_get(task.id)).checkpoints) == 1
+    assert [event.action for event in ops.store.audit_log.all()].count("task.checkpoint.raised") == 1
+
+
+def test_checkpoint_expire_replay_does_not_expire_or_audit_twice():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    checkpoint = run(ops.checkpoint_raise(
+        task_id=task.id,
+        kind="approval",
+        prompt="Expire once?",
+        raised_by="agent_worker",
+    ))
+    revision = run(ops.task_get(task.id)).revision
+
+    first = run(ops.checkpoint_expire(
+        checkpoint.id,
+        expected_task_revision=revision,
+        idempotency_key="expire-once",
+    ))
+    replay = run(ops.checkpoint_expire(
+        checkpoint.id,
+        expected_task_revision=revision,
+        idempotency_key="expire-once",
+    ))
+
+    assert replay == first
+    assert [event.action for event in ops.store.audit_log.all()].count("task.checkpoint.expired") == 1
+    assert run(ops.task_get(task.id)).revision == revision + 1
+
+
+def test_ownership_transfer_replay_does_not_handoff_or_audit_twice():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    first = run(ops.ownership_transfer(
+        task.id,
+        "agent_writer",
+        "handoff",
+        actor="agent_worker",
+        expected_task_revision=revision,
+        idempotency_key="handoff-once",
+    ))
+    replay = run(ops.ownership_transfer(
+        task.id,
+        "agent_writer",
+        "handoff",
+        actor="agent_worker",
+        expected_task_revision=revision,
+        idempotency_key="handoff-once",
+    ))
+
+    assert replay == first
+    assert len(adapter.calls_of("handoff")) == 1
+    assert [event.action for event in ops.store.audit_log.all()].count("ownership.transferred") == 1
+
+
+def test_ownership_delegate_replay_does_not_delegate_or_audit_twice():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+    delegate_calls_before = len(adapter.calls_of("delegate"))
+
+    first = run(ops.ownership_delegate(
+        task.id,
+        "agent_child",
+        actor="agent_worker",
+        expected_task_revision=revision,
+        idempotency_key="delegate-once",
+    ))
+    replay = run(ops.ownership_delegate(
+        task.id,
+        "agent_child",
+        actor="agent_worker",
+        expected_task_revision=revision,
+        idempotency_key="delegate-once",
+    ))
+
+    assert replay == first
+    assert len(adapter.calls_of("delegate")) == delegate_calls_before + 1
+    assert [event.action for event in ops.store.audit_log.all()].count("ownership.delegated") == 1
+
+
+def test_review_submit_replay_returns_same_review_and_completes_once():
+    ops = HumanLoopOperations()
+    task = run(ops._seed_to_in_progress())
+    artifact = run(ops.artifact_commit(
+        task_id=task.id,
+        type="report",
+        payload=ArtifactPayload(
+            kind="inline",
+            uri="mem://review-once",
+            checksum="sha256:review-once",
+        ),
+        produced_by="agent_worker",
+    ))
+    revision = run(ops.task_get(task.id)).revision
+
+    first = run(ops.review_submit(
+        task_id=task.id,
+        artifact_id=artifact.id,
+        reviewer="alice",
+        verdict="approved",
+        expected_task_revision=revision,
+        idempotency_key="review-once",
+    ))
+    replay = run(ops.review_submit(
+        task_id=task.id,
+        artifact_id=artifact.id,
+        reviewer="alice",
+        verdict="approved",
+        expected_task_revision=revision,
+        idempotency_key="review-once",
+    ))
+
+    assert replay == first
+    assert len(ops.store.reviews_of_artifact(artifact.id)) == 1
+    actions = [event.action for event in ops.store.audit_log.all()]
+    assert actions.count("review.submitted") == 1
+    assert actions.count("task.completed") == 1
+
+
 def test_permission_scope_grammar_normalizes_and_rejects_invalid_scopes():
     grant = PermissionGrant(
         scope=" fs:/repo/main:* ",
@@ -526,6 +744,14 @@ def test_adapter_context_is_passed_to_delegate_handoff_and_cancel():
     records = ops.store.adapter_outbox_records()
     assert len(records) == 3
     assert all(record.state == "succeeded" for record in records)
+    assert {
+        record.operation: record.result
+        for record in records
+        if record.operation in {"task.assign", "ownership.transfer"}
+    } == {
+        "task.assign": "run_000001",
+        "ownership.transfer": "run_000002",
+    }
 
 
 def test_outbox_is_persisted_before_adapter_side_effect():

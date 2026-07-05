@@ -82,8 +82,11 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
   reducer-ready audit、permission grammar、schema 与 version negotiation 证据。
 - 已完成 reference slice：`Task.revision`、`expected_task_revision` CAS、
   task-scoped `idempotency_key`、canonical request fingerprint 与 replay 记录。
-  当前覆盖 `task.amend`、`task.interrupt`、`checkpoint.resolve` 和
-  `artifact.commit`，并通过 SQLite snapshot 持久化 reference idempotency records。
+  当前覆盖所有会推进现有 `Task.revision` 的 Task aggregate mutation：
+  `task.assign`、`task.start`、`task.cancel`、`task.amend`、`task.interrupt`、
+  `checkpoint.raise`、`checkpoint.resolve`、`checkpoint.expire`、
+  `ownership.transfer`、`ownership.delegate`、`artifact.commit` 和
+  `review.submit`，并通过 SQLite snapshot 持久化 reference idempotency records。
 - 已完成 reference slice：permission scope grammar、normalize/match helper、
   grant expiry、active deny precedence，以及 `ProposedAction.permission_scope`。
 - 已完成 reference slice：AuditEvent schema/profile 元数据、reducer-ready

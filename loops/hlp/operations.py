@@ -89,6 +89,7 @@ class HumanLoopOperations:
     store: HumanLoopStore = field(default_factory=HumanLoopStore)
     adapter: AgentAdapter = field(default_factory=FakeAgentAdapter)
     last_operation_replayed: bool = field(default=False, init=False)
+    last_operation_id: str | None = field(default=None, init=False)
 
     # ────────────────── Task (spec §4.1) ──────────────────
 
@@ -137,11 +138,26 @@ class HumanLoopOperations:
         *,
         capability: str = "",
         input: dict[str, Any] | None = None,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Task:
         """task.assign (spec §4.1)。created→assigned，ownership 转 agent。"""
         task = self.store._get_task_for_update(task_id)
-        self._require_state(task, "created")
         delegate_input = input or {"goal": task.spec.goal}
+        idempotency = self._begin_task_operation(
+            task,
+            "task.assign",
+            {
+                "agent_id": agent_id,
+                "capability": capability,
+                "input": delegate_input,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
+        self._require_state(task, "created")
         adapter_request = {
             "adapter_action": "delegate",
             "task_id": task_id,
@@ -150,11 +166,7 @@ class HumanLoopOperations:
             "input": _jsonable(delegate_input),
             "parent_run": None,
         }
-        adapter_context = self._adapter_context_for_request(
-            task,
-            "task.assign",
-            adapter_request,
-        )
+        adapter_context = self._adapter_context(task, idempotency)
         outbox_request = self._prepare_adapter_outbox(
             adapter_context,
             adapter_request,
@@ -182,14 +194,27 @@ class HumanLoopOperations:
             after={"assignee": agent_id},
         )
         self.store.bind_run(task_id, run_id)
-        self.store.bump_task_revision(task)
-        self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
-        self._flush_store_if_available()
+        self._commit_task_operation(task, idempotency, task, adapter_result=run_id)
         return task
 
-    async def task_start(self, task_id: str) -> Task:
+    async def task_start(
+        self,
+        task_id: str,
+        *,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> Task:
         """task.start (spec §4.1)：agent 开始执行，assigned→in_progress。"""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "task.start",
+            {},
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         self._require_state(task, "assigned")
         check_transition(task.state, "in_progress")
         task.state = "in_progress"
@@ -199,12 +224,28 @@ class HumanLoopOperations:
             subject=("task", task.id),
             task_id=task_id,
         )
-        self.store.bump_task_revision(task)
+        self._commit_task_operation(task, idempotency, task)
         return task
 
-    async def task_cancel(self, task_id: str, by: str) -> Task:
+    async def task_cancel(
+        self,
+        task_id: str,
+        by: str,
+        *,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> Task:
         """task.cancel (spec §4.1)。→completed (中止)。"""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "task.cancel",
+            {"by": by},
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if task.state in ("completed", "rejected"):
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -218,11 +259,7 @@ class HumanLoopOperations:
                 "run_id": run_id,
                 "reason": f"cancelled by {by}",
             }
-            adapter_context = self._adapter_context_for_request(
-                task,
-                "task.cancel",
-                adapter_request,
-            )
+            adapter_context = self._adapter_context(task, idempotency)
             outbox_request = self._prepare_adapter_outbox(
                 adapter_context,
                 adapter_request,
@@ -246,10 +283,7 @@ class HumanLoopOperations:
             subject=("task", task.id),
             task_id=task_id,
         )
-        self.store.bump_task_revision(task)
-        if adapter_context is not None:
-            self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
-            self._flush_store_if_available()
+        self._commit_task_operation(task, idempotency, task)
         return task
 
     async def task_amend(
@@ -417,9 +451,27 @@ class HumanLoopOperations:
         proposed_actions: tuple[ProposedAction, ...] = (),
         context: tuple[Evidence, ...] = (),
         raised_by: str,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Checkpoint:
         """checkpoint.raise (spec §4.1)。in_progress→blocked。"""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "checkpoint.raise",
+            {
+                "kind": kind,
+                "prompt": prompt,
+                "options": options,
+                "proposed_actions": proposed_actions,
+                "context": context,
+                "raised_by": raised_by,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         self._require_state(task, "in_progress")
         if kind == "interrupt":
             raise ProtocolError(
@@ -443,32 +495,7 @@ class HumanLoopOperations:
         run_id = self.store.run_of_task(task_id)
         adapter_context: AdapterOperationContext | None = None
         if run_id is not None:
-            request_fingerprint = _fingerprint({
-                "operation": "checkpoint.raise",
-                "request": {
-                    "kind": kind,
-                    "prompt": prompt,
-                    "options": options,
-                    "proposed_actions": proposed_actions,
-                    "context": context,
-                    "raised_by": raised_by,
-                },
-            })
-            adapter_context = AdapterOperationContext(
-                operation_id=_adapter_operation_id(
-                    task.id,
-                    "checkpoint.raise",
-                    None,
-                    request_fingerprint,
-                    task.revision,
-                ),
-                task_id=task.id,
-                correlation_id=task.id,
-                operation="checkpoint.raise",
-                idempotency_key=None,
-                request_fingerprint=request_fingerprint,
-                task_revision=task.revision,
-            )
+            adapter_context = self._adapter_context(task, idempotency)
             outbox_request = self._prepare_adapter_outbox(
                 adapter_context,
                 {
@@ -504,10 +531,7 @@ class HumanLoopOperations:
             subject=("checkpoint", ckpt.id),
             task_id=task_id,
         )
-        self.store.bump_task_revision(task)
-        if adapter_context is not None:
-            self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
-            self._flush_store_if_available()
+        self._commit_task_operation(task, idempotency, ckpt)
         return ckpt
 
     async def checkpoint_resolve(
@@ -634,16 +658,31 @@ class HumanLoopOperations:
         self._commit_task_operation(task, idempotency, ckpt)
         return ckpt
 
-    async def checkpoint_expire(self, ckpt_id: str) -> Checkpoint:
+    async def checkpoint_expire(
+        self,
+        ckpt_id: str,
+        *,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> Checkpoint:
         """checkpoint.expire (spec §4.1, §7.2)。超时自动失效。"""
         ckpt = self.store._get_checkpoint_for_update(ckpt_id)
+        task = self.store._get_task_for_update(ckpt.task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "checkpoint.expire",
+            {"checkpoint_id": ckpt_id},
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if ckpt.state != "pending":
             raise ProtocolError(
                 "PRECONDITION_FAILED",
                 f"cannot expire checkpoint in state {ckpt.state!r}",
             )
         ckpt.state = "expired"
-        task = self.store._get_task_for_update(ckpt.task_id)
         # 超时后 task 保持 blocked (spec §7.2 开放议题，参考实现选纯挂起)
         self._audit(
             actor="system",
@@ -651,7 +690,7 @@ class HumanLoopOperations:
             subject=("checkpoint", ckpt.id),
             task_id=task.id,
         )
-        self.store.bump_task_revision(task)
+        self._commit_task_operation(task, idempotency, ckpt)
         return ckpt
 
     # ────────────────── Ownership (spec §4.1) ──────────────────
@@ -663,9 +702,24 @@ class HumanLoopOperations:
         via: str,
         *,
         actor: str = "system",
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Task:
         """ownership.transfer (spec §4.1, §3.5)。内部转移 assignee。"""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "ownership.transfer",
+            {
+                "to": to,
+                "via": via,
+                "actor": actor,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if task.is_terminal:
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -687,16 +741,7 @@ class HumanLoopOperations:
                 "to_agent": to,
                 "context": handoff_context,
             }
-            adapter_context = self._adapter_context_for_request(
-                task,
-                "ownership.transfer",
-                {
-                    "to": to,
-                    "via": via,
-                    "actor": actor,
-                    "adapter_request": adapter_request,
-                },
-            )
+            adapter_context = self._adapter_context(task, idempotency)
             outbox_request = self._prepare_adapter_outbox(
                 adapter_context,
                 adapter_request,
@@ -718,10 +763,12 @@ class HumanLoopOperations:
             task_id=task.id,
             after={"assignee": to, "via": via},
         )
-        self.store.bump_task_revision(task)
-        if adapter_context is not None:
-            self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
-            self._flush_store_if_available()
+        self._commit_task_operation(
+            task,
+            idempotency,
+            task,
+            adapter_result=new_run_id,
+        )
         return task
 
     async def ownership_delegate(
@@ -730,9 +777,23 @@ class HumanLoopOperations:
         to_agent: str,
         *,
         actor: str,
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Task:
         """ownership.delegate (spec §4.1, §3.5)。agent 向下委派，需 delegable。"""
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "ownership.delegate",
+            {
+                "to_agent": to_agent,
+                "actor": actor,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if not task.ownership.delegable:
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -752,14 +813,7 @@ class HumanLoopOperations:
             "input": {"goal": task.spec.goal},
             "parent_run": parent_run,
         }
-        adapter_context = self._adapter_context_for_request(
-            task,
-            "ownership.delegate",
-            {
-                "actor": actor,
-                "adapter_request": adapter_request,
-            },
-        )
+        adapter_context = self._adapter_context(task, idempotency)
         outbox_request = self._prepare_adapter_outbox(
             adapter_context,
             adapter_request,
@@ -783,9 +837,7 @@ class HumanLoopOperations:
             task_id=task.id,
             after={"delegatee": to_agent},
         )
-        self.store.bump_task_revision(task)
-        self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
-        self._flush_store_if_available()
+        self._commit_task_operation(task, idempotency, task, adapter_result=run_id)
         return task
 
     # ────────────────── Review (spec §4.1) ──────────────────
@@ -800,6 +852,8 @@ class HumanLoopOperations:
         kind: ReviewKind = "deliverable",
         comments: tuple[ReviewComment, ...] = (),
         requested_changes: tuple[str, ...] = (),
+        expected_task_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> Review:
         """review.submit (spec §4.1, §3.6)。
 
@@ -808,6 +862,22 @@ class HumanLoopOperations:
         - review_ready/under_review → rejected (rejected)
         """
         task = self.store._get_task_for_update(task_id)
+        idempotency = self._begin_task_operation(
+            task,
+            "review.submit",
+            {
+                "artifact_id": artifact_id,
+                "reviewer": reviewer,
+                "verdict": verdict,
+                "kind": kind,
+                "comments": comments,
+                "requested_changes": requested_changes,
+            },
+            expected_task_revision=expected_task_revision,
+            idempotency_key=idempotency_key,
+        )
+        if isinstance(idempotency, _TaskOperationReplay):
+            return idempotency.result
         if task.state not in ("review_ready", "under_review"):
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -891,7 +961,7 @@ class HumanLoopOperations:
                 task_id=task_id,
                 after={"review_id": review.id},
             )
-        self.store.bump_task_revision(task)
+        self._commit_task_operation(task, idempotency, review)
         return review
 
     async def review_comment(
@@ -1086,6 +1156,7 @@ class HumanLoopOperations:
             "request": request,
         })
         self.last_operation_replayed = False
+        self.last_operation_id = None
         if idempotency_key is not None:
             record = self.store.get_idempotency_record(task.id, idempotency_key)
             if record is not None:
@@ -1102,6 +1173,13 @@ class HumanLoopOperations:
                         },
                     )
                 self.last_operation_replayed = True
+                self.last_operation_id = _adapter_operation_id(
+                    task.id,
+                    record.operation,
+                    record.key,
+                    record.request_fingerprint,
+                    record.revision_before,
+                )
                 return _TaskOperationReplay(result=record.result)
 
         if (
@@ -1118,7 +1196,7 @@ class HumanLoopOperations:
                 },
             )
 
-        return _TaskOperationContext(
+        context = _TaskOperationContext(
             key=idempotency_key,
             operation=operation,
             fingerprint=fingerprint,
@@ -1132,14 +1210,19 @@ class HumanLoopOperations:
                 task.revision,
             ),
         )
+        self.last_operation_id = context.operation_id
+        return context
 
     def _commit_task_operation(
         self,
         task: Task,
         context: _TaskOperationContext,
         result: Any,
+        *,
+        adapter_result: Any = None,
     ) -> None:
         self.store.bump_task_revision(task)
+        should_flush = False
         if context.key is not None:
             self.store.put_idempotency_record(IdempotencyRecord(
                 task_id=task.id,
@@ -1152,8 +1235,14 @@ class HumanLoopOperations:
                 audit_seq_start=context.audit_seq_before + 1,
                 audit_seq_end=self.store.audit_log.count,
             ))
+            should_flush = True
         if self._has_adapter_outbox_record(context.operation_id):
-            self.store.mark_adapter_outbox_succeeded(context.operation_id)
+            self.store.mark_adapter_outbox_succeeded(
+                context.operation_id,
+                result=adapter_result,
+            )
+            should_flush = True
+        if should_flush:
             self._flush_store_if_available()
 
     def _adapter_context(
@@ -1169,32 +1258,6 @@ class HumanLoopOperations:
             idempotency_key=context.key,
             request_fingerprint=context.fingerprint,
             task_revision=context.revision_before,
-        )
-
-    def _adapter_context_for_request(
-        self,
-        task: Task,
-        operation: str,
-        request: dict[str, Any],
-    ) -> AdapterOperationContext:
-        fingerprint = _fingerprint({
-            "operation": operation,
-            "request": request,
-        })
-        return AdapterOperationContext(
-            operation_id=_adapter_operation_id(
-                task.id,
-                operation,
-                None,
-                fingerprint,
-                task.revision,
-            ),
-            task_id=task.id,
-            correlation_id=task.id,
-            operation=operation,
-            idempotency_key=None,
-            request_fingerprint=fingerprint,
-            task_revision=task.revision,
         )
 
     def _prepare_adapter_outbox(

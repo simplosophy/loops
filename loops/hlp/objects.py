@@ -236,6 +236,7 @@ class AdapterOutboxRecord:
     request_fingerprint: str
     context: AdapterOperationContext
     request: dict[str, Any]
+    result: Any = None
     state: Literal["pending", "succeeded", "failed"] = "pending"
     created_at: datetime = field(default_factory=_now)
     updated_at: datetime = field(default_factory=_now)

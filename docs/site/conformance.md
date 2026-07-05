@@ -96,6 +96,11 @@ contracts it uses:
 | Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |
 | External evidence reference | Capability evidence, when used, is stored as opaque external references without transport endpoints. |
 
+The reference industrial slice applies Task CAS/idempotency replay to every
+operation that advances an existing `Task.revision`: assignment, start, cancel,
+steering amend, human interrupt, checkpoint raise/resolve/expire, ownership
+transfer/delegate, artifact commit, and review submit.
+
 The evidence can come from A2A, ACP, AGNTCY-style meshes, MCP, Agent Skills, a
 custom host platform, an existing agent harness, or another existing system. HLP
 does not require a specific lower protocol.

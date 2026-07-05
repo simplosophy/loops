@@ -280,6 +280,7 @@ HLP_JSON_SCHEMAS: dict[str, dict[str, Any]] = {
             "request_fingerprint": {"type": "string"},
             "context": {"type": "object"},
             "request": {"type": "object"},
+            "result": {},
             "state": {"type": "string", "enum": ["pending", "succeeded", "failed"]},
             "created_at": {"type": "string"},
             "updated_at": {"type": "string"},

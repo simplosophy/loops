@@ -17,10 +17,12 @@ Profiles covered here:
   integrations must retain unacknowledged events when projection fails and move
   per-run cursors forward only after successful projection.
 - `HLP-industrial` reference slice: per-task revision, task-scoped
-  idempotency-key replay, stale revision conflicts before adapter calls, and
-  stable replay for generated checkpoints/artifacts. It also covers permission
-  scope grammar, wildcard matching, expiry, deny precedence, and tamper-evident
-  audit hash-chain verification plus reducer-ready subject/task/change payloads.
+  idempotency-key replay across every existing Task aggregate mutation that
+  advances `Task.revision`, stale revision conflicts before adapter calls, and
+  stable replay for generated checkpoints/artifacts/reviews. It also covers
+  permission scope grammar, wildcard matching, expiry, deny precedence, and
+  tamper-evident audit hash-chain verification plus reducer-ready
+  subject/task/change payloads.
   JSON schema registry and version negotiation checks cover first-class object
   schemas, ProtocolError, AuditEvent, HarnessEvent delivery, PermissionGrant,
   ProposedAction, VersionNegotiation, AdapterOperationContext,
