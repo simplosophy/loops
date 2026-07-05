@@ -102,5 +102,9 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
 
 ## 本轮执行边界
 
-本轮先完成 Phase 1 的代码、测试、架构文档同步和 notes。Phase 2/3 只记录后续
-计划，不把服务端化能力塞进 SDK core。
+本轮已完成 Phase 1 的 0.2.0 reference implementation、Phase 2 的离线
+conformance/release verification，以及 Phase 3 的 HLP-industrial reference
+slice。工业能力保持在 SDK/protocol reference 边界内：只补 CAS/idempotency、
+可靠 harness event delivery、permission grammar、audit/schema/version/outbox
+证据，不把服务端化调度、transport binding、模型/tool runtime 或 channel 送达塞进
+HLP core。
