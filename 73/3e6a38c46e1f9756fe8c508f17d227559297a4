@@ -1,0 +1,26 @@
+docs/plans/2026-07-04-hlp-industrial-hardening.md
+  s_38241583402686::t_fe887f602576c4 105-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "733e6a38c46e1f9756fe8c508f17d227559297a4",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
