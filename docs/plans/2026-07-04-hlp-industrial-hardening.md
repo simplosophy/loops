@@ -86,7 +86,8 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
   `artifact.commit`，并通过 SQLite snapshot 持久化 reference idempotency records。
 - 已完成 reference slice：permission scope grammar、normalize/match helper、
   grant expiry、active deny precedence，以及 `ProposedAction.permission_scope`。
-- 已完成 reference slice：AuditEvent schema/profile 元数据、`prev_hash` / `hash`
+- 已完成 reference slice：AuditEvent schema/profile 元数据、reducer-ready
+  `subject` / Task snapshot / `change` payload、`prev_hash` / `hash`
   tamper-evident hash chain 与 `AuditLog.verify_hash_chain()`。
 - 已完成 reference slice：`HLP_JSON_SCHEMAS`、`schema_for`、`to_wire`、
   `validate_wire_object`、`negotiate_hlp_version`，覆盖一等对象、核心工业

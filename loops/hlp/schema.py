@@ -157,6 +157,7 @@ HLP_JSON_SCHEMAS: dict[str, dict[str, Any]] = {
             "action": {"type": "string"},
             "subject": {"type": "array"},
             "task_id": {"type": ["string", "null"]},
+            "reducer": {"type": ["object", "null"]},
             "schema_version": {"type": "string", "const": HLP_SCHEMA_VERSION},
             "profile": {"type": "string", "const": HLP_PROFILE},
             "prev_hash": {"type": "string"},

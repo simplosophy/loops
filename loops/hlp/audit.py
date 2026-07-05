@@ -33,6 +33,7 @@ class AuditEvent:
     task_id: str | None = None
     before: Any = None
     after: Any = None
+    reducer: dict[str, Any] | None = None
     id: str = field(default_factory=gen_audit_id)
     schema_version: str = HLP_SCHEMA_VERSION
     profile: str = HLP_PROFILE
@@ -61,6 +62,7 @@ class AuditLog:
         task_id: str | None = None,
         before: Any = None,
         after: Any = None,
+        reducer: dict[str, Any] | None = None,
     ) -> AuditEvent:
         """追加一条审计事件，返回该事件。永不失败、永不阻塞业务 (spec §3.9)。"""
         self._seq += 1
@@ -73,6 +75,7 @@ class AuditLog:
             task_id=task_id,
             before=before,
             after=after,
+            reducer=reducer,
             prev_hash=prev_hash,
         )
         object.__setattr__(event, "hash", _audit_event_hash(event))

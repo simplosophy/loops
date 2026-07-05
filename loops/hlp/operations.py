@@ -1292,7 +1292,41 @@ class HumanLoopOperations:
             task_id=task_id,
             before=before,
             after=after,
+            reducer=self._audit_reducer_payload(
+                subject=subject,
+                task_id=task_id,
+                change=after,
+            ),
         )
+
+    def _audit_reducer_payload(
+        self,
+        *,
+        subject: tuple[str, str],
+        task_id: str | None,
+        change: Any,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "subject": {"kind": subject[0], "id": subject[1]},
+            "change": _jsonable(change),
+        }
+        if task_id is not None:
+            task = self.store.tasks.get(task_id)
+            if task is not None:
+                payload["task"] = {
+                    "id": task.id,
+                    "state": task.state,
+                    "revision": task.revision,
+                    "ownership": {
+                        "principal": task.ownership.principal,
+                        "assignee": task.ownership.assignee,
+                        "delegable": task.ownership.delegable,
+                    },
+                    "checkpoint_ids": list(task.checkpoints),
+                    "artifact_ids": list(task.artifacts),
+                    "steering_count": len(task.steering_log),
+                }
+        return payload
 
     @staticmethod
     def _is_human(actor: str) -> bool:

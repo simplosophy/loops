@@ -45,10 +45,11 @@ industrial reference slice: per-task revision, stale revision conflicts before
 adapter calls, task-scoped idempotency-key replay, and stable replay for
 generated checkpoints and artifacts. It also covers permission scope grammar,
 wildcard matching, grant expiry, deny precedence, and tamper-evident audit
-hash-chain verification. JSON schema registry and version negotiation checks
-cover first-class object schemas, ProtocolError, AuditEvent, HarnessEvent
-delivery, PermissionGrant, ProposedAction, VersionNegotiation, and dataclass
-wire serialization aliases. Adapter outbox coverage verifies that HLP persists
+hash-chain verification. Audit coverage also checks reducer-ready subject,
+task snapshot, and change payloads. JSON schema registry and version
+negotiation checks cover first-class object schemas, ProtocolError, AuditEvent,
+HarnessEvent delivery, PermissionGrant, ProposedAction, VersionNegotiation, and
+dataclass wire serialization aliases. Adapter outbox coverage verifies that HLP persists
 adapter intent before side effects, passes `AdapterOperationContext` through
 fake and process adapters for delegate, handoff, cancel, steer, block, and
 resume, and marks committed outbox records succeeded.
@@ -89,7 +90,7 @@ contracts it uses:
 | Reliable event delivery | Event-streaming adapters retain unacknowledged events on projection failure and acknowledge only successful per-run prefixes. |
 | Task CAS and idempotency | Task aggregate mutations expose `revision`, reject stale `expected_task_revision`, and replay matching `idempotency_key` requests without duplicate side effects. |
 | Permission scope grammar | Grants normalize scope strings, ignore expired grants, and give active matching deny entries precedence over allow entries. |
-| Audit hash chain | Audit events carry schema/profile metadata, `prev_hash`, and a canonical SHA-256 hash that detects mutation. |
+| Audit hash chain and reducer payload | Audit events carry reducer-ready subject/task/change payloads, schema/profile metadata, `prev_hash`, and a canonical SHA-256 hash that detects mutation. |
 | Schema and version negotiation | Wire objects validate against registered JSON schemas and unsupported spec/schema/profile combinations fail fast. |
 | Adapter outbox context | Adapter side effects receive stable `operation_context` metadata and have durable outbox records for retry/dedupe evidence. |
 | Ownership-to-Handoff | Ownership transfer preserves task correlation through harness handoff. |

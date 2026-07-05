@@ -299,6 +299,27 @@ def test_audit_log_is_tamper_evident_hash_chain():
     assert not ops.store.audit_log.verify_hash_chain()
 
 
+def test_audit_events_carry_reducer_ready_payloads():
+    ops = HumanLoopOperations()
+    task = run(ops.task_create(principal="alice", goal="Reducer audit"))
+    run(ops.task_assign(task.id, "agent_worker"))
+    run(ops.task_start(task.id))
+    run(ops.task_amend(task.id, by="alice", text="Reducer-visible steering."))
+
+    assigned = next(event for event in ops.store.audit_log.all() if event.action == "task.assigned")
+    amended = next(event for event in ops.store.audit_log.all() if event.action == "task.amended")
+
+    assert assigned.reducer["subject"] == {"kind": "task", "id": task.id}
+    assert assigned.reducer["task"]["state"] == "assigned"
+    assert assigned.reducer["task"]["ownership"]["assignee"] == "agent_worker"
+    assert assigned.reducer["change"] == {"assignee": "agent_worker"}
+
+    assert amended.reducer["task"]["state"] == "in_progress"
+    assert amended.reducer["task"]["steering_count"] == 1
+    assert amended.reducer["change"]["text"] == "Reducer-visible steering."
+    validate_wire_object("AuditEvent", to_wire(amended))
+
+
 def test_json_schema_registry_covers_industrial_wire_objects():
     assert set(HLP_JSON_SCHEMAS) >= {
         "Task",

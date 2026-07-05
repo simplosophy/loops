@@ -20,11 +20,12 @@ Profiles covered here:
   idempotency-key replay, stale revision conflicts before adapter calls, and
   stable replay for generated checkpoints/artifacts. It also covers permission
   scope grammar, wildcard matching, expiry, deny precedence, and tamper-evident
-  audit hash-chain verification. JSON schema registry and version negotiation
-  checks cover first-class object schemas, ProtocolError, AuditEvent,
-  HarnessEvent delivery, PermissionGrant, ProposedAction, VersionNegotiation,
-  AdapterOperationContext, AdapterOutboxRecord, and dataclass wire serialization
-  aliases. Adapter outbox tests verify durable intent before side effects,
+  audit hash-chain verification plus reducer-ready subject/task/change payloads.
+  JSON schema registry and version negotiation checks cover first-class object
+  schemas, ProtocolError, AuditEvent, HarnessEvent delivery, PermissionGrant,
+  ProposedAction, VersionNegotiation, AdapterOperationContext,
+  AdapterOutboxRecord, and dataclass wire serialization aliases. Adapter outbox
+  tests verify durable intent before side effects,
   operation context propagation for delegate, handoff, cancel, steer, block,
   and resume, and succeeded status after local commit.
 
