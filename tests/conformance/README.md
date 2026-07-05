@@ -25,7 +25,8 @@ Profiles covered here:
   HarnessEvent delivery, PermissionGrant, ProposedAction, VersionNegotiation,
   AdapterOperationContext, AdapterOutboxRecord, and dataclass wire serialization
   aliases. Adapter outbox tests verify durable intent before side effects,
-  operation context propagation, and succeeded status after local commit.
+  operation context propagation for delegate, handoff, cancel, steer, block,
+  and resume, and succeeded status after local commit.
 
 `HLP-compatible` and `HLP-integrated` do not imply `HLP-industrial`. Industrial
 claims additionally need a documented production profile for CAS, idempotency,

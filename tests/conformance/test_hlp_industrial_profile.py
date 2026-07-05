@@ -467,6 +467,42 @@ def test_adapter_context_is_passed_to_steer_block_and_resume():
     assert block_context["idempotency_key"] == "ctx-interrupt"
     assert resume_context["task_id"] == task.id
     records = ops.store.adapter_outbox_records()
+    assert {record.operation for record in records} == {
+        "task.assign",
+        "task.amend",
+        "task.interrupt",
+        "checkpoint.resolve",
+    }
+    assert all(record.state == "succeeded" for record in records)
+
+
+def test_adapter_context_is_passed_to_delegate_handoff_and_cancel():
+    adapter = FakeAgentAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops.task_create(principal="alice", goal="Cover all adapter calls"))
+
+    run(ops.task_assign(task.id, "agent_initial"))
+    run(ops.task_start(task.id))
+    run(ops.ownership_transfer(
+        task.id,
+        "agent_writer",
+        "handoff",
+        actor="agent_initial",
+    ))
+    run(ops.task_cancel(task.id, by="alice"))
+
+    delegate_context = adapter.calls_of("delegate")[0][1]["operation_context"]
+    handoff_context = adapter.calls_of("handoff")[0][1]["operation_context"]
+    cancel_context = adapter.calls_of("cancel")[0][1]["operation_context"]
+
+    assert delegate_context["operation"] == "task.assign"
+    assert handoff_context["operation"] == "ownership.transfer"
+    assert cancel_context["operation"] == "task.cancel"
+    assert delegate_context["task_id"] == task.id
+    assert handoff_context["correlation_id"] == task.id
+    assert cancel_context["operation_id"].startswith("op_")
+
+    records = ops.store.adapter_outbox_records()
     assert len(records) == 3
     assert all(record.state == "succeeded" for record in records)
 
@@ -608,7 +644,10 @@ def test_sqlite_restart_retries_pending_adapter_outbox_with_context(tmp_path):
         ))
 
     restarted_store = SQLiteHumanLoopStore(db_path)
-    pending = restarted_store.adapter_outbox_records()[0]
+    pending = next(
+        record for record in restarted_store.adapter_outbox_records()
+        if record.operation == "task.interrupt"
+    )
     assert pending.state == "pending"
 
     second_adapter = FakeAgentAdapter()
@@ -628,7 +667,90 @@ def test_sqlite_restart_retries_pending_adapter_outbox_with_context(tmp_path):
     assert checkpoint.id == pending.request["checkpoint_id"]
     assert block_call["checkpoint_id"] == pending.request["checkpoint_id"]
     assert block_call["operation_context"]["operation_id"] == pending.operation_id
+    restored_interrupt = next(
+        record for record in restarted_store.adapter_outbox_records()
+        if record.operation == "task.interrupt"
+    )
+    assert restored_interrupt.state == "succeeded"
+
+
+def test_sqlite_restart_retries_pending_delegate_outbox_with_context(tmp_path):
+    class FailAfterSideEffectAdapter(FakeAgentAdapter):
+        async def delegate(self, *args, **kwargs):
+            await super().delegate(*args, **kwargs)
+            raise RuntimeError("simulated crash after delegate side effect")
+
+    db_path = tmp_path / "hlp-delegate-outbox.db"
+    first = HLPClient(
+        store=SQLiteHumanLoopStore(db_path),
+        adapter=FailAfterSideEffectAdapter(),
+    )
+    task = run(first.create_task(principal="user_alice", goal="Recover delegate outbox"))
+
+    with pytest.raises(RuntimeError):
+        run(first.delegate(task.id, "agent_worker"))
+
+    restarted_store = SQLiteHumanLoopStore(db_path)
+    pending = restarted_store.adapter_outbox_records()[0]
+    assert pending.operation == "task.assign"
+    assert pending.state == "pending"
+
+    second_adapter = FakeAgentAdapter()
+    second = HLPClient(
+        store=restarted_store,
+        adapter=second_adapter,
+    )
+    handle = run(second.delegate(task.id, "agent_worker"))
+
+    delegate_call = second_adapter.calls_of("delegate")[0][1]
+    assert handle.task_id == task.id
+    assert delegate_call["operation_context"]["operation_id"] == pending.operation_id
+    assert run(second.get_task(task.id)).state == "assigned"
     assert restarted_store.adapter_outbox_records()[0].state == "succeeded"
+
+
+def test_delegate_context_preserves_legacy_keyword_adapter_compatibility():
+    class KeywordOnlyDelegateAdapter(FakeAgentAdapter):
+        async def delegate(self, *, task_id, agent_id, capability, input):
+            return await super().delegate(
+                task_id=task_id,
+                agent_id=agent_id,
+                capability=capability,
+                input=input,
+            )
+
+    adapter = KeywordOnlyDelegateAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops.task_create(principal="alice", goal="Keyword-only delegate"))
+
+    run(ops.task_assign(task.id, "agent_keyword"))
+
+    assert adapter.calls_of("delegate")[0][1]["task_id"] == task.id
+    assert ops.store.adapter_outbox_records()[0].state == "succeeded"
+
+
+def test_operation_context_is_passed_to_var_keyword_adapter():
+    class VarKeywordDelegateAdapter(FakeAgentAdapter):
+        def __init__(self):
+            super().__init__()
+            self.kwargs_seen = None
+
+        async def delegate(self, task_id, agent_id, capability, input, **kwargs):
+            self.kwargs_seen = kwargs
+            return await super().delegate(
+                task_id=task_id,
+                agent_id=agent_id,
+                capability=capability,
+                input=input,
+            )
+
+    adapter = VarKeywordDelegateAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops.task_create(principal="alice", goal="Var keyword delegate"))
+
+    run(ops.task_assign(task.id, "agent_kwargs"))
+
+    assert adapter.kwargs_seen["operation_context"].operation == "task.assign"
 
 
 def test_process_adapter_serializes_hlp_operation_context():
@@ -678,3 +800,76 @@ def test_process_adapter_serializes_hlp_operation_context():
         "schema_version": HLP_SCHEMA_VERSION,
         "profile": HLP_PROFILE,
     }
+
+
+def test_process_adapter_serializes_delegate_handoff_and_cancel_contexts():
+    captured = []
+
+    async def runner(command, request, timeout):
+        captured.append(request)
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout='{"run_id":"run_process","correlation_id":"task_process"}',
+                stderr="",
+            )
+        if request["operation"] == "handoff":
+            return ProcessResult(
+                exit_code=0,
+                stdout='{"run_id":"run_handoff","correlation_id":"task_process"}',
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = ProcessAgentAdapter(
+        command=("agent", "run", "--json"),
+        name="industrial-process",
+        runner=runner,
+    )
+    delegate_context = AdapterOperationContext(
+        operation_id="op_delegate",
+        task_id="task_process",
+        correlation_id="task_process",
+        operation="task.assign",
+        idempotency_key=None,
+        request_fingerprint="fp_delegate",
+        task_revision=0,
+    )
+    handoff_context = AdapterOperationContext(
+        operation_id="op_handoff",
+        task_id="task_process",
+        correlation_id="task_process",
+        operation="ownership.transfer",
+        idempotency_key=None,
+        request_fingerprint="fp_handoff",
+        task_revision=2,
+    )
+    cancel_context = AdapterOperationContext(
+        operation_id="op_cancel",
+        task_id="task_process",
+        correlation_id="task_process",
+        operation="task.cancel",
+        idempotency_key=None,
+        request_fingerprint="fp_cancel",
+        task_revision=3,
+    )
+
+    run_id = run(adapter.delegate(
+        task_id="task_process",
+        agent_id="agent_proc",
+        capability="industrial",
+        input={"goal": "ctx"},
+        operation_context=delegate_context,
+    ))
+    handoff_run_id = run(adapter.handoff(
+        run_id,
+        "agent_next",
+        {"task_id": "task_process"},
+        operation_context=handoff_context,
+    ))
+    run(adapter.cancel(handoff_run_id, "cancelled by alice", operation_context=cancel_context))
+
+    assert [
+        request["operation_context"]["operation_id"]
+        for request in captured
+    ] == ["op_delegate", "op_handoff", "op_cancel"]

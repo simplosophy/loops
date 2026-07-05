@@ -50,7 +50,8 @@ cover first-class object schemas, ProtocolError, AuditEvent, HarnessEvent
 delivery, PermissionGrant, ProposedAction, VersionNegotiation, and dataclass
 wire serialization aliases. Adapter outbox coverage verifies that HLP persists
 adapter intent before side effects, passes `AdapterOperationContext` through
-fake and process adapters, and marks committed outbox records succeeded.
+fake and process adapters for delegate, handoff, cancel, steer, block, and
+resume, and marks committed outbox records succeeded.
 
 ## HLP 0.2.0-draft Requirements
 

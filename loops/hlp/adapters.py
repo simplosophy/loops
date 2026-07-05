@@ -111,6 +111,8 @@ class AgentAdapter(Protocol):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         """Delegate a task to an agent and return the runtime run id."""
         ...
@@ -146,11 +148,24 @@ class AgentAdapter(Protocol):
         """Inject a steering amendment without restarting the run."""
         ...
 
-    async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
+    async def handoff(
+        self,
+        run_id: str,
+        to_agent: str,
+        context: dict[str, Any],
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> str:
         """Handoff a run to another agent while preserving task correlation."""
         ...
 
-    async def cancel(self, run_id: str, reason: str) -> None:
+    async def cancel(
+        self,
+        run_id: str,
+        reason: str,
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> None:
         """Cancel a runtime run."""
         ...
 
@@ -210,6 +225,8 @@ class FakeAgentAdapter:
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         self._run_counter += 1
         run_id = f"run_{self._run_counter:06d}"
@@ -230,6 +247,11 @@ class FakeAgentAdapter:
                 "capability": capability,
                 "input": input,
                 "parent_run": parent_run,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return run_id
@@ -287,8 +309,15 @@ class FakeAgentAdapter:
             },
         ))
 
-    async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
-        current = self._require_run(run_id, "handoff")
+    async def handoff(
+        self,
+        run_id: str,
+        to_agent: str,
+        context: dict[str, Any],
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> str:
+        current = self._require_run(run_id, "handoff", context=operation_context)
         self._run_counter += 1
         new_run_id = f"run_{self._run_counter:06d}"
         self._runs[new_run_id] = AgentRunHandle(
@@ -306,15 +335,34 @@ class FakeAgentAdapter:
                 "to_run": new_run_id,
                 "to_agent": to_agent,
                 "context": context,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return new_run_id
 
-    async def cancel(self, run_id: str, reason: str) -> None:
-        self._require_run(run_id, "cancel")
+    async def cancel(
+        self,
+        run_id: str,
+        reason: str,
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> None:
+        self._require_run(run_id, "cancel", context=operation_context)
         self.calls.append((
             "cancel",
-            {"run_id": run_id, "reason": reason},
+            {
+                "run_id": run_id,
+                "reason": reason,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
+            },
         ))
 
     async def healthcheck(self) -> dict[str, Any]:
@@ -462,6 +510,8 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         request = {
             "operation": "delegate",
@@ -472,6 +522,8 @@ class ProcessAgentAdapter(FakeAgentAdapter):
             "parent_run": parent_run,
             "correlation_id": task_id,
         }
+        if operation_context is not None:
+            request["operation_context"] = to_wire(operation_context)
         payload = await self._execute("delegate", request)
         _validate_correlation(payload, task_id, self.name, "delegate")
         if not payload.get("run_id"):
@@ -500,6 +552,11 @@ class ProcessAgentAdapter(FakeAgentAdapter):
                 "capability": capability,
                 "input": input,
                 "parent_run": parent_run,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return run_id
@@ -558,14 +615,26 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         })
         await FakeAgentAdapter.steer(self, run_id, amendment_payload, context=context)
 
-    async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
-        current = self._require_run(run_id, "handoff")
+    async def handoff(
+        self,
+        run_id: str,
+        to_agent: str,
+        context: dict[str, Any],
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> str:
+        current = self._require_run(run_id, "handoff", context=operation_context)
         payload = await self._execute("handoff", {
             "operation": "handoff",
             "run_id": run_id,
             "to_agent": to_agent,
             "context": context,
             "correlation_id": current.correlation_id,
+            **(
+                {"operation_context": to_wire(operation_context)}
+                if operation_context is not None
+                else {}
+            ),
         })
         _validate_correlation(payload, current.correlation_id, self.name, "handoff")
         new_run_id = str(payload.get("run_id") or payload.get("to_run") or self._next_run_id())
@@ -585,19 +654,40 @@ class ProcessAgentAdapter(FakeAgentAdapter):
                 "to_run": new_run_id,
                 "to_agent": to_agent,
                 "context": context,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return new_run_id
 
-    async def cancel(self, run_id: str, reason: str) -> None:
-        handle = self._require_run(run_id, "cancel")
+    async def cancel(
+        self,
+        run_id: str,
+        reason: str,
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "cancel", context=operation_context)
         await self._execute("cancel", {
             "operation": "cancel",
             "run_id": run_id,
             "reason": reason,
             "correlation_id": handle.correlation_id,
+            **(
+                {"operation_context": to_wire(operation_context)}
+                if operation_context is not None
+                else {}
+            ),
         })
-        await FakeAgentAdapter.cancel(self, run_id, reason)
+        await FakeAgentAdapter.cancel(
+            self,
+            run_id,
+            reason,
+            operation_context=operation_context,
+        )
 
     async def healthcheck(self) -> dict[str, Any]:
         result = {
@@ -771,6 +861,8 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         self._run_counter += 1
         run_id = f"run_{self._run_counter:06d}"
@@ -783,6 +875,8 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
                 "input": input,
                 "parent_run": parent_run,
             }
+            if operation_context is not None:
+                request["operation_context"] = to_wire(operation_context)
             try:
                 result = self.handler(request)
                 if inspect.isawaitable(result):
@@ -806,17 +900,17 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
             capability=capability,
             parent_run=parent_run,
         )
-        self.calls.append((
-            "delegate",
-            {
-                "run_id": run_id,
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "capability": capability,
-                "input": input,
-                "parent_run": parent_run,
-            },
-        ))
+        call_payload = {
+            "run_id": run_id,
+            "task_id": task_id,
+            "agent_id": agent_id,
+            "capability": capability,
+            "input": input,
+            "parent_run": parent_run,
+        }
+        if operation_context is not None:
+            call_payload["operation_context"] = to_wire(operation_context)
+        self.calls.append(("delegate", call_payload))
         return run_id
 
     async def healthcheck(self) -> dict[str, Any]:
@@ -839,6 +933,7 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         payload = _response_to_dict(result)
         _validate_correlation(payload, task_id, self.name, "delegate")
@@ -856,17 +951,17 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
             parent_run=parent_run,
         )
         self.results[run_id] = payload
-        self.calls.append((
-            "delegate",
-            {
-                "run_id": run_id,
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "capability": capability,
-                "input": input,
-                "parent_run": parent_run,
-            },
-        ))
+        call_payload = {
+            "run_id": run_id,
+            "task_id": task_id,
+            "agent_id": agent_id,
+            "capability": capability,
+            "input": input,
+            "parent_run": parent_run,
+        }
+        if operation_context is not None:
+            call_payload["operation_context"] = to_wire(operation_context)
+        self.calls.append(("delegate", call_payload))
         return run_id
 
     def _next_framework_run_id(self, prefix: str) -> str:
@@ -895,6 +990,8 @@ class OpenAIAgentsSDKAdapter(PythonCallableAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         if self.agent is None or self.runner is None:
             return await super().delegate(
@@ -903,6 +1000,7 @@ class OpenAIAgentsSDKAdapter(PythonCallableAgentAdapter):
                 capability=capability,
                 input=input,
                 parent_run=parent_run,
+                operation_context=operation_context,
             )
         try:
             if hasattr(self.runner, "run"):
@@ -937,6 +1035,7 @@ class OpenAIAgentsSDKAdapter(PythonCallableAgentAdapter):
             capability=capability,
             input=input,
             parent_run=parent_run,
+            operation_context=operation_context,
         )
 
 
@@ -959,6 +1058,8 @@ class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         if self.client is None:
             return await super().delegate(
@@ -967,17 +1068,21 @@ class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
                 capability=capability,
                 input=input,
                 parent_run=parent_run,
+                operation_context=operation_context,
             )
         try:
+            metadata = {
+                "hlp_task_id": task_id,
+                "hlp_agent_id": agent_id,
+                "hlp_capability": capability,
+                "hlp_parent_run": parent_run or "",
+            }
+            if operation_context is not None:
+                metadata["hlp_operation_id"] = operation_context.operation_id
             response = self.client.responses.create(
                 model=self.model,
                 input=_prompt_from_input(input),
-                metadata={
-                    "hlp_task_id": task_id,
-                    "hlp_agent_id": agent_id,
-                    "hlp_capability": capability,
-                    "hlp_parent_run": parent_run or "",
-                },
+                metadata=metadata,
             )
             if inspect.isawaitable(response):
                 response = await response
@@ -1012,6 +1117,11 @@ class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
                 "capability": capability,
                 "input": input,
                 "parent_run": parent_run,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return run_id
@@ -1040,6 +1150,8 @@ class LangGraphAdapter(PythonCallableAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         if self.graph is None:
             return await super().delegate(
@@ -1048,6 +1160,7 @@ class LangGraphAdapter(PythonCallableAgentAdapter):
                 capability=capability,
                 input=input,
                 parent_run=parent_run,
+                operation_context=operation_context,
             )
         graph_input = {
             "messages": [{"role": "user", "content": _prompt_from_input(input)}],
@@ -1060,6 +1173,8 @@ class LangGraphAdapter(PythonCallableAgentAdapter):
             **dict(config.get("metadata", {})),
             **_hlp_metadata(task_id, agent_id, capability, parent_run),
         }
+        if operation_context is not None:
+            config["metadata"]["hlp_operation_id"] = operation_context.operation_id
         try:
             if hasattr(self.graph, "ainvoke"):
                 result = self.graph.ainvoke(graph_input, config=config)
@@ -1085,6 +1200,7 @@ class LangGraphAdapter(PythonCallableAgentAdapter):
             capability=capability,
             input=input,
             parent_run=parent_run,
+            operation_context=operation_context,
         )
 
 
@@ -1105,6 +1221,8 @@ class CrewAIAdapter(PythonCallableAgentAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         if self.crew is None:
             return await super().delegate(
@@ -1113,11 +1231,14 @@ class CrewAIAdapter(PythonCallableAgentAdapter):
                 capability=capability,
                 input=input,
                 parent_run=parent_run,
+                operation_context=operation_context,
             )
         crew_inputs = {
             **input,
             **_hlp_metadata(task_id, agent_id, capability, parent_run),
         }
+        if operation_context is not None:
+            crew_inputs["hlp_operation_id"] = operation_context.operation_id
         try:
             if hasattr(self.crew, "akickoff"):
                 result = self.crew.akickoff(inputs=crew_inputs)
@@ -1145,6 +1266,7 @@ class CrewAIAdapter(PythonCallableAgentAdapter):
             capability=capability,
             input=input,
             parent_run=parent_run,
+            operation_context=operation_context,
         )
 
 
@@ -1212,6 +1334,8 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         capability: str,
         input: dict[str, Any],
         parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
     ) -> str:
         request = {
             "operation": "delegate",
@@ -1222,6 +1346,8 @@ class CodexHarnessAdapter(PromptCLIAdapter):
             "parent_run": parent_run,
             "correlation_id": task_id,
         }
+        if operation_context is not None:
+            request["operation_context"] = to_wire(operation_context)
         payload = await self._execute("delegate", request)
         events = _pop_codex_events(payload)
         _validate_correlation(payload, task_id, self.name, "delegate")
@@ -1245,6 +1371,11 @@ class CodexHarnessAdapter(PromptCLIAdapter):
                 "capability": capability,
                 "input": input,
                 "parent_run": parent_run,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return run_id
@@ -1291,14 +1422,26 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         self._queue_codex_events(run_id, events)
         await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
 
-    async def handoff(self, run_id: str, to_agent: str, context: dict[str, Any]) -> str:
-        current = self._require_run(run_id, "handoff")
+    async def handoff(
+        self,
+        run_id: str,
+        to_agent: str,
+        context: dict[str, Any],
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> str:
+        current = self._require_run(run_id, "handoff", context=operation_context)
         payload = await self._execute("handoff", {
             "operation": "handoff",
             "run_id": run_id,
             "to_agent": to_agent,
             "context": context,
             "correlation_id": current.correlation_id,
+            **(
+                {"operation_context": to_wire(operation_context)}
+                if operation_context is not None
+                else {}
+            ),
         })
         events = _pop_codex_events(payload)
         _validate_correlation(payload, current.correlation_id, self.name, "handoff")
@@ -1325,22 +1468,43 @@ class CodexHarnessAdapter(PromptCLIAdapter):
                 "to_run": new_run_id,
                 "to_agent": to_agent,
                 "context": context,
+                "operation_context": (
+                    to_wire(operation_context)
+                    if operation_context is not None
+                    else None
+                ),
             },
         ))
         return new_run_id
 
-    async def cancel(self, run_id: str, reason: str) -> None:
-        handle = self._require_run(run_id, "cancel")
+    async def cancel(
+        self,
+        run_id: str,
+        reason: str,
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "cancel", context=operation_context)
         payload = await self._execute("cancel", {
             "operation": "cancel",
             "run_id": run_id,
             "reason": reason,
             "correlation_id": handle.correlation_id,
+            **(
+                {"operation_context": to_wire(operation_context)}
+                if operation_context is not None
+                else {}
+            ),
         })
         events = _pop_codex_events(payload)
         _validate_correlation(payload, handle.correlation_id, self.name, "cancel")
         self._queue_codex_events(run_id, events)
-        await FakeAgentAdapter.cancel(self, run_id, reason)
+        await FakeAgentAdapter.cancel(
+            self,
+            run_id,
+            reason,
+            operation_context=operation_context,
+        )
 
     async def observe(self, run_id: str) -> tuple[HarnessEvent, ...]:
         deliveries = await self.peek_events(run_id)

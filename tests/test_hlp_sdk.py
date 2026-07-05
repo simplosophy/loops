@@ -530,7 +530,10 @@ def test_fake_agent_adapter_records_contract_calls():
 
 
 def test_named_adapter_targets_are_available_without_optional_dependencies():
+    captured_python_request = {}
+
     async def handler(request):
+        captured_python_request.update(request)
         return {"handled": request["task_id"], "agent": request["agent_id"]}
 
     python_adapter = PythonCallableAgentAdapter("custom-python", handler)
@@ -554,6 +557,7 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
         "handled": "task_custom",
         "agent": "agent_custom",
     }
+    assert "operation_context" not in captured_python_request
 
     assert run(openai_agents.healthcheck())["adapter"] == "openai-agents-sdk"
     assert run(openai_python.healthcheck())["adapter"] == "openai-python-sdk"

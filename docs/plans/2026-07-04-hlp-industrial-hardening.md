@@ -93,9 +93,11 @@ conformance，再做生产一致性 profile。避免把 HLP 扩成 agent harness
   wire shape、dataclass alias/RFC3339 serialization 和 spec/schema/profile
   fail-fast version negotiation。
 - 已完成 reference slice：`AdapterOperationContext` 与 `AdapterOutboxRecord`。
-  `task.amend`、`task.interrupt`、`checkpoint.raise`、`checkpoint.resolve`
-  在 adapter side effect 前持久化 outbox intent，向 fake/process/Codex adapter
-  传入 `operation_context`，本地提交成功后标记 outbox `succeeded`。
+  `task.assign`、`task.cancel`、`task.amend`、`task.interrupt`、
+  `checkpoint.raise`、`checkpoint.resolve`、`ownership.transfer` handoff 与
+  `ownership.delegate` 在 adapter side effect 前持久化 outbox intent，向
+  fake/process/Codex adapter 传入 `operation_context`，本地提交成功后标记 outbox
+  `succeeded`。
 
 ## 本轮执行边界
 

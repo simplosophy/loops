@@ -141,12 +141,32 @@ class HumanLoopOperations:
         """task.assign (spec §4.1)。created→assigned，ownership 转 agent。"""
         task = self.store._get_task_for_update(task_id)
         self._require_state(task, "created")
+        delegate_input = input or {"goal": task.spec.goal}
+        adapter_request = {
+            "adapter_action": "delegate",
+            "task_id": task_id,
+            "agent_id": agent_id,
+            "capability": capability,
+            "input": _jsonable(delegate_input),
+            "parent_run": None,
+        }
+        adapter_context = self._adapter_context_for_request(
+            task,
+            "task.assign",
+            adapter_request,
+        )
+        outbox_request = self._prepare_adapter_outbox(
+            adapter_context,
+            adapter_request,
+        )
 
-        run_id = await self.adapter.delegate(
-            task_id=task_id,
-            agent_id=agent_id,
-            capability=capability,
-            input=input or {"goal": task.spec.goal},
+        run_id = await self._call_adapter_with_context(
+            self.adapter.delegate,
+            context=adapter_context,
+            task_id=outbox_request["task_id"],
+            agent_id=outbox_request["agent_id"],
+            capability=outbox_request["capability"],
+            input=outbox_request["input"],
         )
 
         # ownership 转移 (spec §3.5)
@@ -163,6 +183,8 @@ class HumanLoopOperations:
         )
         self.store.bind_run(task_id, run_id)
         self.store.bump_task_revision(task)
+        self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
+        self._flush_store_if_available()
         return task
 
     async def task_start(self, task_id: str) -> Task:
@@ -189,8 +211,28 @@ class HumanLoopOperations:
                 f"cannot cancel terminal task in state {task.state!r}",
             )
         run_id = self.store.run_of_task(task_id)
+        adapter_context: AdapterOperationContext | None = None
         if run_id is not None:
-            await self.adapter.cancel(run_id, f"cancelled by {by}")
+            adapter_request = {
+                "adapter_action": "cancel",
+                "run_id": run_id,
+                "reason": f"cancelled by {by}",
+            }
+            adapter_context = self._adapter_context_for_request(
+                task,
+                "task.cancel",
+                adapter_request,
+            )
+            outbox_request = self._prepare_adapter_outbox(
+                adapter_context,
+                adapter_request,
+            )
+            await self._call_adapter_with_context(
+                self.adapter.cancel,
+                outbox_request["run_id"],
+                outbox_request["reason"],
+                context=adapter_context,
+            )
         if task.ownership.assignee != task.ownership.principal:
             task.ownership = task.ownership.transfer(
                 task.ownership.principal,
@@ -205,6 +247,9 @@ class HumanLoopOperations:
             task_id=task_id,
         )
         self.store.bump_task_revision(task)
+        if adapter_context is not None:
+            self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
+            self._flush_store_if_available()
         return task
 
     async def task_amend(
@@ -628,16 +673,40 @@ class HumanLoopOperations:
             )
         run_id = self.store.run_of_task(task_id)
         new_run_id: str | None = None
+        adapter_context: AdapterOperationContext | None = None
         if via == "handoff" and run_id is not None and to != task.ownership.assignee:
-            new_run_id = await self.adapter.handoff(
-                run_id,
-                to,
+            handoff_context = {
+                "task_id": task.id,
+                "from": task.ownership.assignee,
+                "to": to,
+                "via": via,
+            }
+            adapter_request = {
+                "adapter_action": "handoff",
+                "run_id": run_id,
+                "to_agent": to,
+                "context": handoff_context,
+            }
+            adapter_context = self._adapter_context_for_request(
+                task,
+                "ownership.transfer",
                 {
-                    "task_id": task.id,
-                    "from": task.ownership.assignee,
                     "to": to,
                     "via": via,
+                    "actor": actor,
+                    "adapter_request": adapter_request,
                 },
+            )
+            outbox_request = self._prepare_adapter_outbox(
+                adapter_context,
+                adapter_request,
+            )
+            new_run_id = await self._call_adapter_with_context(
+                self.adapter.handoff,
+                outbox_request["run_id"],
+                outbox_request["to_agent"],
+                outbox_request["context"],
+                context=adapter_context,
             )
         task.ownership = task.ownership.transfer(to, via=via)  # type: ignore[arg-type]
         if new_run_id is not None:
@@ -650,6 +719,9 @@ class HumanLoopOperations:
             after={"assignee": to, "via": via},
         )
         self.store.bump_task_revision(task)
+        if adapter_context is not None:
+            self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
+            self._flush_store_if_available()
         return task
 
     async def ownership_delegate(
@@ -672,12 +744,34 @@ class HumanLoopOperations:
                 "cannot delegate terminal task",
             )
         parent_run = self.store.run_of_task(task_id)
-        run_id = await self.adapter.delegate(
-            task_id=task_id,
-            agent_id=to_agent,
-            capability="",
-            input={"goal": task.spec.goal},
-            parent_run=parent_run,
+        adapter_request = {
+            "adapter_action": "delegate",
+            "task_id": task_id,
+            "agent_id": to_agent,
+            "capability": "",
+            "input": {"goal": task.spec.goal},
+            "parent_run": parent_run,
+        }
+        adapter_context = self._adapter_context_for_request(
+            task,
+            "ownership.delegate",
+            {
+                "actor": actor,
+                "adapter_request": adapter_request,
+            },
+        )
+        outbox_request = self._prepare_adapter_outbox(
+            adapter_context,
+            adapter_request,
+        )
+        run_id = await self._call_adapter_with_context(
+            self.adapter.delegate,
+            context=adapter_context,
+            task_id=outbox_request["task_id"],
+            agent_id=outbox_request["agent_id"],
+            capability=outbox_request["capability"],
+            input=outbox_request["input"],
+            parent_run=outbox_request["parent_run"],
         )
         # 链式委派：记录到 chain (spec §7.3)
         task.ownership = task.ownership.transfer(to_agent, via="assign")
@@ -690,6 +784,8 @@ class HumanLoopOperations:
             after={"delegatee": to_agent},
         )
         self.store.bump_task_revision(task)
+        self.store.mark_adapter_outbox_succeeded(adapter_context.operation_id)
+        self._flush_store_if_available()
         return task
 
     # ────────────────── Review (spec §4.1) ──────────────────
@@ -1075,6 +1171,32 @@ class HumanLoopOperations:
             task_revision=context.revision_before,
         )
 
+    def _adapter_context_for_request(
+        self,
+        task: Task,
+        operation: str,
+        request: dict[str, Any],
+    ) -> AdapterOperationContext:
+        fingerprint = _fingerprint({
+            "operation": operation,
+            "request": request,
+        })
+        return AdapterOperationContext(
+            operation_id=_adapter_operation_id(
+                task.id,
+                operation,
+                None,
+                fingerprint,
+                task.revision,
+            ),
+            task_id=task.id,
+            correlation_id=task.id,
+            operation=operation,
+            idempotency_key=None,
+            request_fingerprint=fingerprint,
+            task_revision=task.revision,
+        )
+
     def _prepare_adapter_outbox(
         self,
         adapter_context: AdapterOperationContext,
@@ -1121,11 +1243,23 @@ class HumanLoopOperations:
         method: Any,
         *args: Any,
         context: AdapterOperationContext,
+        **kwargs: Any,
     ) -> Any:
         signature = inspect.signature(method)
-        if "context" in signature.parameters:
-            return await method(*args, context=context)
-        return await method(*args)
+        accepts_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+        if "operation_context" in signature.parameters:
+            return await method(*args, **kwargs, operation_context=context)
+        parameter = signature.parameters.get("context")
+        if parameter is not None and parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+            return await method(*args, **kwargs, context=context)
+        if accepts_kwargs:
+            if getattr(method, "__name__", "") in {"block", "resume", "steer"}:
+                return await method(*args, **kwargs, context=context)
+            return await method(*args, **kwargs, operation_context=context)
+        return await method(*args, **kwargs)
 
     def _flush_store_if_available(self) -> None:
         flush = getattr(self.store, "flush", None)

@@ -522,8 +522,9 @@ rerunning preconditions, adapter calls, audit appends, or SDK event publication.
 The same key with a different fingerprint **MUST** return `CONFLICT`. The
 reference implementation covers task.amend, task.interrupt,
 checkpoint.resolve, and artifact.commit for CAS/idempotency replay. Adapter
-outbox context covers the external side-effect boundary for task.amend,
-task.interrupt, checkpoint.raise, and checkpoint.resolve.
+outbox context covers the external side-effect boundary for task.assign,
+task.cancel, task.amend, task.interrupt, checkpoint.raise, checkpoint.resolve,
+ownership.transfer handoff, and ownership.delegate.
 
 ## Operation Preconditions
 
