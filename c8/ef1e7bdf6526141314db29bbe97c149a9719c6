@@ -1,0 +1,30 @@
+README.md
+  s_38241583402686::t_da09d20d0e8676 33,45,57,72,74,84,186,188,227,230-231
+examples/hlp_harness_wrap_demo.py
+  s_38241583402686::t_f6060cb4114115 8,11,16-24,77-132
+tests/external/test_hlp_real_cli_e2e.py
+  s_38241583402686::t_a70a6fd62235f0 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c8ef1e7bdf6526141314db29bbe97c149a9719c6",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
