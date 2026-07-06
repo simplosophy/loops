@@ -109,13 +109,14 @@ channel 进行渲染和送达。
 - 正交：协议对象、store、event bus、adapter、host 分开演进。
 - 分层：HLP 不 import 或控制 harness 内部实现。
 - Fail Fast：adapter 调用失败时，协议状态不推进。
-- 约定优先：默认内存 store、fake adapter、demo 可直接跑；生产系统再替换后端。
+- 约定优先：默认内存 store 让本地 demo 可直接跑；demo 和 quickstart 显式选择 `CodexCLIAdapter`、`CodexHarnessAdapter` 等真实 adapter；`FakeAgentAdapter` / `FakeHarnessAdapter` 仅用于单元测试和离线合约验证。
 
 ## 验证路径
 
 - SDK 单测验证对象、状态机、adapter、SQLite 和 demo。
-- `loops-hlp-demo` 验证无外部依赖的人机闭环。
+- `loops-hlp-demo` 验证 Codex CLI adapter 的人机闭环；默认测试通过注入 runner 保持离线稳定。
 - `loops-hlp-adapters-demo` 验证 adapter contract。
-- `loops-hlp-harness-demo` 验证外部 harness human-facing 事件投影。
+- `loops-hlp-harness-demo` 验证 Codex harness adapter 对外部 human-facing 事件的投影。
 - `loops-hlp-codex-harness-demo` 验证 Codex JSONL harness adapter 的端到端投影。
+- `loops-hlp-local-cli-demo --adapters codex,kimi,claude --strict` 验证真实本机 CLI adapter 的完整 HLP lifecycle。
 - 站点验证确保文档定位保持 HLP-first、SDK-only。

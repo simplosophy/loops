@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+from pathlib import Path
 
 from loops.hlp import (
     AgentAdapterError,
@@ -1810,19 +1811,52 @@ def test_sdk_delayed_replay_returns_first_mutation_result():
     assert client.store.get_checkpoint(checkpoint.id).state == "resolved"
 
 
-def test_hlp_e2e_demo_runs_without_external_services():
-    result = run(run_demo())
+def _local_cli_runner(name):
+    async def runner(command, request, timeout):
+        run_id = request.get("run_id") or f"{name}_{request['operation']}_run"
+        if request["operation"] == "handoff":
+            run_id = f"{name}_handoff_run"
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "run_id": run_id,
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+                "summary": f"{name} {request['operation']} passed",
+            }),
+            stderr="",
+        )
+
+    return runner
+
+
+def test_hlp_e2e_demo_runs_through_real_adapter_path_without_external_services():
+    result = run(run_demo(runner=_local_cli_runner("codex"), timeout=7.0))
 
     assert result["task_id"].startswith("task_")
-    assert result["run_id"].startswith("run_")
+    assert result["adapter"] == "codex"
+    assert result["run_id"] == "codex_delegate_run"
+    assert result["correlation_id"] == result["task_id"]
+    assert result["returned_correlation_id"] == result["task_id"]
     assert result["checkpoint_decision"] == "safe"
     assert result["artifact_version"] == "v1"
     assert result["review_verdict"] == "approved"
     assert result["ledger_status"] == "approved"
+    assert result["final_task_state"] == "completed"
+    assert result["adapter_operations"] == [
+        "delegate",
+        "steer",
+        "block",
+        "resume",
+        "delegate",
+        "handoff",
+        "cancel",
+    ]
     assert result["audit_actions"] == [
         "task.created",
         "task.assigned",
         "task.started",
+        "task.amended",
         "task.checkpoint.raised",
         "task.checkpoint.resolved",
         "artifact.committed",
@@ -1865,7 +1899,7 @@ def test_hlp_harness_wrap_demo_runs_without_external_services():
     result = run(run_harness_wrap_demo())
 
     assert result["task_id"].startswith("task_")
-    assert result["run_id"].startswith("run_")
+    assert result["run_id"] == "codex_wrap_run"
     assert result["checkpoint_prompt"] == "Apply the generated patch?"
     assert result["checkpoint_decision"] == "approve"
     assert result["artifact_version"] == "v1"
@@ -1899,23 +1933,26 @@ def test_hlp_codex_harness_demo_runs_without_external_services():
     assert result["inbox_after_artifact"] == ["submit_review"]
 
 
-def test_hlp_local_cli_demo_runs_selected_adapters_with_injected_runners():
+def test_hlp_local_cli_demo_runs_selected_adapters_full_lifecycle_with_injected_runners():
     captured = {}
 
     def make_runner(name):
         async def runner(command, request, timeout):
-            captured[name] = {
+            captured.setdefault(name, []).append({
                 "command": command,
                 "request": request,
                 "timeout": timeout,
-            }
+            })
+            run_id = request.get("run_id") or f"{name}_{request['operation']}_run"
+            if request["operation"] == "handoff":
+                run_id = f"{name}_handoff_run"
             return ProcessResult(
                 exit_code=0,
                 stdout=json.dumps({
-                    "run_id": f"{name}_run",
+                    "run_id": run_id,
                     "correlation_id": request["correlation_id"],
                     "status": "ok",
-                    "summary": f"{name} smoke passed",
+                    "summary": f"{name} {request['operation']} passed",
                 }),
                 stderr="",
             )
@@ -1936,17 +1973,51 @@ def test_hlp_local_cli_demo_runs_selected_adapters_with_injected_runners():
     for name, entry in result.items():
         assert entry["status"] == "ok", name
         assert entry["task_id"].startswith("task_"), name
-        assert entry["run_id"] == f"{name}_run", name
+        assert entry["run_id"] == f"{name}_delegate_run", name
         assert entry["correlation_id"] == entry["task_id"], name
         assert entry["returned_correlation_id"] == entry["task_id"], name
-        assert captured[name]["request"]["operation"] == "delegate"
-        assert captured[name]["request"]["correlation_id"] == entry["task_id"]
-        assert captured[name]["timeout"] == 7.0
+        assert entry["adapter_operations"] == [
+            "delegate",
+            "steer",
+            "block",
+            "resume",
+            "delegate",
+            "handoff",
+            "cancel",
+        ]
+        assert entry["final_task_state"] == "completed", name
+        assert entry["review_verdict"] == "approved", name
+        assert entry["ledger_status"] == "approved", name
+        assert entry["control_final_task_state"] == "completed", name
+        assert entry["handoff_run_id"] == f"{name}_handoff_run", name
+        assert [call["request"]["operation"] for call in captured[name]] == entry["adapter_operations"]
+        assert all(call["timeout"] == 7.0 for call in captured[name])
 
-    assert captured["codex"]["command"][:2] == ("codex", "exec")
-    assert captured["kimi"]["command"][0] == "kimi"
-    assert "-p" in captured["kimi"]["command"]
-    assert captured["claude"]["command"][:2] == ("claude", "-p")
+    assert captured["codex"][0]["command"][:2] == ("codex", "exec")
+    assert captured["kimi"][0]["command"][0] == "kimi"
+    assert "-p" in captured["kimi"][0]["command"]
+    assert captured["claude"][0]["command"][:2] == ("claude", "-p")
+
+
+def test_examples_and_site_quickstarts_do_not_use_fake_adapters():
+    root = Path(__file__).resolve().parents[1]
+    checked = [
+        *root.glob("examples/*.py"),
+        root / "README.md",
+        root / "docs/site/index.md",
+        root / "docs/site/reading-routes.md",
+    ]
+
+    offenders = {
+        str(path.relative_to(root)): text
+        for path in checked
+        if (
+            (text := path.read_text())
+            and ("FakeAgentAdapter" in text or "FakeHarnessAdapter" in text)
+        )
+    }
+
+    assert offenders == {}
 
 
 def test_hlp_local_cli_demo_can_use_metaworker_kimi_config(tmp_path):

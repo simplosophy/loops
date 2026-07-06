@@ -30,7 +30,7 @@ internal execution strategy of an agent harness.
 
 ## Quick Start
 
-Run the dependency-free HLP workflow demo:
+Run the HLP workflow demo through the default Codex CLI adapter:
 
 ```bash
 uv run loops-hlp-demo
@@ -42,7 +42,7 @@ Run adapter compatibility checks without external services:
 uv run loops-hlp-adapters-demo
 ```
 
-Run a dependency-free harness wrapping demo:
+Run an offline Codex harness wrapping demo with an injected runner:
 
 ```bash
 uv run loops-hlp-harness-demo
@@ -54,7 +54,7 @@ Run the dependency-free Codex harness adapter demo:
 uv run loops-hlp-codex-harness-demo
 ```
 
-Run the local CLI smoke test against installed Codex, Kimi, and Claude Code:
+Run the full local CLI lifecycle test against installed Codex, Kimi, and Claude Code:
 
 ```bash
 uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
@@ -69,9 +69,9 @@ temporary file is created under `/private/tmp` and deleted after the run.
 Use `HLPHost` when embedding HLP in an application:
 
 ```python
-from loops import ArtifactPayload, FakeAgentAdapter, HLPHost
+from loops import ArtifactPayload, CodexCLIAdapter, HLPHost
 
-host = HLPHost.in_memory(adapter=FakeAgentAdapter())
+host = HLPHost.in_memory(adapter=CodexCLIAdapter())
 client = host.client
 
 task = await client.create_task(
@@ -81,7 +81,7 @@ task = await client.create_task(
 )
 run = await client.delegate(
     task.id,
-    agent_id="agent_reviewer",
+    agent_id="agent_codex",
     capability="code-review",
     input={"goal": task.spec.goal, "repository": "web"},
 )
@@ -183,9 +183,9 @@ Use `HarnessAdapter` semantics when an existing harness already has its own
 execution loop and only needs a common human interaction surface:
 
 ```python
-from loops import FakeHarnessAdapter, HarnessEvent, HLPClient
+from loops import CodexHarnessAdapter, HLPClient
 
-adapter = FakeHarnessAdapter()
+adapter = CodexHarnessAdapter(command=("codex", "exec", "--json"))
 client = HLPClient(adapter=adapter)
 
 task = await client.create_task(
@@ -194,15 +194,6 @@ task = await client.create_task(
 )
 run = await client.delegate(task.id, "agent_reviewer", capability="code-review")
 await client.start(task.id)
-
-# A real harness would emit this from its own run loop.
-adapter.queue_event(run.run_id, HarnessEvent(
-    kind="needs_approval",
-    task_id=task.id,
-    run_id=run.run_id,
-    agent_id=run.agent_id,
-    prompt="Apply the generated patch?",
-))
 
 await client.project_harness_events(run.run_id)
 inbox = await client.human_inbox("user_alice")
@@ -233,12 +224,9 @@ npm run build
 npm run verify:site
 ```
 
-Opt-in CLI smoke tests require installed local agent CLIs:
+Opt-in CLI lifecycle tests require installed local agent CLIs:
 
 ```bash
-uv run loops-hlp-demo
-uv run loops-hlp-adapters-demo
-uv run loops-hlp-harness-demo
-uv run loops-hlp-codex-harness-demo
-uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
+uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude --strict
+HLP_RUN_EXTERNAL_CLI_E2E=1 uv run pytest tests/external/test_hlp_real_cli_e2e.py -q
 ```

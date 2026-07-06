@@ -4,13 +4,16 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from loops.hlp import (
     AgentAdapterError,
+    ArtifactPayload,
     ClaudeCodeCLIAdapter,
+    CheckpointOption,
     CodexCLIAdapter,
     HLPClient,
     KimiCLIAdapter,
@@ -25,8 +28,9 @@ async def run_demo(
     runners: dict[str, Runner] | None = None,
     metaworker_config: str | Path | None = None,
     timeout: float = 180.0,
+    strict: bool = False,
 ) -> dict[str, dict[str, Any]]:
-    """Run HLP delegate through selected local CLI adapters.
+    """Run full HLP lifecycle probes through selected local CLI adapters.
 
     Tests inject runners so this stays dependency-free. Without injected
     runners, the function uses the user's installed Codex, Kimi, and Claude Code
@@ -38,55 +42,31 @@ async def run_demo(
     temp_configs: list[Path] = []
     try:
         for name in adapters:
-            adapter = _build_adapter(
-                name,
-                runner=runners.get(name),
-                timeout=timeout,
-                metaworker_config=metaworker_config,
-                temp_configs=temp_configs,
-            )
-            client = HLPClient(adapter=adapter)
-            task = await client.create_task(
-                principal="user_local",
-                goal=f"Run {name} local CLI HLP adapter smoke test",
-                type="local-cli-smoke",
-                acceptance_criteria=(
-                    "Return one JSON object",
-                    "Preserve the provided HLP correlation_id",
-                    "Do not modify workspace files",
-                ),
-            )
+            adapter: Any | None = None
             try:
-                run = await client.delegate(
-                    task.id,
-                    agent_id=f"agent_{name}",
-                    capability="local-cli-smoke",
-                    input={
-                        "goal": task.spec.goal,
-                        "instructions": (
-                            "This is a smoke test. Do not edit files or run tools. "
-                            "Return the required HLP JSON object only."
-                        ),
-                    },
+                adapter = _build_adapter(
+                    name,
+                    runner=runners.get(name),
+                    timeout=timeout,
+                    metaworker_config=metaworker_config,
+                    temp_configs=temp_configs,
                 )
-                payload = adapter.process_results.get(run.run_id, {})
-                result[name] = {
-                    "status": str(payload.get("status") or "ok"),
-                    "task_id": task.id,
-                    "run_id": run.run_id,
-                    "correlation_id": adapter.task_of_run(run.run_id) or "",
-                    "returned_correlation_id": str(payload.get("correlation_id") or ""),
-                    "summary": payload.get("summary", ""),
-                }
+                client = HLPClient(adapter=adapter)
+                result[name] = await _run_adapter_lifecycle(name, adapter, client)
             except AgentAdapterError as exc:
-                result[name] = {
-                    "status": "error",
-                    "task_id": task.id,
-                    "run_id": "",
-                    "correlation_id": task.id,
-                    "error": str(exc),
-                    "details": exc.details,
-                }
+                result[name] = _error_entry(
+                    name,
+                    adapter=adapter,
+                    error=str(exc),
+                    details=exc.details,
+                )
+            except Exception as exc:
+                result[name] = _error_entry(
+                    name,
+                    adapter=adapter,
+                    error=str(exc),
+                    details={"error_type": exc.__class__.__name__},
+                )
     finally:
         for path in temp_configs:
             path.unlink(missing_ok=True)
@@ -94,7 +74,7 @@ async def run_demo(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run local HLP CLI adapter smoke tests.")
+    parser = argparse.ArgumentParser(description="Run local HLP CLI adapter lifecycle tests.")
     parser.add_argument(
         "--adapters",
         default="codex,kimi,claude",
@@ -111,6 +91,11 @@ def main() -> None:
         help="Do not use metaworker config for Kimi.",
     )
     parser.add_argument("--timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero when any selected adapter reports an error.",
+    )
     args = parser.parse_args()
 
     selected = tuple(
@@ -118,15 +103,202 @@ def main() -> None:
         for item in args.adapters.split(",")
         if item.strip()
     )
+    result = asyncio.run(run_demo(
+        adapters=selected,
+        metaworker_config=None if args.no_metaworker_config else args.metaworker_config,
+        timeout=args.timeout,
+        strict=args.strict,
+    ))
     print(json.dumps(
-        asyncio.run(run_demo(
-            adapters=selected,
-            metaworker_config=None if args.no_metaworker_config else args.metaworker_config,
-            timeout=args.timeout,
-        )),
+        result,
         indent=2,
         sort_keys=True,
     ))
+    if args.strict and any(entry.get("status") != "ok" for entry in result.values()):
+        sys.exit(1)
+
+
+async def _run_adapter_lifecycle(
+    name: str,
+    adapter: Any,
+    client: HLPClient,
+) -> dict[str, Any]:
+    task_id = ""
+    run_id = ""
+    correlation_id = ""
+    try:
+        task = await client.create_task(
+            principal="user_local",
+            goal=f"Run {name} local CLI HLP adapter full lifecycle",
+            type="local-cli-e2e",
+            acceptance_criteria=(
+                "Return one JSON object",
+                "Preserve the provided HLP correlation_id",
+                "Do not modify workspace files",
+            ),
+        )
+        task_id = task.id
+        correlation_id = task.id
+        run = await client.delegate(
+            task.id,
+            agent_id=f"agent_{name}",
+            capability="local-cli-e2e",
+            input={
+                "goal": task.spec.goal,
+                "instructions": (
+                    "Exercise the HLP adapter boundary only. Do not edit files or run tools. "
+                    "Return the required HLP JSON object only."
+                ),
+            },
+        )
+        run_id = run.run_id
+        correlation_id = adapter.task_of_run(run.run_id) or task.id
+        await client.start(task.id)
+        await client.amend(
+            task.id,
+            by="user_local",
+            text="Keep the response JSON-only and preserve the supplied correlation_id.",
+        )
+        checkpoint = await client.raise_checkpoint(
+            task_id=task.id,
+            kind="choice",
+            prompt="Choose a low-risk execution path for the HLP adapter probe.",
+            options=(
+                CheckpointOption(id="safe", label="Use read-only validation", risk="low"),
+                CheckpointOption(id="fast", label="Skip validation", risk="medium"),
+            ),
+            raised_by=f"agent_{name}",
+        )
+        checkpoint = await client.resolve_checkpoint(
+            checkpoint.id,
+            by="user_local",
+            action="choose",
+            choice="safe",
+            comment="Use the deterministic low-risk path.",
+        )
+        artifact = await client.commit_artifact(
+            task_id=task.id,
+            type="report",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri=f"mem://hlp-{name}-report-v1",
+                checksum=f"sha256:hlp-{name}-report-v1",
+            ),
+            produced_by=f"agent_{name}",
+        )
+        review = await client.submit_review(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="user_local",
+            verdict="approved",
+        )
+        ledger_entry = await client.write_ledger(
+            f"project:hlp-{name}",
+            "local-cli.status",
+            "approved",
+            by=task.id,
+        )
+        history = await client.replay_audit(task.id)
+        final_task = await client.get_task(task.id)
+        payload = dict(adapter.process_results.get(run.run_id, {}))
+
+        control_task = await client.create_task(
+            principal="user_local",
+            goal=f"Run {name} local CLI HLP handoff/cancel control path",
+            type="local-cli-control",
+            acceptance_criteria=("Handoff and cancellation are propagated to the adapter",),
+        )
+        control_run = await client.delegate(
+            control_task.id,
+            agent_id=f"agent_{name}_primary",
+            capability="local-cli-control",
+            input={"goal": control_task.spec.goal},
+        )
+        await client.start(control_task.id)
+        await client.operations.ownership_transfer(
+            control_task.id,
+            to=f"agent_{name}_handoff",
+            via="handoff",
+            actor="user_local",
+        )
+        handoff_run_id = client.store.run_of_task(control_task.id) or ""
+        control_task = await client.operations.task_cancel(
+            control_task.id,
+            by="user_local",
+        )
+    except AgentAdapterError as exc:
+        return _error_entry(
+            name,
+            adapter=adapter,
+            task_id=task_id,
+            run_id=run_id,
+            correlation_id=correlation_id,
+            error=str(exc),
+            details=exc.details,
+        )
+
+    adapter_status = str(payload.get("status") or "ok")
+    returned_correlation_id = str(payload.get("correlation_id") or "")
+    entry: dict[str, Any] = {
+        "status": adapter_status,
+        "adapter": name,
+        "task_id": task.id,
+        "run_id": run.run_id,
+        "correlation_id": correlation_id,
+        "returned_correlation_id": returned_correlation_id,
+        "adapter_operations": _adapter_operations(adapter),
+        "final_task_state": final_task.state,
+        "checkpoint_id": checkpoint.id,
+        "checkpoint_decision": checkpoint.resolution.choice if checkpoint.resolution else None,
+        "artifact_id": artifact.id,
+        "artifact_version": artifact.version,
+        "review_id": review.id,
+        "review_verdict": review.verdict,
+        "ledger_status": ledger_entry.value,
+        "audit_actions": [event.action for event in history],
+        "control_task_id": control_task.id,
+        "control_run_id": control_run.run_id,
+        "handoff_run_id": handoff_run_id,
+        "control_final_task_state": control_task.state,
+        "summary": payload.get("summary", ""),
+    }
+    if adapter_status != "ok":
+        entry["error"] = str(payload.get("error") or "adapter returned non-ok status")
+        entry["details"] = payload.get("details") or payload
+    return entry
+
+
+def _error_entry(
+    name: str,
+    *,
+    adapter: Any | None,
+    error: str,
+    details: dict[str, Any],
+    task_id: str = "",
+    run_id: str = "",
+    correlation_id: str = "",
+) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "adapter": name,
+        "task_id": task_id,
+        "run_id": run_id,
+        "correlation_id": correlation_id,
+        "returned_correlation_id": "",
+        "adapter_operations": _adapter_operations(adapter),
+        "error": error,
+        "details": details,
+    }
+
+
+def _adapter_operations(adapter: Any) -> list[str]:
+    if adapter is None:
+        return []
+    return [
+        name
+        for name, _payload in getattr(adapter, "calls", ())
+        if name in {"delegate", "steer", "block", "resume", "handoff", "cancel"}
+    ]
 
 
 def _build_adapter(

@@ -5,19 +5,23 @@ import json
 from typing import Any
 
 from loops.hlp import (
-    FakeHarnessAdapter,
+    CodexHarnessAdapter,
     HarnessCapabilities,
-    HarnessEvent,
     HLPClient,
+    ProcessResult,
 )
 
 
 async def run_demo() -> dict[str, Any]:
-    adapter = FakeHarnessAdapter(capabilities=HarnessCapabilities(
-        name="fake-code-review-harness",
-        conformance=("checkpoint-capable", "artifact-aware"),
-        description="Projects harness human interactions into HLP.",
-    ))
+    adapter = CodexHarnessAdapter(
+        command=("codex", "exec", "--json"),
+        runner=_codex_wrap_runner,
+        capabilities=HarnessCapabilities(
+            name="codex-code-review-harness",
+            conformance=("checkpoint-capable", "artifact-aware"),
+            description="Projects Codex harness human interactions into HLP.",
+        ),
+    )
     client = HLPClient(adapter=adapter)
 
     task = await client.create_task(
@@ -33,13 +37,6 @@ async def run_demo() -> dict[str, Any]:
     )
     await client.start(task.id)
 
-    adapter.queue_event(run.run_id, HarnessEvent(
-        kind="needs_approval",
-        task_id=task.id,
-        run_id=run.run_id,
-        agent_id=run.agent_id,
-        prompt="Apply the generated patch?",
-    ))
     checkpoint = (await client.project_harness_events(run.run_id))[0]
     inbox_after_checkpoint = await client.human_inbox("user_alice")
 
@@ -49,15 +46,6 @@ async def run_demo() -> dict[str, Any]:
         action="approve",
     )
 
-    adapter.queue_event(run.run_id, HarnessEvent(
-        kind="artifact",
-        task_id=task.id,
-        run_id=run.run_id,
-        agent_id=run.agent_id,
-        artifact_type="patch",
-        artifact_uri="mem://patch-v1",
-        artifact_checksum="sha256:patch-v1",
-    ))
     artifact = (await client.project_harness_events(run.run_id))[0]
     inbox_after_artifact = await client.human_inbox("user_alice")
 
@@ -84,6 +72,62 @@ async def run_demo() -> dict[str, Any]:
         "inbox_after_checkpoint": [item.action for item in inbox_after_checkpoint],
         "inbox_after_artifact": [item.action for item in inbox_after_artifact],
     }
+
+
+async def _codex_wrap_runner(
+    command: tuple[str, ...],
+    request: dict[str, Any],
+    timeout: float,
+) -> ProcessResult:
+    if request["operation"] == "delegate":
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join((
+                json.dumps({
+                    "type": "hlp.event",
+                    "run_id": "codex_wrap_run",
+                    "correlation_id": request["correlation_id"],
+                    "hlp": {
+                        "kind": "needs_approval",
+                        "agent_id": request["agent_id"],
+                        "prompt": "Apply the generated patch?",
+                    },
+                }),
+                json.dumps({
+                    "type": "turn.completed",
+                    "run_id": "codex_wrap_run",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }),
+            )),
+            stderr="",
+        )
+    if request["operation"] == "resume":
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join((
+                json.dumps({
+                    "type": "hlp.event",
+                    "run_id": request["run_id"],
+                    "correlation_id": request["correlation_id"],
+                    "hlp": {
+                        "kind": "artifact",
+                        "agent_id": "agent_review_harness",
+                        "artifact_type": "patch",
+                        "artifact_uri": "mem://patch-v1",
+                        "artifact_checksum": "sha256:patch-v1",
+                    },
+                }),
+                json.dumps({
+                    "type": "turn.completed",
+                    "run_id": request["run_id"],
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }),
+            )),
+            stderr="",
+        )
+    return ProcessResult(exit_code=0, stdout="{}", stderr="")
 
 
 def main() -> None:

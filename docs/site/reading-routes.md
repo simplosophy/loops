@@ -18,9 +18,9 @@ Start from the public Python surface when you are building an application or
 host process:
 
 ```python
-from loops import FakeAgentAdapter, HLPHost
+from loops import CodexCLIAdapter, HLPHost
 
-host = HLPHost.in_memory(adapter=FakeAgentAdapter())
+host = HLPHost.in_memory(adapter=CodexCLIAdapter())
 client = host.client
 ```
 

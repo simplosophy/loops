@@ -106,7 +106,7 @@ agent-to-agent 协议或 harness mesh。
 | ownership.transfer | handoff | correlation_id 保持 |
 | harness event | project into HLP object | human-facing event 不泄漏 harness internals |
 
-参考实现提供 `FakeAgentAdapter`——只记录调用不执行，用于验证 HLP 在正确时机调用了正确的 agent adapter 方法，且 TaskID 贯穿。`FakeHarnessAdapter` 在此基础上增加 harness event 队列，用于验证既有 harness 的人工审批和交付事件可以投影为 HLP checkpoint、artifact 和 human inbox item。`CodexHarnessAdapter` 对 `codex exec --json` 的 JSONL event stream 做窄投影，把显式 HLP human-facing events 映射为 `HarnessEvent`，但不接管 Codex execution loop。`OpenAIAgentsSDKAdapter` 可通过注入 `runner + agent` 调用 OpenAI Agents SDK 的 `run/run_sync` 形态；`LangGraphAdapter` 可通过注入 compiled graph 调用 `ainvoke/invoke`；`CrewAIAdapter` 可通过注入 crew 调用 `akickoff/kickoff_async/kickoff`；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖自定义 CLI/process 形态；`PromptCLIAdapter` 将 HLP request 嵌入 one-shot prompt，用于贴合 Codex CLI、Kimi CLI、Claude Code CLI 这类本机 coding-agent 命令。
+生产和 demo 路径显式选择真实 adapter：`CodexCLIAdapter`、`KimiCLIAdapter`、`ClaudeCodeCLIAdapter` 通过本机 CLI prompt mode 覆盖完整 HLP lifecycle；`CodexHarnessAdapter` 对 `codex exec --json` 的 JSONL event stream 做窄投影，把显式 HLP human-facing events 映射为 `HarnessEvent`，但不接管 Codex execution loop。`FakeAgentAdapter` 和 `FakeHarnessAdapter` 是 deterministic test fixtures，仅用于单元测试、离线合约探针和故障注入，不作为 quickstart 或 production/demo 默认路径。`OpenAIAgentsSDKAdapter` 可通过注入 `runner + agent` 调用 OpenAI Agents SDK 的 `run/run_sync` 形态；`LangGraphAdapter` 可通过注入 compiled graph 调用 `ainvoke/invoke`；`CrewAIAdapter` 可通过注入 crew 调用 `akickoff/kickoff_async/kickoff`；`OpenAIPythonSDKAdapter` 可通过注入 `client.responses.create(...)` 调用 OpenAI Python SDK；`ProcessAgentAdapter` 使用 JSON-over-stdin/stdout runner 覆盖自定义 CLI/process 形态；`PromptCLIAdapter` 将 HLP request 嵌入 one-shot prompt，用于贴合 Codex CLI、Kimi CLI、Claude Code CLI 这类本机 coding-agent 命令。
 
 adapter-coupled 操作遵循 fail-before-commit：如果 `delegate` / `block` / `resume` / `handoff` / `cancel` 失败，HLP Task、Checkpoint、Ownership、audit 和 run binding 不推进到假成功状态。当前参考实现用同步调用保证本地一致性；生产服务端应演进为 transaction + durable outbox + idempotency key。
 
@@ -114,7 +114,6 @@ Adapter capability baseline:
 
 | Adapter | start/delegate | block/resume | handoff/cancel | correlation |
 |---------|----------------|--------------|----------------|-------------|
-| `FakeAgentAdapter` | yes | records contract calls | records contract calls | in-memory handle |
 | `ProcessAgentAdapter` | JSON object or JSONL stdout | JSON command wrapper | JSON command wrapper | validates returned `correlation_id` when present |
 | `PromptCLIAdapter` | one-shot prompt + parsed JSON result | one-shot prompt wrapper | one-shot prompt wrapper | prompt requires returned `correlation_id`; validates when present |
 | `CodexCLIAdapter` / `KimiCLIAdapter` / `ClaudeCodeCLIAdapter` | local CLI prompt mode | local CLI prompt mode | local CLI prompt mode | HLP `task_id` kept as run correlation |
@@ -123,6 +122,13 @@ Adapter capability baseline:
 | `OpenAIAgentsSDKAdapter` | injected `runner.run/run_sync` | local contract recording, not real runtime pause yet | local contract recording | local handle |
 | `LangGraphAdapter` | `ainvoke/invoke` with `configurable.thread_id` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
 | `CrewAIAdapter` | `akickoff/kickoff_async/kickoff` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
+
+Test fixtures:
+
+| Adapter | Scope | Purpose |
+|---------|-------|---------|
+| `FakeAgentAdapter` | unit tests only | records contract calls and failure-injection probes without executing a real runtime |
+| `FakeHarnessAdapter` | unit tests only | queues deterministic harness events for projection contract tests |
 
 Harness event projection baseline:
 
@@ -181,10 +187,11 @@ HLP 参考实现刻意不依赖任何自研下层 runtime。这证明协议层�
 ## 验证
 
 - `uv run pytest tests/test_hlp_sdk.py -q`：SDK facade、adapter、event、SQLite、demo
-- `uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude`：真实本机 CLI adapter smoke test
+- `uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude --strict`：真实本机 CLI adapter full lifecycle test
+- `HLP_RUN_EXTERNAL_CLI_E2E=1 uv run pytest tests/external/test_hlp_real_cli_e2e.py -q`：opt-in external CLI E2E
 - `uv run pytest tests/test_hlp_protocol.py -q`
-- `uv run loops-hlp-demo`：无外部依赖端到端 demo
+- `uv run loops-hlp-demo`：Codex CLI adapter 端到端 demo，测试通过注入 runner 离线覆盖同一路径
 - `uv run loops-hlp-adapters-demo`：无外部依赖 adapter compatibility demo
-- `uv run loops-hlp-harness-demo`：无外部依赖 harness wrapping demo
+- `uv run loops-hlp-harness-demo`：Codex harness adapter wrapping demo，测试通过注入 runner 离线覆盖同一路径
 - `uv run loops-hlp-codex-harness-demo`：无外部依赖 Codex JSONL harness adapter demo
 - 端到端闭环覆盖 spec 附录 A "Review PR #1234" 全时序

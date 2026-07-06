@@ -141,14 +141,14 @@ hero:
     </div>
   </div>
   <div class="sdk-code" aria-label="HLP host quickstart">
-    <span>from loops import FakeAgentAdapter, HLPHost</span>
+    <span>from loops import CodexCLIAdapter, HLPHost</span>
     <span></span>
-    <span>host = HLPHost.in_memory(adapter=FakeAgentAdapter())</span>
+    <span>host = HLPHost.in_memory(adapter=CodexCLIAdapter())</span>
     <span>task = await host.client.create_task(</span>
     <span>    principal="user_alice",</span>
     <span>    goal="Review PR #1234",</span>
     <span>)</span>
-    <span>run = await host.client.delegate(task.id, "agent_reviewer")</span>
+    <span>run = await host.client.delegate(task.id, "agent_codex")</span>
   </div>
 </section>
 
