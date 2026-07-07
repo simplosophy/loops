@@ -1,0 +1,26 @@
+docs/plans/2026-07-07-hlp-tui-implementation.md
+  s_39b4f68e8d41ac::t_b3592787ed2a72 1-1519
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b8f8d816037329f2c9d67e2b0bdc268ca8426541",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_39b4f68e8d41ac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3bab-62ee-7c02-9d03-7b94ecc6d7a4",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
