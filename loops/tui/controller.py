@@ -3,7 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from loops.hlp import Constraints, HLPClient, ProtocolError, ReviewComment
+from loops.hlp import (
+    CheckpointResolutionAction,
+    Constraints,
+    HLPClient,
+    ProtocolError,
+    ReviewComment,
+    ReviewVerdict,
+)
 
 from .commands import CommandParseError, InputIntent, parse_user_input
 from .render import (
@@ -29,6 +36,24 @@ class TUIUsageError(ValueError):
 
 class TUISessionError(KeyError):
     pass
+
+
+_PERMISSION_MODES = frozenset({"auto", "plan", "confirm", "read-only"})
+_CHECKPOINT_RESULT_LABELS: dict[CheckpointResolutionAction, str] = {
+    "approve": "approved",
+    "reject": "rejected",
+    "choose": "resolved",
+    "provide": "resolved",
+    "reassign": "resolved",
+}
+_REVIEW_VERDICTS: dict[str, ReviewVerdict] = {
+    "approved": "approved",
+    "approve": "approved",
+    "changes": "changes_requested",
+    "changes_requested": "changes_requested",
+    "rejected": "rejected",
+    "reject": "rejected",
+}
 
 
 class TUIController:
@@ -234,9 +259,9 @@ class TUIController:
     def _set_permissions(self, session_id: str, intent: InputIntent) -> TUIResult:
         value = _required_arg(
             intent,
-            "/permissions requires suggest, auto, or read-only",
+            "/permissions requires auto, plan, confirm, or read-only",
         )
-        if value not in {"suggest", "auto", "read-only"}:
+        if value not in _PERMISSION_MODES:
             raise TUIUsageError(f"unsupported permission mode: {value}")
         self._require_session(session_id)
         updated = self.sessions.set_preference(
@@ -250,37 +275,45 @@ class TUIController:
         self,
         session_id: str,
         *,
-        action: str,
+        action: CheckpointResolutionAction,
         choice: str | None = None,
         input_text: str | None = None,
         comment: str = "",
     ) -> TUIResult:
-        session = self._require_session(session_id)
+        session = self._require_active(session_id)
         inbox = await self.client.human_inbox(session.principal)
-        checkpoint = next((item for item in inbox if item.kind == "checkpoint"), None)
+        checkpoint = next(
+            (
+                item
+                for item in inbox
+                if item.kind == "checkpoint"
+                and item.task_id == session.active_task_id
+            ),
+            None,
+        )
         if checkpoint is None:
-            raise TUIUsageError("no pending checkpoint")
+            raise TUIUsageError("no pending checkpoint for active task")
         resolved = await self.client.resolve_checkpoint(
             checkpoint.subject_id,
             by=session.principal,
-            action=action,  # type: ignore[arg-type]
+            action=action,
             choice=choice,
             input=input_text,
             comment=comment or None,
         )
-        label = {
-            "approve": "approved",
-            "reject": "rejected",
-            "choose": "resolved",
-            "provide": "resolved",
-        }[action]
+        label = _CHECKPOINT_RESULT_LABELS[action]
         return TUIResult(f"{label} checkpoint {resolved.id}")
 
     async def _review_current(self, session_id: str, intent: InputIntent) -> TUIResult:
+        session = self._require_active(session_id)
         verdict_arg = _required_arg(
             intent,
-            "/review requires approved, changes_requested, or commented",
+            "/review requires approved, changes_requested, or rejected",
         )
+        if verdict_arg not in _REVIEW_VERDICTS:
+            raise TUIUsageError(f"unsupported review verdict: {verdict_arg}")
+
+        verdict = _REVIEW_VERDICTS[verdict_arg]
         comment_text = " ".join(intent.args[1:]).strip()
         comments = (
             (ReviewComment(anchor="artifact", body=comment_text),)
@@ -288,32 +321,30 @@ class TUIController:
             else ()
         )
 
-        if verdict_arg == "approved":
-            verdict = "approved"
-            requested_changes: tuple[str, ...] = ()
-        elif verdict_arg == "changes_requested":
+        if verdict == "changes_requested":
             if not comment_text:
                 raise TUIUsageError("/review changes_requested requires a comment")
-            verdict = "changes_requested"
             requested_changes = (comment_text,)
-        elif verdict_arg == "commented":
-            if not comment_text:
-                raise TUIUsageError("/review commented requires a comment")
-            verdict = "approved"
-            requested_changes = ()
         else:
-            raise TUIUsageError(f"unsupported review verdict: {verdict_arg}")
+            requested_changes = ()
 
-        session = self._require_session(session_id)
         inbox = await self.client.human_inbox(session.principal)
-        review_item = next((item for item in inbox if item.kind == "review"), None)
+        review_item = next(
+            (
+                item
+                for item in inbox
+                if item.kind == "review"
+                and item.task_id == session.active_task_id
+            ),
+            None,
+        )
         if review_item is None:
-            raise TUIUsageError("no review-ready artifact")
+            raise TUIUsageError("no review-ready artifact for active task")
         review = await self.client.submit_review(
             task_id=review_item.task_id,
             artifact_id=review_item.subject_id,
             reviewer=session.principal,
-            verdict=verdict,  # type: ignore[arg-type]
+            verdict=verdict,
             comments=comments,
             requested_changes=requested_changes,
         )
@@ -368,7 +399,6 @@ def _joined_args(intent: InputIntent) -> str:
 def _autonomy(permission_mode: str) -> str:
     return {
         "auto": "autonomous",
-        "suggest": "confirm_each_action",
         "plan": "plan_then_implement",
         "confirm": "confirm_each_action",
         "read-only": "read_only",

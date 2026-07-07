@@ -295,6 +295,12 @@ def _started_hlp_tui(tmp_path, name="sessions.json"):
     return adapter, client, store, session, controller
 
 
+def _start_hlp_tui_session(store, controller):
+    session = store.create(cwd="/repo", adapter="fake")
+    run(controller.handle(session.id, "Review the patch"))
+    return session, store.resume(session.id)
+
+
 def test_hlp_inbox_approve_interrupt_and_audit_commands(tmp_path):
     _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
     active = store.resume(session.id)
@@ -318,6 +324,65 @@ def test_hlp_inbox_approve_interrupt_and_audit_commands(tmp_path):
     assert "interrupted task" in interrupted.output
     assert "task.checkpoint.resolved" in audit.output
     assert "task.interrupted" in audit.output
+
+
+@pytest.mark.parametrize(
+    ("kind", "options", "command", "expected_action", "field", "expected_value"),
+    (
+        ("approval", (), "/approve target ok", "approve", "comment", "target ok"),
+        ("approval", (), "/reject unsafe target", "reject", "comment", "unsafe target"),
+        (
+            "choice",
+            (CheckpointOption(id="target", label="Target path", risk="low"),),
+            "/choose target",
+            "choose",
+            "choice",
+            "target",
+        ),
+        ("input", (), "/input target detail", "provide", "input", "target detail"),
+    ),
+)
+def test_hlp_checkpoint_commands_scope_to_current_active_task(
+    tmp_path,
+    kind,
+    options,
+    command,
+    expected_action,
+    field,
+    expected_value,
+):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    _older_session, older_active = _start_hlp_tui_session(store, controller)
+    target_session, target_active = _start_hlp_tui_session(store, controller)
+    older = run(client.raise_checkpoint(
+        task_id=older_active.active_task_id,
+        kind=kind,
+        prompt="Older checkpoint",
+        options=options,
+        raised_by="agent_tui",
+    ))
+    target = run(client.raise_checkpoint(
+        task_id=target_active.active_task_id,
+        kind=kind,
+        prompt="Target checkpoint",
+        options=options,
+        raised_by="agent_tui",
+    ))
+
+    result = run(controller.handle(target_session.id, command))
+    older_after = client.store.get_checkpoint(older.id)
+    target_after = client.store.get_checkpoint(target.id)
+
+    assert target.id in result.output
+    assert older.id not in result.output
+    assert older_after.state == "pending"
+    assert target_after.state == "resolved"
+    assert target_after.resolution is not None
+    assert target_after.resolution.action == expected_action
+    assert getattr(target_after.resolution, field) == expected_value
 
 
 def test_hlp_reject_current_checkpoint_with_reason(tmp_path):
@@ -380,18 +445,39 @@ def test_hlp_review_commands_submit_protocol_reviews(tmp_path):
             "looks good",
         ),
         (
-            "changes",
-            "/review changes_requested fix API contract",
+            "approve",
+            "/review approve good alias",
+            "approved",
+            (),
+            "good alias",
+        ),
+        (
+            "changes-alias",
+            "/review changes fix API contract",
             "changes_requested",
             ("fix API contract",),
             "fix API contract",
         ),
         (
-            "commented",
-            "/review commented FYI only",
-            "approved",
+            "changes-requested",
+            "/review changes_requested tighten validation",
+            "changes_requested",
+            ("tighten validation",),
+            "tighten validation",
+        ),
+        (
+            "rejected",
+            "/review rejected unacceptable output",
+            "rejected",
             (),
-            "FYI only",
+            "unacceptable output",
+        ),
+        (
+            "reject",
+            "/review reject unsafe output",
+            "rejected",
+            (),
+            "unsafe output",
         ),
     )
 
@@ -422,16 +508,79 @@ def test_hlp_review_commands_submit_protocol_reviews(tmp_path):
         assert review.comments[0].body == comment
 
 
+def test_hlp_review_scopes_to_current_active_task(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    _older_session, older_active = _start_hlp_tui_session(store, controller)
+    target_session, target_active = _start_hlp_tui_session(store, controller)
+    older_artifact = run(client.commit_artifact(
+        task_id=older_active.active_task_id,
+        type="patch",
+        payload=ArtifactPayload(
+            kind="inline",
+            uri="mem://older-patch",
+            checksum="sha256:older-patch",
+        ),
+        produced_by="agent_tui",
+    ))
+    target_artifact = run(client.commit_artifact(
+        task_id=target_active.active_task_id,
+        type="patch",
+        payload=ArtifactPayload(
+            kind="inline",
+            uri="mem://target-patch",
+            checksum="sha256:target-patch",
+        ),
+        produced_by="agent_tui",
+    ))
+
+    result = run(controller.handle(target_session.id, "/review approved target ok"))
+
+    assert target_artifact.id in result.output
+    assert older_artifact.id not in result.output
+    assert client.store.reviews_of_artifact(older_artifact.id) == []
+    target_reviews = client.store.reviews_of_artifact(target_artifact.id)
+    assert len(target_reviews) == 1
+    assert target_reviews[0].verdict == "approved"
+
+
+def test_hlp_review_commented_is_unsupported_and_does_not_create_review(tmp_path):
+    _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
+    active = store.resume(session.id)
+    artifact = run(client.commit_artifact(
+        task_id=active.active_task_id,
+        type="patch",
+        payload=ArtifactPayload(
+            kind="inline",
+            uri="mem://commented-patch",
+            checksum="sha256:commented-patch",
+        ),
+        produced_by="agent_tui",
+    ))
+
+    result = run(controller.handle(session.id, "/review commented FYI only"))
+
+    assert "error:" in result.output
+    assert "unsupported review verdict: commented" in result.output
+    assert client.store.reviews_of_artifact(artifact.id) == []
+
+
 def test_hlp_permissions_record_session_metadata_only(tmp_path):
     adapter, _client, store, session, controller = _started_hlp_tui(tmp_path)
 
-    suggest = run(controller.handle(session.id, "/permissions suggest"))
+    auto = run(controller.handle(session.id, "/permissions auto"))
+    plan = run(controller.handle(session.id, "/permissions plan"))
+    confirm = run(controller.handle(session.id, "/permissions confirm"))
     read_only = run(controller.handle(session.id, "/permissions read-only"))
-    unsupported = run(controller.handle(session.id, "/permissions plan"))
+    unsupported = run(controller.handle(session.id, "/permissions suggest"))
     updated = store.resume(session.id)
 
-    assert "permission_mode=suggest" in suggest.output
+    assert "permission_mode=auto" in auto.output
+    assert "permission_mode=plan" in plan.output
+    assert "permission_mode=confirm" in confirm.output
     assert "permission_mode=read-only" in read_only.output
     assert updated.permission_mode == "read-only"
-    assert "unsupported permission mode: plan" in unsupported.output
+    assert "unsupported permission mode: suggest" in unsupported.output
     assert [name for name, _payload in adapter.calls] == ["delegate"]
