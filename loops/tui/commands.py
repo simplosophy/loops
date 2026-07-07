@@ -39,7 +39,7 @@ COMMANDS: dict[str, CommandDefinition] = {
     "resume": CommandDefinition("resume", "Resume a saved session.", "direct"),
     "fork": CommandDefinition("fork", "Fork current session metadata and transcript.", "direct"),
     "archive": CommandDefinition("archive", "Archive current session.", "direct"),
-    "delete": CommandDefinition("delete", "Delete a saved session.", "direct"),
+    "delete": CommandDefinition("delete", "Delete current session after confirmation.", "direct"),
     "permissions": CommandDefinition("permissions", "Set autonomy and permission mode.", "hlp"),
     "inbox": CommandDefinition("inbox", "Show HLP human inbox.", "hlp"),
     "approve": CommandDefinition("approve", "Approve current checkpoint.", "hlp"),

@@ -8,7 +8,13 @@ from loops.tui.commands import (
     InputIntent,
     parse_user_input,
 )
-from loops.hlp import ArtifactPayload, CheckpointOption, FakeAgentAdapter, HLPClient
+from loops.hlp import (
+    AgentAdapterError,
+    ArtifactPayload,
+    CheckpointOption,
+    FakeAgentAdapter,
+    HLPClient,
+)
 from loops.tui.render import render_help, render_status, render_transcript
 from loops.tui.compat import compatibility_report
 from loops.tui.session import SessionStore, TranscriptEvent
@@ -287,6 +293,28 @@ def test_handle_unexpected_runtime_error_is_not_swallowed(tmp_path, monkeypatch)
         run(controller.handle(session.id, "Review the patch"))
 
 
+def test_adapter_failure_is_rendered_without_crashing_tui(tmp_path):
+    class FailingDelegateAdapter(FakeAgentAdapter):
+        async def delegate(self, *args, **kwargs):
+            raise AgentAdapterError(
+                "failing-adapter",
+                "delegate",
+                "process command failed",
+                details={"exit_code": 1},
+            )
+
+    client = HLPClient(adapter=FailingDelegateAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    result = run(controller.handle(session.id, "Review the patch"))
+
+    assert result.should_exit is False
+    assert "error: AgentAdapterError: failing-adapter.delegate" in result.output
+    assert "process command failed" in result.output
+
+
 def test_direct_commands_do_not_call_hlp(tmp_path):
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter)
@@ -307,6 +335,34 @@ def test_direct_commands_do_not_call_hlp(tmp_path):
     assert "session=" in status_result.output
     assert "inbox=" in status_result.output
     assert adapter.calls == []
+
+
+def test_diff_command_renders_git_diff_stat(tmp_path, monkeypatch):
+    import subprocess
+
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd=str(tmp_path), adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+    (tmp_path / ".git").mkdir()
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=" README.md | 2 ++\n 1 file changed, 2 insertions(+)\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("loops.tui.controller.subprocess.run", fake_run)
+
+    result = run(controller.handle(session.id, "/diff"))
+
+    assert "README.md | 2 ++" in result.output
+    assert "1 file changed" in result.output
+    assert calls[0][0] == ("git", "-C", str(tmp_path), "diff", "--stat")
 
 
 def test_resume_unknown_session_returns_error_result(tmp_path):
@@ -658,7 +714,7 @@ def test_run_lines_stops_on_archive_or_delete_exit(tmp_path):
         adapter_name="fake",
     ))
     delete_outputs = run(run_lines(
-        lines=("/delete", "/help"),
+        lines=("/delete confirm", "/help"),
         client=client,
         session_path=tmp_path / "delete-sessions.json",
         cwd="/repo",
@@ -668,6 +724,18 @@ def test_run_lines_stops_on_archive_or_delete_exit(tmp_path):
     assert archive_outputs == ["archived session"]
     assert delete_outputs == ["deleted session"]
     assert adapter.calls == []
+
+
+def test_delete_requires_confirmation(tmp_path):
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=HLPClient(adapter=FakeAgentAdapter()), sessions=store)
+
+    result = run(controller.handle(session.id, "/delete"))
+
+    assert "error:" in result.output
+    assert "/delete requires confirmation" in result.output
+    assert store.resume(session.id).id == session.id
 
 
 def test_run_lines_new_switches_following_prompt_to_fresh_session(tmp_path):

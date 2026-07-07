@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 
 from loops.hlp import (
+    AgentAdapterError,
     CheckpointResolutionAction,
     Constraints,
     HLPClient,
@@ -79,7 +81,13 @@ class TUIController:
             if intent.kind == "shell":
                 return self._record(session_id, "shell", f"captured shell input: {intent.text}")
             return await self._handle_command(session_id, intent)
-        except (CommandParseError, ProtocolError, TUIUsageError, TUISessionError) as exc:
+        except (
+            AgentAdapterError,
+            CommandParseError,
+            ProtocolError,
+            TUIUsageError,
+            TUISessionError,
+        ) as exc:
             self._record_error_if_possible(session_id, str(exc))
             return TUIResult(render_error(exc))
 
@@ -155,6 +163,8 @@ class TUIController:
             return TUIResult("archived session", should_exit=True)
         if name == "delete":
             self._require_session(session_id)
+            if not intent.args or intent.args[0] != "confirm":
+                raise TUIUsageError("/delete requires confirmation: /delete confirm")
             self.sessions.delete(session_id)
             return TUIResult("deleted session", should_exit=True)
         if name == "resume":
@@ -426,4 +436,17 @@ def _diff_summary(cwd: Path) -> str:
     git_dir = Path(cwd) / ".git"
     if not git_dir.exists():
         return "diff unavailable: not a git workspace"
-    return "diff available through harness or injected provider"
+    result = subprocess.run(
+        ("git", "-C", str(cwd), "diff", "--stat"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        suffix = f": {detail}" if detail else ""
+        return f"diff unavailable{suffix}"
+    summary = result.stdout.strip()
+    if not summary:
+        return "diff is empty"
+    return summary
