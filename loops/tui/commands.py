@@ -64,14 +64,17 @@ _MENTION = re.compile(r"(?<!\S)@([^\s]+)")
 
 
 def parse_user_input(raw: str) -> InputIntent:
-    value = raw.rstrip("\n").lstrip()
-    if not value:
+    value = raw.rstrip("\n")
+    if not value.strip():
         raise CommandParseError("blank input is not allowed")
-    if value.startswith("!"):
-        text = value[1:].strip()
-        return InputIntent(kind="shell", raw=value, text=text, mentions=_mentions(text))
-    if value.startswith("/"):
-        return _parse_command(value)
+    normalized = value.lstrip()
+    if normalized.startswith("!"):
+        text = normalized[1:].strip()
+        if not text:
+            raise CommandParseError("shell input is empty")
+        return InputIntent(kind="shell", raw=normalized, text=text, mentions=_mentions(text))
+    if normalized.startswith("/"):
+        return _parse_command(normalized)
     return InputIntent(kind="prompt", raw=value, text=value, mentions=_mentions(value))
 
 

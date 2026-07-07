@@ -32,6 +32,14 @@ def test_parse_prompt_and_shell_capture():
     assert shell.text == "git status --short"
 
 
+def test_parse_indented_prompt_is_preserved():
+    prompt = parse_user_input("  indented prompt")
+
+    assert prompt.kind == "prompt"
+    assert prompt.raw == "  indented prompt"
+    assert prompt.text == "  indented prompt"
+
+
 def test_unknown_slash_command_fails_without_mutation():
     try:
         parse_user_input("/unknown")
@@ -56,6 +64,16 @@ def test_parse_command_with_leading_whitespace():
 def test_blank_input_rejected():
     with pytest.raises(CommandParseError, match="blank"):
         parse_user_input("   ")
+
+
+def test_shell_only_input_rejected():
+    with pytest.raises(CommandParseError, match="shell input is empty"):
+        parse_user_input("!")
+
+
+def test_shell_only_whitespace_rejected():
+    with pytest.raises(CommandParseError, match="shell input is empty"):
+        parse_user_input("!   ")
 
 
 def test_compatibility_report_meets_first_version_threshold():
