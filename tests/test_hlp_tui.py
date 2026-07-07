@@ -365,6 +365,29 @@ def test_diff_command_renders_git_diff_stat(tmp_path, monkeypatch):
     assert calls[0][0] == ("git", "-C", str(tmp_path), "diff", "--stat")
 
 
+def test_diff_command_lets_git_discover_repository_from_subdirectory(tmp_path, monkeypatch):
+    import subprocess
+
+    subdir = tmp_path / "src"
+    subdir.mkdir()
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd=str(subdir), adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("loops.tui.controller.subprocess.run", fake_run)
+
+    result = run(controller.handle(session.id, "/diff"))
+
+    assert result.output == "diff is empty"
+    assert calls[0][0] == ("git", "-C", str(subdir), "diff", "--stat")
+
+
 def test_resume_unknown_session_returns_error_result(tmp_path):
     store = SessionStore(tmp_path / "sessions.json")
     session = store.create(cwd="/repo", adapter="fake")

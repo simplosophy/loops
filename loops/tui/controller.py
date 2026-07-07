@@ -433,9 +433,6 @@ def _autonomy(permission_mode: str) -> str:
 
 
 def _diff_summary(cwd: Path) -> str:
-    git_dir = Path(cwd) / ".git"
-    if not git_dir.exists():
-        return "diff unavailable: not a git workspace"
     result = subprocess.run(
         ("git", "-C", str(cwd), "diff", "--stat"),
         capture_output=True,
