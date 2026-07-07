@@ -60,6 +60,17 @@ Run the full local CLI lifecycle test against installed Codex, Kimi, and Claude 
 uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
 ```
 
+Run the line-oriented HLP TUI channel:
+
+```bash
+uv run loops-hlp-tui --adapter codex
+```
+
+The TUI is a host/channel over HLP. It renders prompt input, slash commands,
+human inbox approvals, artifact review, audit replay, and session transcript
+state while keeping model calls, tool execution, sandboxing, and the agent loop
+inside the selected harness adapter.
+
 For Kimi, the smoke demo can build a temporary `kimi-cli` config from
 `~/.metaworker/config.yaml` when native Kimi Code has no model configured. The
 temporary file is created under `/private/tmp` and deleted after the run.
