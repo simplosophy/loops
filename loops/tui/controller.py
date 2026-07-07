@@ -131,7 +131,7 @@ class TUIController:
             return TUIResult("deleted session", should_exit=True)
         if name == "resume":
             target = _required_arg(intent, "/resume requires a session id")
-            resumed = self.sessions.resume(target)
+            resumed = self._require_session(target)
             return TUIResult(render_status(resumed))
         if name == "model":
             self._require_session(session_id)

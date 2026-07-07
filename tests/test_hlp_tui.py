@@ -270,3 +270,14 @@ def test_direct_commands_do_not_call_hlp(tmp_path):
     assert "session=" in status_result.output
     assert "inbox=" in status_result.output
     assert adapter.calls == []
+
+
+def test_resume_unknown_session_returns_error_result(tmp_path):
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=HLPClient(adapter=FakeAgentAdapter()), sessions=store)
+
+    result = run(controller.handle(session.id, "/resume missing"))
+
+    assert "error:" in result.output
+    assert "unknown session: missing" in result.output
