@@ -1,0 +1,26 @@
+examples/hlp_tui_demo.py
+  s_b13d382399b36f::t_a1dfaa12341312 9,15-18,23,51,69-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c487277d2e402868f4362acdbdb703e72228bdfc",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_b13d382399b36f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c1b-3dad-78c3-b7d3-6dae3a05d7df",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
