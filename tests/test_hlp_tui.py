@@ -8,7 +8,7 @@ from loops.tui.commands import (
     InputIntent,
     parse_user_input,
 )
-from loops.hlp import FakeAgentAdapter, HLPClient
+from loops.hlp import ArtifactPayload, CheckpointOption, FakeAgentAdapter, HLPClient
 from loops.tui.render import render_help, render_status, render_transcript
 from loops.tui.compat import compatibility_report
 from loops.tui.session import SessionStore, TranscriptEvent
@@ -281,3 +281,157 @@ def test_resume_unknown_session_returns_error_result(tmp_path):
 
     assert "error:" in result.output
     assert "unknown session: missing" in result.output
+
+
+def _started_hlp_tui(tmp_path, name="sessions.json"):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / name)
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    run(controller.handle(session.id, "Review the patch"))
+
+    return adapter, client, store, session, controller
+
+
+def test_hlp_inbox_approve_interrupt_and_audit_commands(tmp_path):
+    _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
+    active = store.resume(session.id)
+    checkpoint = run(client.raise_checkpoint(
+        task_id=active.active_task_id,
+        kind="approval",
+        prompt="Apply patch?",
+        raised_by="agent_tui",
+    ))
+
+    inbox = run(controller.handle(session.id, "/inbox"))
+    approved = run(controller.handle(session.id, "/approve proceed with patch"))
+    interrupted = run(controller.handle(session.id, "/interrupt inspect before continuing"))
+    audit = run(controller.handle(session.id, "/audit"))
+    resolved = client.store.get_checkpoint(checkpoint.id)
+
+    assert checkpoint.id in inbox.output
+    assert "approved checkpoint" in approved.output
+    assert resolved.resolution is not None
+    assert resolved.resolution.comment == "proceed with patch"
+    assert "interrupted task" in interrupted.output
+    assert "task.checkpoint.resolved" in audit.output
+    assert "task.interrupted" in audit.output
+
+
+def test_hlp_reject_current_checkpoint_with_reason(tmp_path):
+    _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
+    active = store.resume(session.id)
+    checkpoint = run(client.raise_checkpoint(
+        task_id=active.active_task_id,
+        kind="approval",
+        prompt="Apply patch?",
+        raised_by="agent_tui",
+    ))
+
+    rejected = run(controller.handle(session.id, "/reject unsafe state"))
+    resolved = client.store.get_checkpoint(checkpoint.id)
+
+    assert "rejected checkpoint" in rejected.output
+    assert resolved.resolution is not None
+    assert resolved.resolution.action == "reject"
+    assert resolved.resolution.comment == "unsafe state"
+
+
+def test_hlp_choose_and_input_resolve_current_checkpoint(tmp_path):
+    _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
+    active = store.resume(session.id)
+    choice = run(client.raise_checkpoint(
+        task_id=active.active_task_id,
+        kind="choice",
+        prompt="Pick path",
+        options=(CheckpointOption(id="safe", label="Safe path", risk="low"),),
+        raised_by="agent_tui",
+    ))
+
+    chosen = run(controller.handle(session.id, "/choose safe"))
+    input_checkpoint = run(client.raise_checkpoint(
+        task_id=active.active_task_id,
+        kind="input",
+        prompt="Need detail",
+        raised_by="agent_tui",
+    ))
+    provided = run(controller.handle(session.id, "/input use stricter validation"))
+
+    resolved_choice = client.store.get_checkpoint(choice.id)
+    resolved_input = client.store.get_checkpoint(input_checkpoint.id)
+
+    assert choice.id in chosen.output
+    assert resolved_choice.resolution is not None
+    assert resolved_choice.resolution.choice == "safe"
+    assert input_checkpoint.id in provided.output
+    assert resolved_input.resolution is not None
+    assert resolved_input.resolution.input == "use stricter validation"
+
+
+def test_hlp_review_commands_submit_protocol_reviews(tmp_path):
+    cases = (
+        (
+            "approved",
+            "/review approved looks good",
+            "approved",
+            (),
+            "looks good",
+        ),
+        (
+            "changes",
+            "/review changes_requested fix API contract",
+            "changes_requested",
+            ("fix API contract",),
+            "fix API contract",
+        ),
+        (
+            "commented",
+            "/review commented FYI only",
+            "approved",
+            (),
+            "FYI only",
+        ),
+    )
+
+    for name, command, verdict, requested_changes, comment in cases:
+        _adapter, client, store, session, controller = _started_hlp_tui(
+            tmp_path,
+            f"{name}.json",
+        )
+        active = store.resume(session.id)
+        artifact = run(client.commit_artifact(
+            task_id=active.active_task_id,
+            type="patch",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri=f"mem://{name}-patch",
+                checksum=f"sha256:{name}-patch",
+            ),
+            produced_by="agent_tui",
+        ))
+
+        reviewed = run(controller.handle(session.id, command))
+        review = client.store.reviews_of_artifact(artifact.id)[0]
+
+        assert artifact.id in reviewed.output
+        assert f"verdict={verdict}" in reviewed.output
+        assert review.verdict == verdict
+        assert review.requested_changes == requested_changes
+        assert review.comments[0].body == comment
+
+
+def test_hlp_permissions_record_session_metadata_only(tmp_path):
+    adapter, _client, store, session, controller = _started_hlp_tui(tmp_path)
+
+    suggest = run(controller.handle(session.id, "/permissions suggest"))
+    read_only = run(controller.handle(session.id, "/permissions read-only"))
+    unsupported = run(controller.handle(session.id, "/permissions plan"))
+    updated = store.resume(session.id)
+
+    assert "permission_mode=suggest" in suggest.output
+    assert "permission_mode=read-only" in read_only.output
+    assert updated.permission_mode == "read-only"
+    assert "unsupported permission mode: plan" in unsupported.output
+    assert [name for name, _payload in adapter.calls] == ["delegate"]

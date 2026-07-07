@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from loops.hlp import Constraints, HLPClient, ProtocolError
+from loops.hlp import Constraints, HLPClient, ProtocolError, ReviewComment
 
 from .commands import CommandParseError, InputIntent, parse_user_input
 from .render import (
+    render_audit,
     render_error,
     render_help,
+    render_inbox,
     render_status,
     render_transcript,
 )
@@ -179,7 +181,143 @@ class TUIController:
         )
 
     async def _handle_hlp_command(self, session_id: str, intent: InputIntent) -> TUIResult:
+        if intent.name == "permissions":
+            return self._set_permissions(session_id, intent)
+        if intent.name == "inbox":
+            session = self._require_session(session_id)
+            return TUIResult(render_inbox(await self.client.human_inbox(session.principal)))
+        if intent.name == "approve":
+            return await self._resolve_checkpoint(
+                session_id,
+                action="approve",
+                comment=_joined_args(intent),
+            )
+        if intent.name == "reject":
+            return await self._resolve_checkpoint(
+                session_id,
+                action="reject",
+                comment=_joined_args(intent),
+            )
+        if intent.name == "choose":
+            return await self._resolve_checkpoint(
+                session_id,
+                action="choose",
+                choice=_required_arg(intent, "/choose requires an option id"),
+            )
+        if intent.name == "input":
+            input_text = _required_text(intent, "/input requires text")
+            return await self._resolve_checkpoint(
+                session_id,
+                action="provide",
+                input_text=input_text,
+            )
+        if intent.name == "interrupt":
+            prompt = _required_text(intent, "/interrupt requires a reason")
+            session = self._require_active(session_id)
+            checkpoint = await self.client.interrupt(
+                session.active_task_id,
+                by=session.principal,
+                prompt=prompt,
+            )
+            return TUIResult(
+                f"interrupted task {session.active_task_id} checkpoint {checkpoint.id}",
+            )
+        if intent.name == "review":
+            return await self._review_current(session_id, intent)
+        if intent.name == "audit":
+            session = self._require_active(session_id)
+            return TUIResult(
+                render_audit(await self.client.replay_audit(session.active_task_id)),
+            )
         raise TUIUsageError(f"command not wired yet: /{intent.name}")
+
+    def _set_permissions(self, session_id: str, intent: InputIntent) -> TUIResult:
+        value = _required_arg(
+            intent,
+            "/permissions requires suggest, auto, or read-only",
+        )
+        if value not in {"suggest", "auto", "read-only"}:
+            raise TUIUsageError(f"unsupported permission mode: {value}")
+        self._require_session(session_id)
+        updated = self.sessions.set_preference(
+            session_id,
+            field="permission_mode",
+            value=value,
+        )
+        return TUIResult(f"permission_mode={updated.permission_mode}")
+
+    async def _resolve_checkpoint(
+        self,
+        session_id: str,
+        *,
+        action: str,
+        choice: str | None = None,
+        input_text: str | None = None,
+        comment: str = "",
+    ) -> TUIResult:
+        session = self._require_session(session_id)
+        inbox = await self.client.human_inbox(session.principal)
+        checkpoint = next((item for item in inbox if item.kind == "checkpoint"), None)
+        if checkpoint is None:
+            raise TUIUsageError("no pending checkpoint")
+        resolved = await self.client.resolve_checkpoint(
+            checkpoint.subject_id,
+            by=session.principal,
+            action=action,  # type: ignore[arg-type]
+            choice=choice,
+            input=input_text,
+            comment=comment or None,
+        )
+        label = {
+            "approve": "approved",
+            "reject": "rejected",
+            "choose": "resolved",
+            "provide": "resolved",
+        }[action]
+        return TUIResult(f"{label} checkpoint {resolved.id}")
+
+    async def _review_current(self, session_id: str, intent: InputIntent) -> TUIResult:
+        verdict_arg = _required_arg(
+            intent,
+            "/review requires approved, changes_requested, or commented",
+        )
+        comment_text = " ".join(intent.args[1:]).strip()
+        comments = (
+            (ReviewComment(anchor="artifact", body=comment_text),)
+            if comment_text
+            else ()
+        )
+
+        if verdict_arg == "approved":
+            verdict = "approved"
+            requested_changes: tuple[str, ...] = ()
+        elif verdict_arg == "changes_requested":
+            if not comment_text:
+                raise TUIUsageError("/review changes_requested requires a comment")
+            verdict = "changes_requested"
+            requested_changes = (comment_text,)
+        elif verdict_arg == "commented":
+            if not comment_text:
+                raise TUIUsageError("/review commented requires a comment")
+            verdict = "approved"
+            requested_changes = ()
+        else:
+            raise TUIUsageError(f"unsupported review verdict: {verdict_arg}")
+
+        session = self._require_session(session_id)
+        inbox = await self.client.human_inbox(session.principal)
+        review_item = next((item for item in inbox if item.kind == "review"), None)
+        if review_item is None:
+            raise TUIUsageError("no review-ready artifact")
+        review = await self.client.submit_review(
+            task_id=review_item.task_id,
+            artifact_id=review_item.subject_id,
+            reviewer=session.principal,
+            verdict=verdict,  # type: ignore[arg-type]
+            comments=comments,
+            requested_changes=requested_changes,
+        )
+        return TUIResult(f"reviewed artifact {review.artifact_id} verdict={review.verdict}")
 
     def _record(self, session_id: str, kind: str, text: str) -> TUIResult:
         self._append(session_id, kind=kind, text=text)
@@ -203,6 +341,12 @@ class TUIController:
         except KeyError as exc:
             raise TUISessionError(f"unknown session: {session_id}") from exc
 
+    def _require_active(self, session_id: str):
+        session = self._require_session(session_id)
+        if not session.active_task_id:
+            raise TUIUsageError("no active task")
+        return session
+
 
 def _required_arg(intent: InputIntent, message: str) -> str:
     if not intent.args:
@@ -210,9 +354,21 @@ def _required_arg(intent: InputIntent, message: str) -> str:
     return intent.args[0]
 
 
+def _required_text(intent: InputIntent, message: str) -> str:
+    value = _joined_args(intent)
+    if not value:
+        raise TUIUsageError(message)
+    return value
+
+
+def _joined_args(intent: InputIntent) -> str:
+    return " ".join(intent.args).strip()
+
+
 def _autonomy(permission_mode: str) -> str:
     return {
         "auto": "autonomous",
+        "suggest": "confirm_each_action",
         "plan": "plan_then_implement",
         "confirm": "confirm_each_action",
         "read-only": "read_only",
