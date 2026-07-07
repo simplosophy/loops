@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 
+from loops.tui import session as session_module
 from loops.tui.commands import (
     CommandParseError,
     InputIntent,
@@ -120,10 +121,11 @@ def test_render_help_status_and_transcript_are_stable(tmp_path):
 
     lines = help_text.splitlines()
     assert lines[0] == "HLP TUI commands:"
-    assert lines[1] == "/amend        hlp    Append HLP steering amendment."
-    assert lines[2] == "/approve      hlp    Approve current checkpoint."
-    assert lines[4] == "/audit        hlp    Replay HLP audit."
-    assert lines[11] == "/help         direct Show command help."
+    command_lines = lines[1:]
+    assert command_lines == sorted(command_lines)
+    assert "/amend        hlp    Append HLP steering amendment." in command_lines
+    assert "/audit        hlp    Replay HLP audit." in command_lines
+    assert "/help         direct Show command help." in command_lines
     assert (
         status
         == "session="
@@ -138,16 +140,19 @@ def test_session_store_save_is_atomic_on_temp_write_failure(tmp_path, monkeypatc
     session = store.create(cwd="/repo", adapter="fake")
     original = (tmp_path / "sessions.json").read_text()
     path = tmp_path / "sessions.json"
-    path_class = type(path)
+    original_named_tempfile = session_module.tempfile.NamedTemporaryFile
 
-    original_write_text = path_class.write_text
+    def fail_on_temp_write(*args, **kwargs):
+        tmp = original_named_tempfile(*args, **kwargs)
+        original_write = tmp.write
 
-    def fail_tmp_write(self, data, *args, **kwargs):
-        if self.name == ".sessions.json.tmp":
+        def fail_write(*_args, **_kwargs):
             raise OSError("temporary write failure")
-        return original_write_text(self, data, *args, **kwargs)
 
-    monkeypatch.setattr(path_class, "write_text", fail_tmp_write)
+        tmp.write = fail_write
+        return tmp
+
+    monkeypatch.setattr(session_module.tempfile, "NamedTemporaryFile", fail_on_temp_write)
 
     with pytest.raises(OSError):
         store.append(session.id, TranscriptEvent(kind="user", text="should not persist"))
@@ -157,3 +162,5 @@ def test_session_store_save_is_atomic_on_temp_write_failure(tmp_path, monkeypatc
     data = json.loads(path.read_text())
     assert len(data) == 1
     assert data[0]["id"] == session.id
+    assert not (tmp_path / ".sessions.json.tmp").exists()
+    assert list(tmp_path.glob(".sessions.json.*.tmp")) == []

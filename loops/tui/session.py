@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+import tempfile
 from uuid import uuid4
 
 
@@ -144,14 +145,32 @@ class SessionStore:
 
     def _save(self, sessions: dict[str, TUISession]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name(f".{self.path.name}.tmp")
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w",
+            prefix=f".{self.path.name}.",
+            suffix=".tmp",
+            dir=self.path.parent,
+            delete=False,
+            encoding="utf-8",
+        )
         payload = []
         for session in sorted(sessions.values(), key=lambda item: item.updated_at):
             row = asdict(session)
             row["transcript"] = [asdict(event) for event in session.transcript]
             payload.append(row)
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
-        tmp.replace(self.path)
+        tmp_path = Path(tmp.name)
+        try:
+            with tmp:
+                tmp.write(json.dumps(payload, indent=2, sort_keys=True))
+                tmp.flush()
+                tmp.seek(0)
+            tmp_path.replace(self.path)
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
     @staticmethod
     def _replace(session: TUISession, **changes: object) -> TUISession:
