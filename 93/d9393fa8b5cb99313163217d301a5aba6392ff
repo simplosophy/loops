@@ -1,0 +1,28 @@
+loops/tui/controller.py
+  s_c1ad226ad6f996::t_ded6e751f3b3b7 6-13,41-58,262,264,278,283,285-293,295,299,304,308,311,313-316,324,329,332-340,342,347
+tests/test_hlp_tui.py
+  s_c1ad226ad6f996::t_2587c88bea143f 298-303,329-387,448-456,462-478,480,511-569,573-575,577,580-582,585
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "93d9393fa8b5cb99313163217d301a5aba6392ff",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_c1ad226ad6f996": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c08-3822-7f51-af80-24f0521dff1c",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
