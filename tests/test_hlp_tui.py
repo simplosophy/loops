@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import asyncio
 
 from loops.tui import session as session_module
 from loops.tui.commands import (
@@ -7,10 +8,16 @@ from loops.tui.commands import (
     InputIntent,
     parse_user_input,
 )
+from loops.hlp import FakeAgentAdapter, HLPClient
 from loops.tui.render import render_help, render_status, render_transcript
 from loops.tui.compat import compatibility_report
 from loops.tui.session import SessionStore, TranscriptEvent
+from loops.tui.controller import TUIController
 import pytest
+
+
+def run(coro):
+    return asyncio.run(coro)
 
 
 def test_parse_slash_command_with_quoted_args_and_file_mentions():
@@ -144,7 +151,6 @@ def test_session_store_save_is_atomic_on_temp_write_failure(tmp_path, monkeypatc
 
     def fail_on_temp_write(*args, **kwargs):
         tmp = original_named_tempfile(*args, **kwargs)
-        original_write = tmp.write
 
         def fail_write(*_args, **_kwargs):
             raise OSError("temporary write failure")
@@ -164,3 +170,54 @@ def test_session_store_save_is_atomic_on_temp_write_failure(tmp_path, monkeypatc
     assert data[0]["id"] == session.id
     assert not (tmp_path / ".sessions.json.tmp").exists()
     assert list(tmp_path.glob(".sessions.json.*.tmp")) == []
+
+
+def test_submit_prompt_creates_delegates_and_starts_task(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    result = run(controller.handle(session.id, "Review the patch"))
+    updated = store.resume(session.id)
+    task = run(client.get_task(updated.active_task_id))
+
+    assert "started task" in result.output
+    assert task.state == "in_progress"
+    assert updated.active_run_id
+    assert [name for name, _payload in adapter.calls] == ["delegate"]
+
+
+def test_submit_prompt_on_active_task_amends_instead_of_new_delegate(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    run(controller.handle(session.id, "Review the patch"))
+    result = run(controller.handle(session.id, "Focus on auth boundaries"))
+    updated = store.resume(session.id)
+    task = run(client.get_task(updated.active_task_id))
+
+    assert "amended task" in result.output
+    assert task.steering_log[-1].text == "Focus on auth boundaries"
+    assert [name for name, _payload in adapter.calls] == ["delegate", "steer"]
+
+
+def test_direct_session_commands_do_not_mutate_hlp(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    help_result = run(controller.handle(session.id, "/help"))
+    clear_result = run(controller.handle(session.id, "/clear"))
+    model_result = run(controller.handle(session.id, "/model gpt-5"))
+
+    assert "/help" in help_result.output
+    assert "cleared transcript" in clear_result.output
+    assert "model=gpt-5" in model_result.output
+    assert adapter.calls == []
