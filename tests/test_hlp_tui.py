@@ -5,7 +5,9 @@ from loops.tui.commands import (
     InputIntent,
     parse_user_input,
 )
+from loops.tui.render import render_help, render_status, render_transcript
 from loops.tui.compat import compatibility_report
+from loops.tui.session import SessionStore, TranscriptEvent
 import pytest
 
 
@@ -88,3 +90,35 @@ def test_compatibility_report_meets_first_version_threshold():
     assert "/help" in report.commands
     assert "/permissions" in report.commands
     assert "/audit" in report.commands
+
+
+def test_session_store_new_fork_archive_delete_roundtrip(tmp_path):
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    session = store.append(session.id, TranscriptEvent(kind="user", text="review @README.md"))
+    fork = store.fork(session.id)
+    archived = store.archive(session.id)
+
+    assert archived.archived is True
+    assert fork.id != session.id
+    assert fork.transcript[0].text == "review @README.md"
+    assert store.resume(fork.id).id == fork.id
+
+    store.delete(session.id)
+    assert [item.id for item in store.list()] == [fork.id]
+
+
+def test_render_help_status_and_transcript_are_stable(tmp_path):
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    session = store.append(session.id, TranscriptEvent(kind="user", text="inspect"))
+
+    help_text = render_help()
+    status = render_status(session, task_state="in_progress", inbox_count=2)
+    transcript = render_transcript(session)
+
+    assert "/help" in help_text
+    assert "adapter=fake" in status
+    assert "state=in_progress" in status
+    assert "inbox=2" in status
+    assert "user: inspect" in transcript
