@@ -12,6 +12,9 @@ from .controller import TUIController
 from .session import SessionStore
 
 
+_SUPPORTED_ADAPTERS = frozenset({"fake", "codex"})
+
+
 async def run_lines(
     *,
     lines: Iterable[str],
@@ -21,14 +24,18 @@ async def run_lines(
     adapter_name: str,
     principal: str = "user_local",
 ) -> list[str]:
+    _validate_adapter_name(adapter_name)
     sessions = SessionStore(session_path)
     session = sessions.create(cwd=cwd, adapter=adapter_name, principal=principal)
+    active_session_id = session.id
     controller = TUIController(client=client, sessions=sessions)
     outputs: list[str] = []
 
     for line in lines:
-        result = await controller.handle(session.id, line)
+        result = await controller.handle(active_session_id, line)
         outputs.append(result.output)
+        if result.active_session_id:
+            active_session_id = result.active_session_id
         if result.should_exit:
             break
 
@@ -36,11 +43,17 @@ async def run_lines(
 
 
 def build_client(adapter_name: str) -> HLPClient:
+    _validate_adapter_name(adapter_name)
     if adapter_name == "fake":
         return HLPClient(adapter=FakeAgentAdapter())
     if adapter_name == "codex":
         return HLPClient(adapter=CodexCLIAdapter())
-    raise ValueError(f"unsupported adapter: {adapter_name}")
+    raise AssertionError("unreachable adapter branch")
+
+
+def _validate_adapter_name(adapter_name: str) -> None:
+    if adapter_name not in _SUPPORTED_ADAPTERS:
+        raise ValueError(f"unsupported adapter: {adapter_name}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -58,13 +71,16 @@ def main(argv: list[str] | None = None) -> None:
         principal=args.principal,
     )
     controller = TUIController(client=client, sessions=sessions)
+    active_session_id = session.id
 
     print(f"HLP TUI session {session.id}. Type /help for commands.")
     try:
         while True:
             line = input("> ")
-            result = asyncio.run(controller.handle(session.id, line))
+            result = asyncio.run(controller.handle(active_session_id, line))
             print(result.output)
+            if result.active_session_id:
+                active_session_id = result.active_session_id
             if result.should_exit:
                 return
     except (EOFError, KeyboardInterrupt):

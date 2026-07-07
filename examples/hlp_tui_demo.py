@@ -49,9 +49,13 @@ async def run_demo() -> dict[str, Any]:
 
     return {
         "adapter": "codex",
+        "adapter_name": adapter.name,
         "session_id": session.id,
         "task_id": active.active_task_id,
         "run_id": active.active_run_id,
+        "process_summary": str(
+            adapter.process_results[active.active_run_id]["summary"]
+        ),
         "checkpoint_id": checkpoint.id,
         "checkpoint_decision": (
             resolved_checkpoint.resolution.action

@@ -28,6 +28,7 @@ from .session import SessionStore, TranscriptEvent
 class TUIResult:
     output: str
     should_exit: bool = False
+    active_session_id: str = ""
 
 
 class TUIUsageError(ValueError):
@@ -143,11 +144,11 @@ class TUIController:
                 adapter=current.adapter,
                 principal=current.principal,
             )
-            return TUIResult(f"new session {created.id}")
+            return TUIResult(f"new session {created.id}", active_session_id=created.id)
         if name == "fork":
             self._require_session(session_id)
             forked = self.sessions.fork(session_id)
-            return TUIResult(f"forked session {forked.id}")
+            return TUIResult(f"forked session {forked.id}", active_session_id=forked.id)
         if name == "archive":
             self._require_session(session_id)
             self.sessions.archive(session_id)
@@ -159,7 +160,7 @@ class TUIController:
         if name == "resume":
             target = _required_arg(intent, "/resume requires a session id")
             resumed = self._require_session(target)
-            return TUIResult(render_status(resumed))
+            return TUIResult(render_status(resumed), active_session_id=resumed.id)
         if name == "model":
             self._require_session(session_id)
             value = _required_arg(intent, "/model requires a model name")

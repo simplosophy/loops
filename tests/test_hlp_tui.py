@@ -670,11 +670,72 @@ def test_run_lines_stops_on_archive_or_delete_exit(tmp_path):
     assert adapter.calls == []
 
 
+def test_run_lines_new_switches_following_prompt_to_fresh_session(tmp_path):
+    from loops.tui.app import run_lines
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+
+    outputs = run(run_lines(
+        lines=("Review the patch", "/new", "Review another patch"),
+        client=client,
+        session_path=tmp_path / "sessions.json",
+        cwd="/repo",
+        adapter_name="fake",
+    ))
+
+    assert outputs[0].startswith("started task")
+    assert outputs[1].startswith("new session")
+    assert outputs[2].startswith("started task")
+    assert "amended task" not in "\n".join(outputs)
+    assert [name for name, _payload in adapter.calls] == ["delegate", "delegate"]
+
+
+def test_run_lines_resume_switches_following_prompt_to_target_session(tmp_path):
+    from loops.tui.app import run_lines
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    target = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+    run(controller.handle(target.id, "Review the target patch"))
+
+    outputs = run(run_lines(
+        lines=(f"/resume {target.id}", "Focus on target auth"),
+        client=client,
+        session_path=tmp_path / "sessions.json",
+        cwd="/repo",
+        adapter_name="fake",
+    ))
+
+    assert outputs[0].startswith("session=" + target.id)
+    assert outputs[1].startswith("amended task")
+    assert [name for name, _payload in adapter.calls] == ["delegate", "steer"]
+
+
+def test_run_lines_rejects_unsupported_adapter_name(tmp_path):
+    from loops.tui.app import run_lines
+
+    with pytest.raises(ValueError, match="unsupported adapter: mystery"):
+        run(run_lines(
+            lines=("Review the patch",),
+            client=HLPClient(adapter=FakeAgentAdapter()),
+            session_path=tmp_path / "sessions.json",
+            cwd="/repo",
+            adapter_name="mystery",
+        ))
+
+    assert not (tmp_path / "sessions.json").exists()
+
+
 def test_hlp_tui_demo_runs_full_offline_human_loop():
     from examples.hlp_tui_demo import run_demo as run_tui_demo
 
     result = run(run_tui_demo())
 
+    assert result["adapter_name"] == "codex-cli"
+    assert result["process_summary"] == "TUI demo delegate accepted"
     assert result["final_task_state"] == "completed"
     assert result["checkpoint_decision"] == "approve"
     assert result["review_verdict"] == "approved"
