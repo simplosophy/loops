@@ -1,0 +1,32 @@
+docs/plans/2026-07-07-hlp-tui.md
+  s_39b4f68e8d41ac::t_d9b9724a8db391 77,130-131,153-156,165-166,231
+loops/tui/commands.py
+  s_39b4f68e8d41ac::t_5d4a19a4f4b71e 42
+loops/tui/controller.py
+  s_39b4f68e8d41ac::t_8e3e312021d83c 5,8,84-90,166-167,439-452
+tests/test_hlp_tui.py
+  s_39b4f68e8d41ac::t_cc060e06c5a2db 11-17,296-317,340-367,717,729-740
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1e9340e219277abca27cba7e2786f49183fbc1bc",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_39b4f68e8d41ac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3bab-62ee-7c02-9d03-7b94ecc6d7a4",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
