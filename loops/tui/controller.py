@@ -236,6 +236,22 @@ class TUIController:
                 action="provide",
                 input_text=input_text,
             )
+        if intent.name == "amend":
+            text = _required_text(intent, "/amend requires text")
+            session = self._require_active(session_id)
+            task = await self.client.amend(
+                session.active_task_id,
+                by=session.principal,
+                text=text,
+                intent="clarify",
+            )
+            self._append(
+                session_id,
+                kind="task",
+                text=f"amended task {task.id}",
+                ref=task.id,
+            )
+            return TUIResult(f"amended task {task.id}")
         if intent.name == "interrupt":
             prompt = _required_text(intent, "/interrupt requires a reason")
             session = self._require_active(session_id)

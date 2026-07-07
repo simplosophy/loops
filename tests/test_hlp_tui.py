@@ -206,6 +206,43 @@ def test_submit_prompt_on_active_task_amends_instead_of_new_delegate(tmp_path):
     assert [name for name, _payload in adapter.calls] == ["delegate", "steer"]
 
 
+def test_slash_amend_updates_active_task(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    run(controller.handle(session.id, "Review the patch"))
+    result = run(controller.handle(session.id, "/amend Focus on auth boundaries"))
+    updated = store.resume(session.id)
+    task = run(client.get_task(updated.active_task_id))
+
+    assert result.output == f"amended task {task.id}"
+    assert task.steering_log[-1].text == "Focus on auth boundaries"
+    assert task.steering_log[-1].intent == "clarify"
+    assert [name for name, _payload in adapter.calls] == ["delegate", "steer"]
+
+
+def test_slash_amend_requires_text_without_mutating_hlp(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    run(controller.handle(session.id, "Review the patch"))
+    active = store.resume(session.id)
+    before = run(client.get_task(active.active_task_id))
+    result = run(controller.handle(session.id, "/amend"))
+    after = run(client.get_task(active.active_task_id))
+
+    assert "error:" in result.output
+    assert "/amend requires text" in result.output
+    assert after.steering_log == before.steering_log
+    assert [name for name, _payload in adapter.calls] == ["delegate"]
+
+
 def test_direct_session_commands_do_not_mutate_hlp(tmp_path):
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter)
