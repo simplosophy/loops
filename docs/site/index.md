@@ -141,14 +141,43 @@ hero:
     </div>
   </div>
   <div class="sdk-code" aria-label="HLP host quickstart">
+    <span>from loops import ArtifactPayload, CheckpointOption</span>
     <span>from loops import CodexCLIAdapter, HLPHost</span>
     <span></span>
     <span>host = HLPHost.in_memory(adapter=CodexCLIAdapter())</span>
-    <span>task = await host.client.create_task(</span>
+    <span>client = host.client</span>
+    <span></span>
+    <span>task = await client.create_task(</span>
     <span>    principal="user_alice",</span>
     <span>    goal="Review PR #1234",</span>
     <span>)</span>
-    <span>run = await host.client.delegate(task.id, "agent_codex")</span>
+    <span>run = await client.delegate(task.id, "agent_codex")</span>
+    <span>await client.start(task.id)</span>
+    <span></span>
+    <span>checkpoint = await client.raise_checkpoint(</span>
+    <span>    task_id=task.id,</span>
+    <span>    kind="choice",</span>
+    <span>    prompt="Ship the patch?",</span>
+    <span>    options=(CheckpointOption(id="safe", label="Review first"),),</span>
+    <span>    raised_by=run.agent_id,</span>
+    <span>)</span>
+    <span>await client.resolve_checkpoint(</span>
+    <span>    checkpoint.id, by="user_alice", action="choose", choice="safe"</span>
+    <span>)</span>
+    <span></span>
+    <span>artifact = await client.commit_artifact(</span>
+    <span>    task_id=task.id, type="report",</span>
+    <span>    payload=ArtifactPayload(</span>
+    <span>        kind="inline", uri="mem://report-v1", checksum="sha256:report-v1"</span>
+    <span>    ),</span>
+    <span>    produced_by=run.agent_id,</span>
+    <span>)</span>
+    <span>review = await client.submit_review(</span>
+    <span>    task_id=task.id, artifact_id=artifact.id,</span>
+    <span>    reviewer="user_alice", verdict="approved",</span>
+    <span>)</span>
+    <span>await client.write_ledger("project:web", "pr.1234", review.verdict, by=task.id)</span>
+    <span>audit = await client.replay_audit(task.id)</span>
   </div>
 </section>
 

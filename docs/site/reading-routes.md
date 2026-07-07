@@ -18,10 +18,56 @@ Start from the public Python surface when you are building an application or
 host process:
 
 ```python
+from loops import ArtifactPayload, CheckpointOption
 from loops import CodexCLIAdapter, HLPHost
 
 host = HLPHost.in_memory(adapter=CodexCLIAdapter())
 client = host.client
+
+task = await client.create_task(
+    principal="user_alice",
+    goal="Review PR #1234",
+)
+run = await client.delegate(task.id, "agent_codex")
+await client.start(task.id)
+
+checkpoint = await client.raise_checkpoint(
+    task_id=task.id,
+    kind="choice",
+    prompt="Ship the patch?",
+    options=(CheckpointOption(id="safe", label="Review first"),),
+    raised_by=run.agent_id,
+)
+await client.resolve_checkpoint(
+    checkpoint.id,
+    by="user_alice",
+    action="choose",
+    choice="safe",
+)
+
+artifact = await client.commit_artifact(
+    task_id=task.id,
+    type="report",
+    payload=ArtifactPayload(
+        kind="inline",
+        uri="mem://report-v1",
+        checksum="sha256:report-v1",
+    ),
+    produced_by=run.agent_id,
+)
+review = await client.submit_review(
+    task_id=task.id,
+    artifact_id=artifact.id,
+    reviewer="user_alice",
+    verdict="approved",
+)
+await client.write_ledger(
+    "project:web",
+    "pr.1234",
+    review.verdict,
+    by=task.id,
+)
+audit = await client.replay_audit(task.id)
 ```
 
 Use `HLPHost` to wire store, event bus, and harness adapters. Use `HLPClient`

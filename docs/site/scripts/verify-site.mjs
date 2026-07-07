@@ -75,6 +75,19 @@ function assertNoCjk(files, label) {
   }
 }
 
+function assertE2EQuickstart(html, label) {
+  const expectedCalls = [
+    'CodexCLIAdapter',
+    'commit_artifact',
+    'submit_review',
+    'write_ledger',
+    'replay_audit',
+  ]
+  for (const call of expectedCalls) {
+    assert(html.includes(call), `${label} is missing E2E quickstart call: ${call}`)
+  }
+}
+
 function expectedSitemapPath(route) {
   const basePath = process.env.BASE_PATH || '/'
   const cleanBase = basePath === '/' ? '' : basePath.replace(/\/$/, '')
@@ -111,6 +124,7 @@ if (existsSync(distDir)) {
   assert(!homeHtml.includes('as="style"'), 'Home page stylesheet links should not retain preload-only as="style" attributes.')
   assert(homeHtml.includes('class="stack-art"'), 'Home page is missing the HLP integration visual.')
   assert(homeHtml.includes('HLPHost'), 'Home page is missing the HLPHost SDK entry point.')
+  assertE2EQuickstart(homeHtml, 'Home page')
   assert(homeHtml.includes('AgentAdapter'), 'Home page is missing the AgentAdapter boundary.')
   assert(homeHtml.includes('wrapping existing agent harnesses'), 'Home page does not position HLP around existing harnesses.')
   assert(homeHtml.includes('HLP owns human interaction semantics'), 'Home page is missing the human-interaction ownership claim.')
@@ -118,6 +132,9 @@ if (existsSync(distDir)) {
   assert(homeHtml.includes('Applications embed HLP as an SDK, not as an execution harness'), 'Home page is missing the SDK-only boundary.')
   assert(!homeHtml.includes('&lt;rect'), 'Home page appears to render an SVG as escaped code.')
   assert(!homeHtml.includes('simplosophy/loop0'), 'Home page links to the retired loop0 repository.')
+
+  const readingRoutesHtml = readText(join(distDir, 'reading-routes.html'))
+  assertE2EQuickstart(readingRoutesHtml, 'Reading routes page')
 
   const protocolMapHtmlPath = join(distDir, 'protocol-map.html')
   if (existsSync(protocolMapHtmlPath)) {
