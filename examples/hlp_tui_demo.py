@@ -6,18 +6,21 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from loops.hlp import ArtifactPayload, FakeAgentAdapter, HLPClient
+from loops.hlp import ArtifactPayload, CodexCLIAdapter, HLPClient, ProcessResult
 from loops.tui.controller import TUIController
 from loops.tui.session import SessionStore
 
 
 async def run_demo() -> dict[str, Any]:
-    adapter = FakeAgentAdapter()
+    adapter = CodexCLIAdapter(
+        command=("codex", "exec", "--json"),
+        runner=_tui_demo_runner,
+    )
     client = HLPClient(adapter=adapter)
 
     with tempfile.TemporaryDirectory(prefix="hlp-tui-demo-") as tmpdir:
         sessions = SessionStore(Path(tmpdir) / "sessions.json")
-        session = sessions.create(cwd="/demo", adapter="fake", principal="user_local")
+        session = sessions.create(cwd="/demo", adapter="codex", principal="user_local")
         controller = TUIController(client=client, sessions=sessions)
 
         await controller.handle(session.id, "Review a generated patch")
@@ -45,6 +48,7 @@ async def run_demo() -> dict[str, Any]:
         audit = await client.replay_audit(active.active_task_id)
 
     return {
+        "adapter": "codex",
         "session_id": session.id,
         "task_id": active.active_task_id,
         "run_id": active.active_run_id,
@@ -60,6 +64,24 @@ async def run_demo() -> dict[str, Any]:
         "adapter_operations": [name for name, _payload in adapter.calls],
         "audit_actions": [event.action for event in audit],
     }
+
+
+async def _tui_demo_runner(
+    _command: tuple[str, ...],
+    request: dict[str, Any],
+    _timeout: float,
+) -> ProcessResult:
+    run_id = str(request.get("run_id") or "codex_tui_demo_run")
+    return ProcessResult(
+        exit_code=0,
+        stdout=json.dumps({
+            "run_id": run_id,
+            "correlation_id": request["correlation_id"],
+            "status": "ok",
+            "summary": f"TUI demo {request['operation']} accepted",
+        }),
+        stderr="",
+    )
 
 
 def main() -> None:
