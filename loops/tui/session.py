@@ -144,12 +144,14 @@ class SessionStore:
 
     def _save(self, sessions: dict[str, TUISession]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_name(f".{self.path.name}.tmp")
         payload = []
         for session in sorted(sessions.values(), key=lambda item: item.updated_at):
             row = asdict(session)
             row["transcript"] = [asdict(event) for event in session.transcript]
             payload.append(row)
-        self.path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        tmp.replace(self.path)
 
     @staticmethod
     def _replace(session: TUISession, **changes: object) -> TUISession:

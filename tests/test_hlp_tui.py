@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 
 from loops.tui.commands import (
     CommandParseError,
@@ -117,8 +118,42 @@ def test_render_help_status_and_transcript_are_stable(tmp_path):
     status = render_status(session, task_state="in_progress", inbox_count=2)
     transcript = render_transcript(session)
 
-    assert "/help" in help_text
-    assert "adapter=fake" in status
-    assert "state=in_progress" in status
-    assert "inbox=2" in status
-    assert "user: inspect" in transcript
+    lines = help_text.splitlines()
+    assert lines[0] == "HLP TUI commands:"
+    assert lines[1] == "/amend        hlp    Append HLP steering amendment."
+    assert lines[2] == "/approve      hlp    Approve current checkpoint."
+    assert lines[4] == "/audit        hlp    Replay HLP audit."
+    assert lines[11] == "/help         direct Show command help."
+    assert (
+        status
+        == "session="
+        + session.id
+        + " adapter=fake task=none state=in_progress mode=auto inbox=2 cwd=/repo"
+    )
+    assert transcript == "user: inspect"
+
+
+def test_session_store_save_is_atomic_on_temp_write_failure(tmp_path, monkeypatch):
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    original = (tmp_path / "sessions.json").read_text()
+    path = tmp_path / "sessions.json"
+    path_class = type(path)
+
+    original_write_text = path_class.write_text
+
+    def fail_tmp_write(self, data, *args, **kwargs):
+        if self.name == ".sessions.json.tmp":
+            raise OSError("temporary write failure")
+        return original_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(path_class, "write_text", fail_tmp_write)
+
+    with pytest.raises(OSError):
+        store.append(session.id, TranscriptEvent(kind="user", text="should not persist"))
+
+    assert (tmp_path / "sessions.json").exists()
+    assert (tmp_path / "sessions.json").read_text() == original
+    data = json.loads(path.read_text())
+    assert len(data) == 1
+    assert data[0]["id"] == session.id
