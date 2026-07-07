@@ -221,3 +221,15 @@ def test_direct_session_commands_do_not_mutate_hlp(tmp_path):
     assert "cleared transcript" in clear_result.output
     assert "model=gpt-5" in model_result.output
     assert adapter.calls == []
+
+
+def test_handle_unknown_session_returns_error_result(tmp_path):
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+
+    result = run(controller.handle("missing", "Review the patch"))
+
+    assert "error: KeyError" in result.output
+    assert "unknown session: missing" in result.output
+    assert result.should_exit is False
