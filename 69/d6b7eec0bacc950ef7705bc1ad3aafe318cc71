@@ -1,0 +1,30 @@
+loops/tui/commands.py
+  s_d8157a797b8854::t_b96e40da4096a1 67-69
+loops/tui/compat.py
+  s_d8157a797b8854::t_b54f7aca63bbc3 5-20,32-35
+tests/test_hlp_tui.py
+  s_d8157a797b8854::t_81b7b3f82844b4 9,44-60,67-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "69d6b7eec0bacc950ef7705bc1ad3aafe318cc71",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_d8157a797b8854": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3bd7-eaa5-7331-86bc-677b76c63ab6",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
