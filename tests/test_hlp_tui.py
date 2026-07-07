@@ -621,3 +621,92 @@ def test_hlp_permissions_record_session_metadata_only(tmp_path):
     assert updated.permission_mode == "read-only"
     assert "unsupported permission mode: suggest" in unsupported.output
     assert [name for name, _payload in adapter.calls] == ["delegate"]
+
+
+def test_run_lines_executes_line_oriented_tui(tmp_path):
+    from loops.tui.app import run_lines
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+
+    outputs = run(run_lines(
+        lines=("Review the patch", "/statusline", "/model gpt-5", "!git status"),
+        client=client,
+        session_path=tmp_path / "sessions.json",
+        cwd="/repo",
+        adapter_name="fake",
+    ))
+
+    joined = "\n".join(outputs)
+    assert "started task" in joined
+    assert "state=in_progress" in joined
+    assert "model=gpt-5" in joined
+    assert "captured shell input: git status" in joined
+
+
+def test_run_lines_stops_on_archive_or_delete_exit(tmp_path):
+    from loops.tui.app import run_lines
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+
+    archive_outputs = run(run_lines(
+        lines=("/archive", "/help"),
+        client=client,
+        session_path=tmp_path / "archive-sessions.json",
+        cwd="/repo",
+        adapter_name="fake",
+    ))
+    delete_outputs = run(run_lines(
+        lines=("/delete", "/help"),
+        client=client,
+        session_path=tmp_path / "delete-sessions.json",
+        cwd="/repo",
+        adapter_name="fake",
+    ))
+
+    assert archive_outputs == ["archived session"]
+    assert delete_outputs == ["deleted session"]
+    assert adapter.calls == []
+
+
+def test_hlp_tui_demo_runs_full_offline_human_loop():
+    from examples.hlp_tui_demo import run_demo as run_tui_demo
+
+    result = run(run_tui_demo())
+
+    assert result["final_task_state"] == "completed"
+    assert result["checkpoint_decision"] == "approve"
+    assert result["review_verdict"] == "approved"
+    assert result["adapter_operations"] == ["delegate", "block", "resume"]
+    assert "task.checkpoint.raised" in result["audit_actions"]
+    assert "task.checkpoint.resolved" in result["audit_actions"]
+    assert "artifact.committed" in result["audit_actions"]
+    assert "review.submitted" in result["audit_actions"]
+    assert "task.completed" in result["audit_actions"]
+
+
+def test_tui_package_exports_app_controller_session_and_render_apis():
+    import loops.tui as tui
+
+    for name in (
+        "build_client",
+        "main",
+        "run_lines",
+        "TUIController",
+        "TUIResult",
+        "TUISessionError",
+        "TUIUsageError",
+        "SessionStore",
+        "TUISession",
+        "TranscriptEvent",
+        "render_audit",
+        "render_error",
+        "render_help",
+        "render_inbox",
+        "render_lines",
+        "render_status",
+        "render_transcript",
+    ):
+        assert hasattr(tui, name)
+        assert name in tui.__all__
