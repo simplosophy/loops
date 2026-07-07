@@ -1,0 +1,30 @@
+docs/site/index.md
+  s_38241583402686::t_3639eb5527e7a9 144,148-150,154-180
+docs/site/reading-routes.md
+  s_38241583402686::t_a66ba8f7feccc3 21,26-70
+docs/site/scripts/verify-site.mjs
+  s_38241583402686::t_5f0fef1e5cd12a 78-90,127,136-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b492d62d353e8b34de7828a0614c1d1b02d603f2",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_38241583402686": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2c38-b15d-7973-b017-5a1b1bf8aefe",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
