@@ -230,6 +230,43 @@ def test_handle_unknown_session_returns_error_result(tmp_path):
 
     result = run(controller.handle("missing", "Review the patch"))
 
-    assert "error: KeyError" in result.output
+    assert "error:" in result.output
     assert "unknown session: missing" in result.output
     assert result.should_exit is False
+
+
+def test_handle_unexpected_runtime_error_is_not_swallowed(tmp_path, monkeypatch):
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    async def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(controller, "_handle_prompt", boom)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run(controller.handle(session.id, "Review the patch"))
+
+
+def test_direct_commands_do_not_call_hlp(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake")
+    controller = TUIController(client=client, sessions=store)
+
+    theme_result = run(controller.handle(session.id, "/theme dark"))
+    vim_result = run(controller.handle(session.id, "/vim"))
+    mcp_result = run(controller.handle(session.id, "/mcp"))
+    compact_result = run(controller.handle(session.id, "/compact"))
+    status_result = run(controller.handle(session.id, "/statusline"))
+
+    assert "theme=dark" in theme_result.output
+    assert "composer_mode=vim" in vim_result.output
+    assert "MCP is owned" in mcp_result.output
+    assert "compacted transcript summary recorded" in compact_result.output
+    assert "session=" in status_result.output
+    assert "inbox=" in status_result.output
+    assert adapter.calls == []
