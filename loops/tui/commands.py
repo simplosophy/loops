@@ -64,7 +64,9 @@ _MENTION = re.compile(r"(?<!\S)@([^\s]+)")
 
 
 def parse_user_input(raw: str) -> InputIntent:
-    value = raw.rstrip("\n")
+    value = raw.rstrip("\n").lstrip()
+    if not value:
+        raise CommandParseError("blank input is not allowed")
     if value.startswith("!"):
         text = value[1:].strip()
         return InputIntent(kind="shell", raw=value, text=text, mentions=_mentions(text))

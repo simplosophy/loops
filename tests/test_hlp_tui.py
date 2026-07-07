@@ -6,6 +6,7 @@ from loops.tui.commands import (
     parse_user_input,
 )
 from loops.tui.compat import compatibility_report
+import pytest
 
 
 def test_parse_slash_command_with_quoted_args_and_file_mentions():
@@ -40,12 +41,32 @@ def test_unknown_slash_command_fails_without_mutation():
         raise AssertionError("unknown command should fail")
 
 
+def test_parse_command_with_leading_whitespace():
+    intent = parse_user_input("  /help")
+
+    assert intent == InputIntent(
+        kind="command",
+        name="help",
+        args=(),
+        raw="/help",
+        mentions=(),
+    )
+
+
+def test_blank_input_rejected():
+    with pytest.raises(CommandParseError, match="blank"):
+        parse_user_input("   ")
+
+
 def test_compatibility_report_meets_first_version_threshold():
     report = compatibility_report()
 
     assert report.total >= 20
     assert report.covered >= 18
     assert report.coverage >= 0.90
+    assert report.coverage < 1.0
+    assert "/login" in report.commands
+    assert "/doctor" in report.commands
     assert "/help" in report.commands
     assert "/permissions" in report.commands
     assert "/audit" in report.commands
