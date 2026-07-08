@@ -1,0 +1,46 @@
+README.md
+  s_39b4f68e8d41ac::t_999a97d5125c0d 141,145,153-154,200,203,221-222
+docs/notes/2026-07-08.md
+  s_39b4f68e8d41ac::t_4622fc91e91779 1-7
+docs/plans/2026-07-07-hlp-tui.md
+  s_39b4f68e8d41ac::t_3f78ed7e0f3c38 53
+docs/plans/2026-07-08-pi-harness-compat.md
+  s_39b4f68e8d41ac::t_b49b38a82eead8 1-42
+examples/hlp_adapter_compat_demo.py
+  s_39b4f68e8d41ac::t_5a0bbc95ee5d7d 17,44-47
+loops/__init__.py
+  s_39b4f68e8d41ac::t_c7d03103bada5b 67,150
+loops/hlp/__init__.py
+  s_39b4f68e8d41ac::t_29f2ec52be328d 26,168
+loops/hlp/adapters.py
+  s_39b4f68e8d41ac::t_1ebd36f93102a8 1649-1677,2068,2090
+loops/tui/app.py
+  s_39b4f68e8d41ac::t_d3f00e8fe9686e 9,15,51-52,63
+tests/test_hlp_sdk.py
+  s_39b4f68e8d41ac::t_eb4ad5542e2f63 30,548,576-581,771-911,2028,2044
+tests/test_hlp_tui.py
+  s_39b4f68e8d41ac::t_27779377778134 17-18,825-863
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c1ac7753bfdc297e794d1d34fce4667b9ffcc472",
+  "prompts": {},
+  "humans": {
+    "h_3206b10d1dbbe4": {
+      "author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_39b4f68e8d41ac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3bab-62ee-7c02-9d03-7b94ecc6d7a4",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
