@@ -14,6 +14,8 @@ from loops.hlp import (
     CheckpointOption,
     FakeAgentAdapter,
     HLPClient,
+    PiHarnessAdapter,
+    ProcessResult,
 )
 from loops.tui.render import render_help, render_status, render_transcript
 from loops.tui.compat import compatibility_report
@@ -818,6 +820,45 @@ def test_run_lines_rejects_unsupported_adapter_name(tmp_path):
         ))
 
     assert not (tmp_path / "sessions.json").exists()
+
+
+def test_build_client_supports_pi_harness_adapter():
+    from loops.tui.app import build_client
+
+    client = build_client("pi")
+
+    assert isinstance(client.adapter, PiHarnessAdapter)
+
+
+def test_run_lines_accepts_pi_adapter_metadata_with_injected_client(tmp_path):
+    from loops.tui.app import run_lines
+
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "run_id": "pi_tui_run",
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+            }),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(command=("pi", "run", "--json"), runner=runner)
+    client = HLPClient(adapter=adapter)
+
+    outputs = run(run_lines(
+        lines=("Review through Pi", "/statusline"),
+        client=client,
+        session_path=tmp_path / "sessions.json",
+        cwd="/repo",
+        adapter_name="pi",
+    ))
+
+    joined = "\n".join(outputs)
+    assert "started task" in joined
+    assert "adapter=pi" in joined
+    assert [name for name, _payload in adapter.calls] == ["delegate"]
 
 
 def test_hlp_tui_demo_runs_full_offline_human_loop():

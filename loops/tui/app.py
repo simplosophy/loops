@@ -6,13 +6,13 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-from loops.hlp import CodexCLIAdapter, FakeAgentAdapter, HLPClient
+from loops.hlp import CodexCLIAdapter, FakeAgentAdapter, HLPClient, PiHarnessAdapter
 
 from .controller import TUIController
 from .session import SessionStore
 
 
-_SUPPORTED_ADAPTERS = frozenset({"fake", "codex"})
+_SUPPORTED_ADAPTERS = frozenset({"fake", "codex", "pi"})
 
 
 async def run_lines(
@@ -48,6 +48,8 @@ def build_client(adapter_name: str) -> HLPClient:
         return HLPClient(adapter=FakeAgentAdapter())
     if adapter_name == "codex":
         return HLPClient(adapter=CodexCLIAdapter())
+    if adapter_name == "pi":
+        return HLPClient(adapter=PiHarnessAdapter())
     raise AssertionError("unreachable adapter branch")
 
 
@@ -58,7 +60,7 @@ def _validate_adapter_name(adapter_name: str) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the HLP TUI channel.")
-    parser.add_argument("--adapter", choices=("codex", "fake"), default="codex")
+    parser.add_argument("--adapter", choices=("codex", "fake", "pi"), default="codex")
     parser.add_argument("--session-path", default=".hlp-tui-sessions.json")
     parser.add_argument("--principal", default="user_local")
     args = parser.parse_args(argv)

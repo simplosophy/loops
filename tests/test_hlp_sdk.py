@@ -27,6 +27,7 @@ from loops.hlp import (
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
+    PiHarnessAdapter,
     ProcessAgentAdapter,
     PythonCallableAgentAdapter,
     ProcessResult,
@@ -544,6 +545,7 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     crewai = CrewAIAdapter(handler)
     codex = CodexCLIAdapter(command=("codex", "exec"))
     codex_harness = CodexHarnessAdapter(command=("codex", "exec", "--json"))
+    pi_harness = PiHarnessAdapter(command=("pi", "run", "--json"))
     claude = ClaudeCodeCLIAdapter(command=("claude", "-p"))
     kimi = KimiCLIAdapter(command=("kimi", "-p"))
     herms = HermsCLIAdapter(command=("herms", "run"))
@@ -567,6 +569,12 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     assert run(codex.healthcheck())["command"] == ("codex", "exec")
     assert run(codex_harness.healthcheck())["adapter"] == "codex-harness"
     assert codex_harness.harness_capabilities().conformance == (
+        "checkpoint-capable",
+        "artifact-aware",
+        "event-streaming",
+    )
+    assert run(pi_harness.healthcheck())["adapter"] == "pi-harness"
+    assert pi_harness.harness_capabilities().conformance == (
         "checkpoint-capable",
         "artifact-aware",
         "event-streaming",
@@ -758,6 +766,147 @@ def test_codex_harness_adapter_projects_jsonl_events_into_hlp():
         "block",
         "resume",
     ]
+
+
+def test_pi_harness_adapter_projects_pi_jsonl_events_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({
+                        "type": "pi.event",
+                        "run_id": "pi_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "pi": {
+                            "kind": "needs_approval",
+                            "agent_id": "agent_pi",
+                            "prompt": "Apply the Pi patch?",
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": "pi_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "status": "ok",
+                    }),
+                )),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({
+                        "type": "pi.event",
+                        "run_id": "pi_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "pi": {
+                            "kind": "artifact",
+                            "agent_id": "agent_pi",
+                            "artifact_type": "patch",
+                            "artifact_uri": "mem://pi.patch",
+                            "artifact_checksum": "sha256:pi.patch",
+                            "artifact_size": 7,
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": "pi_run_1",
+                        "correlation_id": request["correlation_id"],
+                        "status": "ok",
+                    }),
+                )),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = PiHarnessAdapter(
+        command=("pi", "run", "--json"),
+        runner=runner,
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(client.create_task(
+        principal="user_alice",
+        goal="Review a Pi generated patch",
+        type="pi-harness",
+    ))
+    handle = run(client.delegate(
+        task.id,
+        "agent_pi",
+        capability="code-edit",
+        input={"goal": task.spec.goal},
+    ))
+    run(client.start(task.id))
+
+    checkpoint = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert handle.run_id == "pi_run_1"
+    assert checkpoint.prompt == "Apply the Pi patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:3] == ("pi", "run", "--json")
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 9.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://pi.patch"
+    assert artifact.payload.checksum == "sha256:pi.patch"
+    assert artifact.payload.size == 7
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_pi_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "type": "pi.event",
+                "run_id": "pi_run_1",
+                "correlation_id": "task_other",
+                "pi": {
+                    "kind": "needs_input",
+                    "agent_id": "agent_pi",
+                    "prompt": "Need context",
+                },
+            }),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(command=("pi", "run", "--json"), runner=runner)
+
+    try:
+        run(adapter.delegate(
+            task_id="task_pi",
+            agent_id="agent_pi",
+            capability="code-edit",
+            input={"goal": "edit"},
+        ))
+    except AgentAdapterError as exc:
+        assert exc.adapter == "pi-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_pi", "actual": "task_other"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
 
 
 def test_codex_harness_adapter_projects_real_agent_message_jsonl_shape():
@@ -1876,6 +2025,7 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
         "crewai",
         "codex_cli",
         "codex_harness",
+        "pi_harness",
         "claude_code_cli",
         "herms_cli",
     }
@@ -1891,6 +2041,7 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
     assert result["crewai"]["run_id"] == "crew_demo"
     assert result["codex_cli"]["run_id"] == "codex_demo"
     assert result["codex_harness"]["run_id"] == "codex_harness_demo"
+    assert result["pi_harness"]["run_id"] == "pi_harness_demo"
     assert result["claude_code_cli"]["run_id"] == "claude_demo"
     assert result["herms_cli"]["run_id"] == "herms_demo"
 

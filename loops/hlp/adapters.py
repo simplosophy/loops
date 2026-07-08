@@ -1646,6 +1646,35 @@ class CodexHarnessAdapter(PromptCLIAdapter):
             self._codex_events.setdefault(run_id, []).append(event)
 
 
+class PiHarnessAdapter(CodexHarnessAdapter):
+    """Pi CLI adapter with HLP harness event projection.
+
+    Pi keeps its own execution model. This adapter expects prompt-mode JSON or
+    JSONL stdout and projects explicit `pi` or `hlp` human-loop payloads into
+    HLP checkpoints and artifacts.
+    """
+
+    def __init__(
+        self,
+        command: tuple[str, ...] = ("pi", "run", "--json"),
+        *,
+        runner: ProcessRunner | None = None,
+        timeout: float = 120.0,
+        capabilities: HarnessCapabilities | None = None,
+    ) -> None:
+        super().__init__(
+            command=command,
+            runner=runner,
+            timeout=timeout,
+            capabilities=capabilities or HarnessCapabilities(
+                name="pi",
+                conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
+                description="Projects Pi harness JSON events into HLP human-loop objects.",
+            ),
+        )
+        self.name = "pi-harness"
+
+
 class ClaudeCodeCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
@@ -2036,7 +2065,7 @@ def _codex_event_may_project(event: dict[str, Any]) -> bool:
 
 
 def _codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
-    for key in ("hlp", "human_loop", "humanLoop"):
+    for key in ("hlp", "human_loop", "humanLoop", "pi"):
         payload = event.get(key)
         if isinstance(payload, dict):
             return payload
@@ -2058,7 +2087,7 @@ def _codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
                 return merged
         return nested
     event_type = str(event.get("type") or "")
-    if event_type.startswith("hlp.") or event_type in {
+    if event_type.startswith(("hlp.", "pi.")) or event_type in {
         "needs_approval",
         "needs_choice",
         "needs_input",

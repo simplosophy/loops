@@ -138,10 +138,11 @@ Named local coding-agent adapters use one-shot prompt mode so they match the
 real CLIs installed on a developer machine:
 
 ```python
-from loops import ClaudeCodeCLIAdapter, CodexCLIAdapter, CodexHarnessAdapter, KimiCLIAdapter
+from loops import ClaudeCodeCLIAdapter, CodexCLIAdapter, CodexHarnessAdapter, KimiCLIAdapter, PiHarnessAdapter
 
 codex = CodexCLIAdapter()
 codex_harness = CodexHarnessAdapter()
+pi_harness = PiHarnessAdapter()
 kimi = KimiCLIAdapter()
 claude = ClaudeCodeCLIAdapter()
 ```
@@ -149,6 +150,8 @@ claude = ClaudeCodeCLIAdapter()
 Use `CodexCLIAdapter` when HLP only needs to delegate a one-shot Codex task.
 Use `CodexHarnessAdapter` when Codex JSONL output should also project
 human-facing events back into HLP checkpoints and artifacts.
+Use `PiHarnessAdapter` when Pi JSON/JSONL output should project `pi` or `hlp`
+human-facing events into the same HLP checkpoint and artifact flow.
 
 `ProcessAgentAdapter` is still available for custom JSON-over-stdin/stdout
 processes:
@@ -194,9 +197,10 @@ Use `HarnessAdapter` semantics when an existing harness already has its own
 execution loop and only needs a common human interaction surface:
 
 ```python
-from loops import CodexHarnessAdapter, HLPClient
+from loops import CodexHarnessAdapter, HLPClient, PiHarnessAdapter
 
 adapter = CodexHarnessAdapter(command=("codex", "exec", "--json"))
+# Or: adapter = PiHarnessAdapter(command=("pi", "run", "--json"))
 client = HLPClient(adapter=adapter)
 
 task = await client.create_task(
@@ -214,6 +218,8 @@ inbox = await client.human_inbox("user_alice")
 `codex exec --json` output. It preserves HLP `task_id` as the run correlation
 id and maps explicit Codex HLP events such as `needs_approval`, `needs_input`,
 `needs_choice`, and `artifact` into the common HLP objects.
+`PiHarnessAdapter` applies the same projection contract to Pi JSON/JSONL output
+using `pi.event` lines or nested `pi` / `hlp` payloads.
 
 ## Documentation
 

@@ -14,6 +14,7 @@ from loops.hlp import (
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
+    PiHarnessAdapter,
     ProcessResult,
 )
 
@@ -39,6 +40,10 @@ async def run_demo() -> dict[str, dict[str, str]]:
         "codex_harness": CodexHarnessAdapter(
             command=("codex", "exec", "--json"),
             runner=_process_runner("codex_harness_demo"),
+        ),
+        "pi_harness": PiHarnessAdapter(
+            command=("pi", "run", "--json"),
+            runner=_process_runner("pi_harness_demo"),
         ),
         "claude_code_cli": ClaudeCodeCLIAdapter(
             command=("claude", "-p"),
