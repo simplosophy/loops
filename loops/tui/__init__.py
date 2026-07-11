@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .app import build_client, main, run_lines
+from .app import build_client, main, run_lines, run_with_progress
 from .commands import CommandDefinition, CommandParseError, InputIntent, parse_user_input
 from .compat import CompatibilityReport, compatibility_report
 from .controller import TUIController, TUIResult, TUISessionError, TUIUsageError
@@ -39,4 +39,5 @@ __all__ = [
     "render_status",
     "render_transcript",
     "run_lines",
+    "run_with_progress",
 ]

@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import time
+from collections.abc import Awaitable, Iterable
 from pathlib import Path
-from typing import Iterable
+from typing import TypeVar
 
 from loops.hlp import CodexCLIAdapter, FakeAgentAdapter, HLPClient, PiHarnessAdapter
 
@@ -13,6 +15,9 @@ from .session import SessionStore
 
 
 _SUPPORTED_ADAPTERS = frozenset({"fake", "codex", "pi"})
+_DEFAULT_TIMEOUT_S = 60.0
+_PROGRESS_EVERY_S = 2.0
+T = TypeVar("T")
 
 
 async def run_lines(
@@ -42,14 +47,33 @@ async def run_lines(
     return outputs
 
 
-def build_client(adapter_name: str) -> HLPClient:
+def build_client(
+    adapter_name: str,
+    *,
+    timeout: float = _DEFAULT_TIMEOUT_S,
+) -> HLPClient:
     _validate_adapter_name(adapter_name)
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
     if adapter_name == "fake":
         return HLPClient(adapter=FakeAgentAdapter())
     if adapter_name == "codex":
-        return HLPClient(adapter=CodexCLIAdapter())
+        return HLPClient(adapter=CodexCLIAdapter(timeout=timeout))
     if adapter_name == "pi":
-        return HLPClient(adapter=PiHarnessAdapter())
+        # Current Pi CLI: `pi --mode json -p --no-session <prompt>`.
+        # `--no-tools` keeps the HLP adapter contract non-interactive and avoids
+        # long tool loops while the TUI is blocked on one prompt.
+        return HLPClient(adapter=PiHarnessAdapter(
+            command=(
+                "pi",
+                "--mode",
+                "json",
+                "-p",
+                "--no-session",
+                "--no-tools",
+            ),
+            timeout=timeout,
+        ))
     raise AssertionError("unreachable adapter branch")
 
 
@@ -58,14 +82,49 @@ def _validate_adapter_name(adapter_name: str) -> None:
         raise ValueError(f"unsupported adapter: {adapter_name}")
 
 
+async def run_with_progress(
+    awaitable: Awaitable[T],
+    *,
+    label: str,
+    timeout: float,
+    every: float = _PROGRESS_EVERY_S,
+    printer=print,
+) -> T:
+    """Await work while printing heartbeat lines for interactive TUI use."""
+    task = asyncio.ensure_future(awaitable)
+    started = time.monotonic()
+    printer(f"… {label} (timeout {timeout:.0f}s)", flush=True)
+    while True:
+        done, _pending = await asyncio.wait({task}, timeout=every)
+        if done:
+            return task.result()
+        elapsed = time.monotonic() - started
+        printer(
+            f"… still waiting on {label} ({elapsed:.0f}s / {timeout:.0f}s)",
+            flush=True,
+        )
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the HLP TUI channel.")
     parser.add_argument("--adapter", choices=("codex", "fake", "pi"), default="codex")
     parser.add_argument("--session-path", default=".hlp-tui-sessions.json")
     parser.add_argument("--principal", default="user_local")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=_DEFAULT_TIMEOUT_S,
+        help=(
+            "Seconds to wait for the live adapter process before failing "
+            f"(default: {_DEFAULT_TIMEOUT_S:.0f}). Offline/fake ignores process wait."
+        ),
+    )
     args = parser.parse_args(argv)
 
-    client = build_client(args.adapter)
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
+
+    client = build_client(args.adapter, timeout=args.timeout)
     sessions = SessionStore(args.session_path)
     session = sessions.create(
         cwd=str(Path.cwd()),
@@ -74,12 +133,28 @@ def main(argv: list[str] | None = None) -> None:
     )
     controller = TUIController(client=client, sessions=sessions)
     active_session_id = session.id
+    adapter_timeout = float(getattr(client.adapter, "timeout", args.timeout) or args.timeout)
 
     print(f"HLP TUI session {session.id}. Type /help for commands.")
+    if args.adapter != "fake":
+        print(
+            f"Live adapter={args.adapter}; first prompt may take up to "
+            f"{adapter_timeout:.0f}s while the external CLI runs.",
+            flush=True,
+        )
     try:
         while True:
             line = input("> ")
-            result = asyncio.run(controller.handle(active_session_id, line))
+            if not line.strip():
+                continue
+            if args.adapter == "fake":
+                result = asyncio.run(controller.handle(active_session_id, line))
+            else:
+                result = asyncio.run(run_with_progress(
+                    controller.handle(active_session_id, line),
+                    label=f"{args.adapter} adapter",
+                    timeout=adapter_timeout,
+                ))
             print(result.output)
             if result.active_session_id:
                 active_session_id = result.active_session_id

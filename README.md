@@ -67,6 +67,18 @@ Run the line-oriented HLP TUI channel:
 
 ```bash
 uv run loops-hlp-tui --adapter codex
+uv run loops-hlp-tui --adapter pi
+uv run loops-hlp-tui --adapter fake   # offline, no external CLI
+```
+
+Live adapters (`codex` / `pi`) block on the external process for each prompt.
+The TUI prints a heartbeat while waiting and fails after `--timeout` seconds
+(default 60). If Pi appears stuck, try:
+
+```bash
+uv run loops-hlp-tui --adapter pi --timeout 30
+# or offline protocol UX without a model:
+uv run loops-hlp-tui --adapter fake
 ```
 
 Run the **PR Review Desk** host application (real embedding case, offline by

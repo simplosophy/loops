@@ -825,9 +825,40 @@ def test_run_lines_rejects_unsupported_adapter_name(tmp_path):
 def test_build_client_supports_pi_harness_adapter():
     from loops.tui.app import build_client
 
-    client = build_client("pi")
+    client = build_client("pi", timeout=12.0)
 
     assert isinstance(client.adapter, PiHarnessAdapter)
+    assert client.adapter.timeout == 12.0
+    assert client.adapter.command[:6] == (
+        "pi",
+        "--mode",
+        "json",
+        "-p",
+        "--no-session",
+        "--no-tools",
+    )
+
+
+def test_run_with_progress_emits_heartbeat_until_done():
+    from loops.tui.app import run_with_progress
+
+    lines: list[str] = []
+
+    async def slow():
+        await asyncio.sleep(0.05)
+        return "ok"
+
+    result = run(run_with_progress(
+        slow(),
+        label="pi adapter",
+        timeout=1.0,
+        every=0.02,
+        printer=lambda *args, **kwargs: lines.append(args[0] if args else ""),
+    ))
+
+    assert result == "ok"
+    assert lines[0].startswith("… pi adapter (timeout 1s)")
+    assert any("still waiting" in line for line in lines)
 
 
 def test_run_lines_accepts_pi_adapter_metadata_with_injected_client(tmp_path):
@@ -886,6 +917,7 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
         "build_client",
         "main",
         "run_lines",
+        "run_with_progress",
         "TUIController",
         "TUIResult",
         "TUISessionError",
