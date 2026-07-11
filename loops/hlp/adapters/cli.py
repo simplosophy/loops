@@ -7,14 +7,22 @@ from .protocol import HarnessCapabilities, ProcessRunner
 class PiHarnessAdapter(CodexHarnessAdapter):
     """Pi CLI adapter with HLP harness event projection.
 
-    Pi keeps its own execution model. This adapter expects prompt-mode JSON or
-    JSONL stdout and projects explicit `pi` or `hlp` human-loop payloads into
+    Pi keeps its own execution model. Current first-party Pi CLI is invoked as
+    ``pi --mode json -p --no-session <prompt>`` (not ``pi run --json``). The
+    adapter appends the HLP operation prompt as the final argument and projects
+    explicit ``pi`` / ``hlp`` human-loop payloads from JSON or JSONL stdout into
     HLP checkpoints and artifacts.
     """
 
     def __init__(
         self,
-        command: tuple[str, ...] = ("pi", "run", "--json"),
+        command: tuple[str, ...] = (
+            "pi",
+            "--mode",
+            "json",
+            "-p",
+            "--no-session",
+        ),
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,

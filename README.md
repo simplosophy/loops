@@ -252,7 +252,7 @@ execution loop and only needs a common human interaction surface:
 from loops import CodexHarnessAdapter, HLPClient, PiHarnessAdapter
 
 adapter = CodexHarnessAdapter(command=("codex", "exec", "--json"))
-# Or: adapter = PiHarnessAdapter(command=("pi", "run", "--json"))
+# Or: adapter = PiHarnessAdapter()  # pi --mode json -p --no-session
 client = HLPClient(adapter=adapter)
 
 task = await client.create_task(

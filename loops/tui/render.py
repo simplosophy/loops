@@ -40,7 +40,30 @@ def render_lines(title: str, rows: Iterable[str]) -> str:
 
 
 def render_error(error: Exception) -> str:
-    return f"error: {error.__class__.__name__}: {error}"
+    lines = [f"error: {error.__class__.__name__}: {error}"]
+    details = getattr(error, "details", None)
+    if isinstance(details, dict) and details:
+        if details.get("exit_code") is not None:
+            lines.append(f"exit_code: {details['exit_code']}")
+        command = details.get("command")
+        if command:
+            # Keep the prompt short so the terminal stays readable.
+            rendered = []
+            for part in command:
+                text = str(part)
+                if len(text) > 80:
+                    text = text[:77] + "..."
+                rendered.append(text)
+            lines.append(f"command: {' '.join(rendered)}")
+        stderr = str(details.get("stderr") or "").strip()
+        if stderr:
+            tail = stderr if len(stderr) <= 400 else stderr[-400:]
+            lines.append(f"stderr: {tail}")
+        stdout = str(details.get("stdout") or "").strip()
+        if stdout and not stderr:
+            tail = stdout if len(stdout) <= 400 else stdout[-400:]
+            lines.append(f"stdout: {tail}")
+    return "\n".join(lines)
 
 
 def render_inbox(items: Iterable[Any]) -> str:

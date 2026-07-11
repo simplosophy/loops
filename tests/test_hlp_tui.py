@@ -844,7 +844,7 @@ def test_run_lines_accepts_pi_adapter_metadata_with_injected_client(tmp_path):
             stderr="",
         )
 
-    adapter = PiHarnessAdapter(command=("pi", "run", "--json"), runner=runner)
+    adapter = PiHarnessAdapter(runner=runner)
     client = HLPClient(adapter=adapter)
 
     outputs = run(run_lines(

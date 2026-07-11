@@ -553,7 +553,7 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     crewai = CrewAIAdapter(handler)
     codex = CodexCLIAdapter(command=("codex", "exec"))
     codex_harness = CodexHarnessAdapter(command=("codex", "exec", "--json"))
-    pi_harness = PiHarnessAdapter(command=("pi", "run", "--json"))
+    pi_harness = PiHarnessAdapter()
     claude = ClaudeCodeCLIAdapter(command=("claude", "-p"))
     kimi = KimiCLIAdapter(command=("kimi", "-p"))
     herms = HermsCLIAdapter(command=("herms", "run"))
@@ -833,7 +833,6 @@ def test_pi_harness_adapter_projects_pi_jsonl_events_into_hlp():
         return ProcessResult(exit_code=0, stdout="{}", stderr="")
 
     adapter = PiHarnessAdapter(
-        command=("pi", "run", "--json"),
         runner=runner,
         timeout=9.0,
     )
@@ -860,7 +859,7 @@ def test_pi_harness_adapter_projects_pi_jsonl_events_into_hlp():
     assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
         ("checkpoint", "resolve_checkpoint", checkpoint.id),
     ]
-    assert requests[0]["command"][:3] == ("pi", "run", "--json")
+    assert requests[0]["command"][:5] == ("pi", "--mode", "json", "-p", "--no-session")
     assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
     assert requests[0]["timeout"] == 9.0
 
@@ -899,7 +898,7 @@ def test_pi_harness_adapter_rejects_mismatched_event_correlation():
             stderr="",
         )
 
-    adapter = PiHarnessAdapter(command=("pi", "run", "--json"), runner=runner)
+    adapter = PiHarnessAdapter(runner=runner)
 
     try:
         run(adapter.delegate(

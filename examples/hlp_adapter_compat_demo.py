@@ -42,7 +42,6 @@ async def run_demo() -> dict[str, dict[str, str]]:
             runner=_process_runner("codex_harness_demo"),
         ),
         "pi_harness": PiHarnessAdapter(
-            command=("pi", "run", "--json"),
             runner=_process_runner("pi_harness_demo"),
         ),
         "claude_code_cli": ClaudeCodeCLIAdapter(
