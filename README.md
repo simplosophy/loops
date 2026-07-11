@@ -69,6 +69,26 @@ Run the line-oriented HLP TUI channel:
 uv run loops-hlp-tui --adapter codex
 ```
 
+Run the **PR Review Desk** host application (real embedding case, offline by
+default):
+
+```bash
+uv run loops-hlp-pr-desk
+```
+
+This is not another adapter smoke test. `PRReviewDesk` is a host that owns PR
+domain language and inbox cards; it embeds `HLPHost` as the human-control plane
+and projects a code-review harness through `CodexHarnessAdapter`. The offline
+runner is deterministic; pass `--live` only when a local Codex CLI is available.
+
+```text
+Reviewer
+  -> PRReviewDesk (host)
+  -> HLPHost / HLPClient (Task / Checkpoint / Artifact / Review / Ledger / Audit)
+  -> CodexHarnessAdapter
+  -> code-review harness
+```
+
 The TUI is an optional host/channel over HLP. It renders prompt input, slash
 commands, human inbox approvals, artifact review, audit replay, and session
 transcript state while keeping model calls, tool execution, sandboxing, and the

@@ -127,4 +127,7 @@ channel 进行渲染和送达。
 - `loops-hlp-harness-demo` 验证 Codex harness adapter 对外部 human-facing 事件的投影。
 - `loops-hlp-codex-harness-demo` 验证 Codex JSONL harness adapter 的端到端投影。
 - `loops-hlp-local-cli-demo --adapters codex,kimi,claude --strict` 验证真实本机 CLI adapter 的完整 HLP lifecycle。
+- `loops-hlp-pr-desk` 验证**真实宿主嵌入**：PR Review Desk 拥有 PR 领域与 inbox
+  卡片，HLP 只做责任闭环，code-review harness 经 `CodexHarnessAdapter` 接入；
+  默认 offline runner，`--live` 走本机 Codex。
 - 站点验证确保文档定位保持 HLP-first、SDK-only。

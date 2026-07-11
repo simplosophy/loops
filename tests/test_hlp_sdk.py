@@ -39,6 +39,11 @@ from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
 from examples.hlp_codex_harness_demo import run_demo as run_codex_harness_demo
 from examples.hlp_harness_wrap_demo import run_demo as run_harness_wrap_demo
 from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
+from examples.hlp_pr_review_desk import (
+    PullRequest,
+    build_desk,
+    run_desk_demo,
+)
 
 
 def run(coro):
@@ -2061,6 +2066,76 @@ def test_hlp_harness_wrap_demo_runs_without_external_services():
         "checkpoint-capable",
         "artifact-aware",
     ]
+
+
+def test_pr_review_desk_host_runs_full_offline_lifecycle(tmp_path):
+    db_path = tmp_path / "pr-desk.db"
+    result = run(run_desk_demo(db_path=db_path))
+
+    assert result["mode"] == "offline"
+    assert result["session"]["pr"]["repository"] == "acme/payments-api"
+    assert result["session"]["pr"]["number"] == 1234
+    assert result["session"]["task_id"].startswith("task_")
+    assert result["session"]["run_id"]
+    assert result["checkpoint"]["action"] == "approve"
+    assert result["checkpoint"]["state"] == "resolved"
+    assert result["artifact_id"].startswith("art_")
+    assert result["review_id"].startswith("rev_")
+
+    report = result["report"]
+    assert report["pr_ref"] == "acme/payments-api#1234"
+    assert report["task_state"] == "completed"
+    assert report["review_verdict"] == "approved"
+    assert report["steered"] is True
+    assert report["inbox_remaining"] == []
+    assert report["ledger_status"]["verdict"] == "approved"
+    assert "task.amended" in report["audit_actions"]
+    assert "review.submitted" in report["audit_actions"]
+    assert "task.completed" in report["audit_actions"]
+    assert result["host_events"][0] == "task.created"
+    assert "review.submitted" in result["host_events"]
+    assert db_path.exists()
+
+
+def test_pr_review_desk_maps_domain_inbox_and_rejects_side_effects():
+    desk = build_desk(principal="user_alice", reviewer="user_carol")
+    pr = PullRequest(
+        repository="acme/web",
+        number=9,
+        title="Tighten CORS",
+        author="dev_dave",
+    )
+    session = run(desk.open_review(pr))
+    session = run(desk.dispatch(session))
+    projected = run(desk.sync_harness(session))
+    assert len(projected) == 1
+
+    cards = run(desk.list_inbox())
+    assert len(cards) == 1
+    assert cards[0].pr_ref == "acme/web#9"
+    assert cards[0].action == "resolve_checkpoint"
+    assert "post findings" in cards[0].title.lower() or "PR comments" in cards[0].title
+
+    checkpoint = run(desk.decide_checkpoint(
+        cards[0],
+        decision="reject",
+        comment="No external comments without security lead",
+    ))
+    assert checkpoint.resolution is not None
+    assert checkpoint.resolution.action == "reject"
+
+    # Rejected side effects: no deliverable artifact projection expected.
+    more = run(desk.sync_harness(session))
+    assert more == []
+    remaining = run(desk.list_inbox())
+    assert remaining == []
+
+    report = run(desk.report(session))
+    assert report.checkpoint_decision == "reject"
+    assert report.artifact_id is None
+    assert report.review_id is None
+    # HLP: rejecting a checkpoint completes the task (abort path).
+    assert report.task_state == "completed"
 
 
 def test_hlp_codex_harness_demo_runs_without_external_services():
