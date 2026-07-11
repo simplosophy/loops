@@ -5,13 +5,16 @@ Human Loop Protocol (HLP) Python SDK for responsible human-agent workflows.
 HLP is the human-interaction control plane for existing agent harnesses. It
 models the responsibility loop around agent work: task delegation, checkpoint
 decisions, artifact review, ledger writes, and audit replay. It does not unify
-or replace harness execution mechanisms. OpenAI Agents SDK, OpenAI Python SDK,
-Codex CLI, Kimi CLI, Claude Code CLI, LangGraph, CrewAI, and similar runtimes
-keep their own execution model and connect through adapters.
+or replace harness execution mechanisms. Codex CLI, Claude Code CLI, Kimi CLI,
+Pi, and similar runtimes keep their own execution model and connect through
+adapters. OpenAI Agents SDK, OpenAI Python SDK, LangGraph, and CrewAI are
+**shape-compatible** entry points (thin call shims), not deep first-class
+integrations.
 
 This project does not ship its own agent harness. The top-level `loops` package
 is the HLP SDK: protocol objects, client, host, stores, event bus, and adapters
-for wrapping external harnesses.
+for wrapping external harnesses. The line-oriented TUI (`loops-hlp-tui`) is an
+optional host/channel demo, not part of the protocol core.
 
 ## What HLP Owns
 
@@ -66,10 +69,26 @@ Run the line-oriented HLP TUI channel:
 uv run loops-hlp-tui --adapter codex
 ```
 
-The TUI is a host/channel over HLP. It renders prompt input, slash commands,
-human inbox approvals, artifact review, audit replay, and session transcript
-state while keeping model calls, tool execution, sandboxing, and the agent loop
-inside the selected harness adapter.
+The TUI is an optional host/channel over HLP. It renders prompt input, slash
+commands, human inbox approvals, artifact review, audit replay, and session
+transcript state while keeping model calls, tool execution, sandboxing, and the
+agent loop inside the selected harness adapter.
+
+## Adapter Depth
+
+| Level | Adapters | Meaning |
+| --- | --- | --- |
+| first-class | `CodexCLIAdapter`, `CodexHarnessAdapter`, `ClaudeCodeCLIAdapter`, `KimiCLIAdapter`, `PiHarnessAdapter`, `ProcessAgentAdapter`, `PromptCLIAdapter` | Real process/CLI boundary with correlation and (where applicable) harness event projection |
+| shape-compatible | `OpenAIAgentsSDKAdapter`, `OpenAIPythonSDKAdapter`, `LangGraphAdapter`, `CrewAIAdapter` | Thin Python framework entry points; useful for embedding experiments, not a claim of full harness parity |
+| testing | In-memory fake adapters under `loops.hlp.adapters` | Offline unit tests and demos only |
+
+## Industrial Profile (Reference)
+
+`HLP-industrial` in this repository is a **reference profile**: per-task CAS /
+idempotency, adapter outbox intent, reliable harness event peek/ack, permission
+scope grammar, reducer-ready audit with optional hash chain, and wire schema /
+version negotiation. It proves protocol semantics offline. It is **not** a
+multi-writer production backend or managed control plane.
 
 For Kimi, the smoke demo can build a temporary `kimi-cli` config from
 `~/.metaworker/config.yaml` when native Kimi Code has no model configured. The

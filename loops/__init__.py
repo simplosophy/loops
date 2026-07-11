@@ -3,6 +3,16 @@
 `loops` is the public entry point for Human Loop Protocol (HLP): protocol
 objects, SDK, adapters, and the embedding host. Execution harnesses stay
 external and connect through HLP adapter contracts.
+
+Public surface groups (all still re-exported for compatibility):
+
+- **stable core**: `HLPHost`, `HLPClient`, first-class objects, `ProtocolError`
+- **adapters**: contracts plus first-class / shape-compatible / testing adapters
+- **industrial helpers**: schema / version negotiation / permission helpers
+- **advanced / internal-friendly**: `HumanLoopOperations`, stores, state helpers
+
+Prefer `HLPHost` / `HLPClient` for application embedding. Prefer first-class
+CLI adapters for real harness work; treat framework adapters as shims.
 """
 
 from __future__ import annotations

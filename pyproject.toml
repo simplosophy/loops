@@ -5,7 +5,6 @@ description = "Human Loop Protocol SDK for wrapping agent harnesses"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "jinja2>=3.1",
     "python-ulid>=3.1.0",
     "typing-extensions>=4.15.0",
 ]

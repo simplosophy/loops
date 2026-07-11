@@ -64,13 +64,21 @@ loops/
     sqlite_store.py    # local snapshot store
     operations.py      # protocol operation layer
     sdk.py             # HLPClient facade
-    adapters.py        # AgentAdapter / HarnessAdapter implementations
+    adapters/          # AgentAdapter / HarnessAdapter package
+      protocol.py      # contracts + handles / events
+      fake.py          # testing adapters
+      process.py       # process / prompt CLI base
+      codex.py         # Codex CLI + harness projection
+      cli.py           # Claude / Kimi / Hermes / Pi
+      frameworks.py    # shape-compatible OpenAI / LangGraph / CrewAI
     events.py          # event bus abstractions
     audit.py           # append-only audit log
+  tui/                 # optional host/channel (not protocol core)
 ```
 
 `loops.hlp` 当前承载 HLP 参考实现和稳定 SDK namespace。`loops` 顶层只
-re-export 稳定公共 API。
+re-export 稳定公共 API。Adapter 深度分 first-class / shape-compatible /
+testing 三档；`HLP-industrial` 是 reference profile，不是生产多 writer 后端。
 
 ## Adapter Boundary
 

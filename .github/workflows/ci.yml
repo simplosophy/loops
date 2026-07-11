@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python offline checks
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install project
+        run: uv sync --group dev
+
+      - name: Run unit and conformance tests
+        run: uv run pytest tests/ -q
+
+      - name: Check release metadata
+        run: uv run python scripts/check_release_metadata.py
+
+      - name: Check spec/site sync
+        run: uv run python scripts/check_spec_site_sync.py

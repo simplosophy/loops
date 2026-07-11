@@ -34,7 +34,13 @@ loops/hlp/
   store.py             # HumanLoopStore：内存存储
   sqlite_store.py      # SQLiteHumanLoopStore：本地 snapshot store（非生产并发后端）
   sdk.py               # HLPClient：稳定 SDK facade
-  adapters.py          # AgentAdapter + HarnessAdapter + fake/process/framework adapter entry points
+  adapters/            # AgentAdapter + HarnessAdapter 包
+    protocol.py        # 契约与 handle / harness event
+    fake.py            # testing adapters
+    process.py         # process / prompt CLI base
+    codex.py           # Codex CLI + harness projection
+    cli.py             # Claude / Kimi / Hermes / Pi
+    frameworks.py      # shape-compatible framework shims
   events.py            # HLPEvent + InMemoryEventBus
   operations.py        # 23 个操作 (spec §4)
   audit.py             # AuditEvent + AuditLog (append-only)

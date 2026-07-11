@@ -23,6 +23,12 @@ Do not claim `HLP-compatible` or `HLP-integrated` as evidence for
 `HLP-industrial`; the industrial profile requires explicit production
 consistency and durability evidence.
 
+The repository's `HLP-industrial` suite validates a **reference slice** of those
+capabilities in the Python SDK (SQLite/in-memory). Passing the suite means the
+semantics are executable and offline-checkable. It does **not** mean the SDK is
+a multi-writer production store, a distributed outbox consumer, or a hosted
+control plane.
+
 ## Executable Suite
 
 The repository includes an offline conformance suite for the 0.2.0-draft line:

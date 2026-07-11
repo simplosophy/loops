@@ -1,4 +1,9 @@
-"""Public HLP SDK surface."""
+"""Public HLP SDK surface.
+
+Stable embedding path: `HLPHost` / `HLPClient` + first-class objects + adapters.
+Industrial helpers (`schema_for`, `negotiate_hlp_version`, permission matchers)
+document the HLP-industrial *reference* profile. `Fake*` adapters are for tests.
+"""
 
 from __future__ import annotations
 
