@@ -16,6 +16,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
+import shutil
+import sys
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -31,7 +34,7 @@ from loops.hlp import (
     Review,
     Task,
 )
-from loops.hlp.adapters import ProcessRunner
+from loops.hlp.adapters import AgentAdapterError, ProcessRunner
 
 
 Decision = Literal["approve", "reject", "request_change"]
@@ -461,6 +464,142 @@ def offline_review_harness_runner(
     )
 
 
+def live_codex_command(*, model: str | None = None) -> tuple[str, ...]:
+    """Build the first-class Codex harness command for live desk runs."""
+    command: list[str] = [
+        "codex",
+        "exec",
+        "--json",
+        "--sandbox",
+        "read-only",
+        "--ephemeral",
+        "--skip-git-repo-check",
+    ]
+    if model:
+        command.extend(["-m", model])
+    return tuple(command)
+
+
+def preflight_live_codex() -> dict[str, Any]:
+    """Cheap live-mode checks before the HLP lifecycle starts."""
+    path = shutil.which("codex")
+    if path is None:
+        return {
+            "ok": False,
+            "error": "codex executable not found on PATH",
+            "hint": (
+                "Install/upgrade Codex CLI, or run without --live for the offline "
+                "deterministic host demo: `uv run loops-hlp-pr-desk`."
+            ),
+        }
+    return {"ok": True, "codex_path": path}
+
+
+def _unwrap_codex_message(value: Any) -> str | None:
+    """Unwrap plain or nested JSON Codex error payloads into a human message."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        err = value.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return _unwrap_codex_message(err.get("message"))
+        if value.get("message"):
+            return _unwrap_codex_message(value.get("message"))
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.startswith("{") or text.startswith("["):
+        try:
+            nested = json.loads(text)
+        except json.JSONDecodeError:
+            return text
+        unwrapped = _unwrap_codex_message(nested)
+        return unwrapped or text
+    return text
+
+
+def _extract_codex_failure_message(stdout: str, stderr: str) -> str | None:
+    """Pull the most useful model/runtime error out of Codex JSONL output."""
+    blobs = (stdout or "", stderr or "")
+    for blob in blobs:
+        for line in reversed(blob.splitlines()):
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            for candidate in (
+                event.get("message"),
+                (event.get("error") or {}).get("message")
+                if isinstance(event.get("error"), dict)
+                else None,
+                (event.get("item") or {}).get("message")
+                if isinstance(event.get("item"), dict)
+                else None,
+            ):
+                message = _unwrap_codex_message(candidate)
+                if message:
+                    return message
+    combined = f"{stdout}\n{stderr}"
+    match = re.search(
+        r"(You've hit your usage limit[^\n\"]+|model requires a newer version[^\n\"]+|not supported when using Codex[^\n\"]+)",
+        combined,
+    )
+    if match:
+        return match.group(1)
+    return None
+
+
+def adapter_error_report(exc: AgentAdapterError, *, live: bool) -> dict[str, Any]:
+    """Host-facing structured failure for adapter/CLI problems."""
+    details = dict(exc.details or {})
+    stdout = str(details.get("stdout") or "")
+    stderr = str(details.get("stderr") or "")
+    codex_message = _extract_codex_failure_message(stdout, stderr)
+    hints: list[str] = []
+    if live:
+        hints.append(
+            "Default demo path is offline and deterministic: `uv run loops-hlp-pr-desk`."
+        )
+        if codex_message and "newer version" in codex_message.lower():
+            hints.append(
+                "Upgrade Codex CLI, or override the model: "
+                '`uv run loops-hlp-pr-desk --live --model "<supported-model>"`.'
+            )
+        if codex_message and "usage limit" in codex_message.lower():
+            hints.append(
+                "Codex usage limit reached for this account; wait/reset quota or use offline mode."
+            )
+        if codex_message and "not supported" in codex_message.lower():
+            hints.append(
+                "Current Codex auth/provider does not support that model; pass --model "
+                "with a model allowed by your account."
+            )
+        if not hints:
+            hints.append(
+                "Inspect details.stdout/details.stderr. Live mode requires a working local "
+                "Codex CLI that can complete `codex exec --json ...`."
+            )
+    return {
+        "status": "error",
+        "mode": "live" if live else "offline",
+        "error": str(exc),
+        "adapter": exc.adapter,
+        "operation": exc.operation,
+        "codex_message": codex_message,
+        "hints": hints,
+        "details": {
+            "exit_code": details.get("exit_code"),
+            "command": details.get("command"),
+            "stdout_tail": stdout[-2000:],
+            "stderr_tail": stderr[-2000:],
+        },
+    }
+
+
 def build_desk(
     *,
     live: bool = False,
@@ -468,21 +607,18 @@ def build_desk(
     db_path: str | Path | None = None,
     principal: str = "user_alice",
     reviewer: str = "user_alice",
+    model: str | None = None,
+    timeout: float = 180.0,
 ) -> PRReviewDesk:
     """Construct a desk with either offline injectable runner or live Codex."""
     if live and runner is not None:
         raise ValueError("live mode cannot take a custom runner")
+    if model and not live:
+        raise ValueError("--model is only valid with --live")
     adapter = CodexHarnessAdapter(
-        command=(
-            "codex",
-            "exec",
-            "--json",
-            "--sandbox",
-            "read-only",
-            "--ephemeral",
-        ),
+        command=live_codex_command(model=model),
         runner=None if live else (runner or offline_review_harness_runner),
-        timeout=180.0,
+        timeout=timeout,
         capabilities=HarnessCapabilities(
             name="codex-pr-review",
             conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
@@ -506,8 +642,15 @@ async def run_desk_demo(
     approve_side_effects: bool = True,
     accept_report: bool = True,
     steer_text: str = "Focus on authentication, authorization, and secret handling.",
+    model: str | None = None,
+    timeout: float = 180.0,
 ) -> dict[str, Any]:
     """Run one complete PR review through the host desk."""
+    if live:
+        preflight = preflight_live_codex()
+        if not preflight.get("ok"):
+            raise RuntimeError(preflight.get("error") or "live preflight failed")
+
     owns_db = False
     if db_path is None and not live:
         tmp = tempfile.NamedTemporaryFile(prefix="hlp-pr-desk-", suffix=".db", delete=False)
@@ -521,6 +664,8 @@ async def run_desk_demo(
         db_path=db_path,
         principal=principal,
         reviewer=reviewer,
+        model=model,
+        timeout=timeout,
     )
     pr = PullRequest(
         repository="acme/payments-api",
@@ -615,13 +760,28 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Run the PR Review Desk host: embed HLP as the human-control plane "
-            "for a code-review harness."
+            "for a code-review harness. Default is offline/deterministic. "
+            "--live uses your local Codex CLI and can fail on model/auth/quota."
         ),
     )
     parser.add_argument(
         "--live",
         action="store_true",
-        help="Use the local Codex CLI instead of the offline injectable runner.",
+        help=(
+            "Use the local Codex CLI instead of the offline injectable runner. "
+            "Requires working Codex auth and a supported model."
+        ),
+    )
+    parser.add_argument(
+        "--model",
+        default="",
+        help="Optional Codex model override for --live (passed as `codex exec -m`).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=180.0,
+        help="Adapter process timeout in seconds (default: 180).",
     )
     parser.add_argument(
         "--db",
@@ -647,17 +807,38 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    result = asyncio.run(run_desk_demo(
-        live=args.live,
-        db_path=args.db or None,
-        principal=args.principal,
-        reviewer=args.reviewer,
-        approve_side_effects=not args.reject_side_effects,
-        accept_report=not args.request_changes,
-        steer_text="" if args.no_steer else (
-            "Focus on authentication, authorization, and secret handling."
-        ),
-    ))
+    if args.model and not args.live:
+        parser.error("--model requires --live")
+
+    try:
+        result = asyncio.run(run_desk_demo(
+            live=args.live,
+            db_path=args.db or None,
+            principal=args.principal,
+            reviewer=args.reviewer,
+            approve_side_effects=not args.reject_side_effects,
+            accept_report=not args.request_changes,
+            steer_text="" if args.no_steer else (
+                "Focus on authentication, authorization, and secret handling."
+            ),
+            model=args.model or None,
+            timeout=args.timeout,
+        ))
+    except AgentAdapterError as exc:
+        report = adapter_error_report(exc, live=args.live)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        sys.exit(1)
+    except RuntimeError as exc:
+        print(json.dumps({
+            "status": "error",
+            "mode": "live" if args.live else "offline",
+            "error": str(exc),
+            "hints": [
+                "Default demo path is offline: `uv run loops-hlp-pr-desk`.",
+            ],
+        }, indent=2, sort_keys=True))
+        sys.exit(1)
+
     print(json.dumps(result, indent=2, sort_keys=True))
 
 

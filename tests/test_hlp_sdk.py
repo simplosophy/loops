@@ -41,9 +41,12 @@ from examples.hlp_harness_wrap_demo import run_demo as run_harness_wrap_demo
 from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
 from examples.hlp_pr_review_desk import (
     PullRequest,
+    adapter_error_report,
     build_desk,
+    live_codex_command,
     run_desk_demo,
 )
+from loops.hlp.adapters import AgentAdapterError
 
 
 def run(coro):
@@ -2095,6 +2098,43 @@ def test_pr_review_desk_host_runs_full_offline_lifecycle(tmp_path):
     assert result["host_events"][0] == "task.created"
     assert "review.submitted" in result["host_events"]
     assert db_path.exists()
+
+
+def test_pr_review_desk_live_command_and_adapter_error_report():
+    assert live_codex_command()[:3] == ("codex", "exec", "--json")
+    assert "--skip-git-repo-check" in live_codex_command()
+    assert live_codex_command(model="gpt-5.4")[-2:] == ("-m", "gpt-5.4")
+
+    exc = AgentAdapterError(
+        "codex-harness",
+        "delegate",
+        "process command failed",
+        details={
+            "exit_code": 1,
+            "command": ("codex", "exec", "--json"),
+            "stdout": json.dumps({
+                "type": "error",
+                "message": json.dumps({
+                    "type": "error",
+                    "status": 400,
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": (
+                            "The 'gpt-5.6-sol' model requires a newer version of Codex. "
+                            "Please upgrade to the latest app or CLI and try again."
+                        ),
+                    },
+                }),
+            }),
+            "stderr": "Reading additional input from stdin...\n",
+        },
+    )
+    report = adapter_error_report(exc, live=True)
+    assert report["status"] == "error"
+    assert report["mode"] == "live"
+    assert "newer version of Codex" in (report["codex_message"] or "")
+    assert any("Upgrade Codex CLI" in hint for hint in report["hints"])
+    assert any("offline" in hint for hint in report["hints"])
 
 
 def test_pr_review_desk_maps_domain_inbox_and_rejects_side_effects():

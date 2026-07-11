@@ -79,7 +79,20 @@ uv run loops-hlp-pr-desk
 This is not another adapter smoke test. `PRReviewDesk` is a host that owns PR
 domain language and inbox cards; it embeds `HLPHost` as the human-control plane
 and projects a code-review harness through `CodexHarnessAdapter`. The offline
-runner is deterministic; pass `--live` only when a local Codex CLI is available.
+runner is deterministic and is the default CI path.
+
+`--live` uses your installed Codex CLI. It can fail for environment reasons
+outside HLP (unsupported default model, auth/provider mismatch, usage limits).
+When that happens the desk prints a structured JSON error with `codex_message`
+and hints instead of a traceback. Useful recovery options:
+
+```bash
+# deterministic host demo (recommended)
+uv run loops-hlp-pr-desk
+
+# live with an explicit model your Codex account supports
+uv run loops-hlp-pr-desk --live --model "gpt-5.4"
+```
 
 ```text
 Reviewer
