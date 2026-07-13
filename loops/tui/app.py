@@ -8,7 +8,12 @@ from collections.abc import Awaitable, Iterable
 from pathlib import Path
 from typing import TypeVar
 
-from loops.hlp import CodexCLIAdapter, FakeAgentAdapter, HLPClient, PiHarnessAdapter
+from loops.hlp import (
+    CodexHarnessAdapter,
+    FakeAgentAdapter,
+    HLPClient,
+    PiHarnessAdapter,
+)
 
 from .controller import TUIController
 from .session import SessionStore
@@ -58,7 +63,19 @@ def build_client(
     if adapter_name == "fake":
         return HLPClient(adapter=FakeAgentAdapter())
     if adapter_name == "codex":
-        return HLPClient(adapter=CodexCLIAdapter(timeout=timeout))
+        # Harness-capable path so JSONL human events project into checkpoints/artifacts.
+        return HLPClient(adapter=CodexHarnessAdapter(
+            command=(
+                "codex",
+                "exec",
+                "--json",
+                "--sandbox",
+                "read-only",
+                "--ephemeral",
+                "--skip-git-repo-check",
+            ),
+            timeout=timeout,
+        ))
     if adapter_name == "pi":
         # Current Pi CLI: `pi --mode json -p --no-session <prompt>`.
         # `--no-tools` keeps the HLP adapter contract non-interactive and avoids

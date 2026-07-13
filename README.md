@@ -71,9 +71,15 @@ uv run loops-hlp-tui --adapter pi
 uv run loops-hlp-tui --adapter fake   # offline, no external CLI
 ```
 
-Live adapters (`codex` / `pi`) block on the external process for each prompt.
-The TUI prints a heartbeat while waiting and fails after `--timeout` seconds
-(default 60). If Pi appears stuck, try:
+Live adapters (`codex` / `pi`) use **harness-capable** adapters
+(`CodexHarnessAdapter` / `PiHarnessAdapter`). After each prompt and after
+checkpoint resolution, the TUI automatically projects harness human-facing
+events into HLP and surfaces pending work (checkpoint prompt / artifact review)
+so you can resolve with `/inbox`, `/approve`, `/reject`, `/review`.
+
+Live adapters block on the external process for each prompt. The TUI prints a
+heartbeat while waiting and fails after `--timeout` seconds (default 60). If Pi
+appears stuck, try:
 
 ```bash
 uv run loops-hlp-tui --adapter pi --timeout 30

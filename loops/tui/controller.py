@@ -19,6 +19,7 @@ from .render import (
     render_audit,
     render_error,
     render_help,
+    render_human_loop,
     render_inbox,
     render_status,
     render_transcript,
@@ -115,13 +116,15 @@ class TUIController:
             )
             await self.client.start(task.id)
             self.sessions.set_active(session_id, task_id=task.id, run_id=run.run_id)
+            started = f"started task {task.id} run {run.run_id}"
             self._append(
                 session_id,
                 kind="task",
-                text=f"started task {task.id}",
+                text=started,
                 ref=task.id,
             )
-            return TUIResult(f"started task {task.id} run {run.run_id}")
+            human = await self._sync_harness_human_loop(session_id)
+            return TUIResult(_join_output(started, human))
 
         task = await self.client.amend(
             session.active_task_id,
@@ -129,13 +132,15 @@ class TUIController:
             text=intent.text,
             intent="clarify",
         )
+        amended = f"amended task {task.id}"
         self._append(
             session_id,
             kind="task",
-            text=f"amended task {task.id}",
+            text=amended,
             ref=task.id,
         )
-        return TUIResult(f"amended task {task.id}")
+        human = await self._sync_harness_human_loop(session_id)
+        return TUIResult(_join_output(amended, human))
 
     async def _handle_command(self, session_id: str, intent: InputIntent) -> TUIResult:
         name = intent.name
@@ -329,7 +334,15 @@ class TUIController:
             comment=comment or None,
         )
         label = _CHECKPOINT_RESULT_LABELS[action]
-        return TUIResult(f"{label} checkpoint {resolved.id}")
+        resolved_line = f"{label} checkpoint {resolved.id}"
+        self._append(
+            session_id,
+            kind="checkpoint",
+            text=resolved_line,
+            ref=resolved.id,
+        )
+        human = await self._sync_harness_human_loop(session_id)
+        return TUIResult(_join_output(resolved_line, human))
 
     async def _review_current(self, session_id: str, intent: InputIntent) -> TUIResult:
         session = self._require_active(session_id)
@@ -375,7 +388,31 @@ class TUIController:
             comments=comments,
             requested_changes=requested_changes,
         )
-        return TUIResult(f"reviewed artifact {review.artifact_id} verdict={review.verdict}")
+        line = f"reviewed artifact {review.artifact_id} verdict={review.verdict}"
+        self._append(session_id, kind="review", text=line, ref=review.id)
+        return TUIResult(line)
+
+    async def _sync_harness_human_loop(self, session_id: str) -> str:
+        """Project harness human-facing events into HLP and summarize for the host."""
+        session = self._require_session(session_id)
+        if not session.active_run_id:
+            return ""
+        if not _adapter_can_project(self.client.adapter):
+            return ""
+        try:
+            projected = await self.client.project_harness_events(session.active_run_id)
+        except (RuntimeError, ProtocolError, AgentAdapterError):
+            return ""
+        inbox = await self.client.human_inbox(session.principal)
+        active_inbox = [
+            item
+            for item in inbox
+            if item.task_id == session.active_task_id
+        ]
+        summary = render_human_loop(projected, active_inbox)
+        if summary:
+            self._append(session_id, kind="human", text=summary)
+        return summary
 
     def _record(self, session_id: str, kind: str, text: str) -> TUIResult:
         self._append(session_id, kind=kind, text=text)
@@ -430,6 +467,18 @@ def _autonomy(permission_mode: str) -> str:
         "confirm": "confirm_each_action",
         "read-only": "read_only",
     }.get(permission_mode, "autonomous")
+
+
+def _adapter_can_project(adapter: object) -> bool:
+    return callable(getattr(adapter, "observe", None)) or callable(
+        getattr(adapter, "peek_events", None)
+    )
+
+
+def _join_output(primary: str, secondary: str) -> str:
+    if not secondary:
+        return primary
+    return f"{primary}\n{secondary}"
 
 
 def _diff_summary(cwd: Path) -> str:

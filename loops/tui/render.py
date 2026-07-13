@@ -77,3 +77,37 @@ def render_inbox(items: Iterable[Any]) -> str:
 def render_audit(events: Iterable[Any]) -> str:
     rows = [f"{event.action} task={event.task_id}" for event in events]
     return render_lines("Audit:", rows)
+
+
+def render_human_loop(
+    projected: Iterable[Any],
+    inbox: Iterable[Any] | None = None,
+) -> str:
+    """Compact host summary after harness events are projected into HLP."""
+    lines: list[str] = []
+    for item in projected:
+        prompt = getattr(item, "prompt", None)
+        item_id = getattr(item, "id", "")
+        if prompt is not None and hasattr(item, "state"):
+            lines.append(f"checkpoint pending: {prompt} ({item_id})")
+            continue
+        payload = getattr(item, "payload", None)
+        artifact_type = getattr(item, "type", "") or "artifact"
+        if payload is not None:
+            uri = getattr(payload, "uri", "") or ""
+            suffix = f" {uri}" if uri else ""
+            lines.append(f"artifact ready: {artifact_type} {item_id}{suffix}")
+            continue
+        name = item.__class__.__name__.lower()
+        lines.append(f"projected {name}: {item_id}")
+
+    pending = [
+        item
+        for item in (inbox or ())
+        if getattr(item, "kind", "") in {"checkpoint", "review"}
+    ]
+    if pending:
+        lines.append(
+            f"inbox: {len(pending)} item(s) — use /inbox, /approve, /reject, /review"
+        )
+    return "\n".join(lines)

@@ -12,6 +12,7 @@ from loops.hlp import (
     AgentAdapterError,
     ArtifactPayload,
     CheckpointOption,
+    CodexHarnessAdapter,
     FakeAgentAdapter,
     HLPClient,
     PiHarnessAdapter,
@@ -822,14 +823,19 @@ def test_run_lines_rejects_unsupported_adapter_name(tmp_path):
     assert not (tmp_path / "sessions.json").exists()
 
 
-def test_build_client_supports_pi_harness_adapter():
+def test_build_client_uses_harness_capable_codex_and_pi():
     from loops.tui.app import build_client
 
-    client = build_client("pi", timeout=12.0)
+    codex = build_client("codex", timeout=12.0)
+    pi = build_client("pi", timeout=12.0)
+    fake = build_client("fake")
 
-    assert isinstance(client.adapter, PiHarnessAdapter)
-    assert client.adapter.timeout == 12.0
-    assert client.adapter.command[:6] == (
+    assert isinstance(codex.adapter, CodexHarnessAdapter)
+    assert codex.adapter.timeout == 12.0
+    assert codex.adapter.command[:3] == ("codex", "exec", "--json")
+    assert isinstance(pi.adapter, PiHarnessAdapter)
+    assert pi.adapter.timeout == 12.0
+    assert pi.adapter.command[:6] == (
         "pi",
         "--mode",
         "json",
@@ -837,6 +843,165 @@ def test_build_client_supports_pi_harness_adapter():
         "--no-session",
         "--no-tools",
     )
+    assert isinstance(fake.adapter, FakeAgentAdapter)
+
+
+def _harness_human_loop_runner(*, flavor: str, run_id: str):
+    """Injected Codex/Pi harness runner that emits approval then artifact."""
+
+    async def runner(command, request, timeout):
+        correlation = request["correlation_id"]
+        event_key = "hlp" if flavor == "codex" else "pi"
+        event_type = "hlp.event" if flavor == "codex" else "pi.event"
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({
+                        "type": event_type,
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        event_key: {
+                            "kind": "needs_approval",
+                            "agent_id": "agent_tui",
+                            "prompt": f"Allow {flavor} side effects?",
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        "status": "ok",
+                        "summary": f"{flavor} delegated",
+                    }),
+                )),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({
+                        "type": event_type,
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        event_key: {
+                            "kind": "artifact",
+                            "agent_id": "agent_tui",
+                            "artifact_type": "review-report",
+                            "artifact_uri": f"mem://{flavor}-report",
+                            "artifact_checksum": f"sha256:{flavor}",
+                            "artifact_size": 11,
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        "status": "ok",
+                    }),
+                )),
+                stderr="",
+            )
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "type": "turn.completed",
+                "run_id": run_id,
+                "correlation_id": correlation,
+                "status": "ok",
+            }),
+            stderr="",
+        )
+
+    return runner
+
+
+def test_tui_codex_harness_auto_projects_checkpoint_then_artifact_after_approve(tmp_path):
+    adapter = CodexHarnessAdapter(
+        runner=_harness_human_loop_runner(flavor="codex", run_id="codex_tui_hl"),
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="codex", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    started = run(controller.handle(session.id, "Review PR with Codex harness"))
+    assert "started task" in started.output
+    assert "Allow codex side effects?" in started.output
+    assert "checkpoint pending" in started.output
+    assert "inbox:" in started.output
+
+    inbox = run(controller.handle(session.id, "/inbox"))
+    assert "resolve_checkpoint" in inbox.output
+    assert "Allow codex side effects?" in inbox.output
+
+    approved = run(controller.handle(session.id, "/approve"))
+    assert "approved checkpoint" in approved.output
+    assert "artifact ready" in approved.output or "review-report" in approved.output
+    assert "inbox:" in approved.output
+
+    reviewed = run(controller.handle(session.id, "/review approved"))
+    assert "verdict=approved" in reviewed.output
+
+    active = store.resume(session.id)
+    transcript = "\n".join(event.text for event in active.transcript)
+    assert "Allow codex side effects?" in transcript
+    assert "started task" in transcript
+    task = run(client.get_task(active.active_task_id))
+    assert task.state == "completed"
+
+
+def test_tui_pi_harness_auto_projects_checkpoint_then_artifact_after_approve(tmp_path):
+    adapter = PiHarnessAdapter(
+        runner=_harness_human_loop_runner(flavor="pi", run_id="pi_tui_hl"),
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    started = run(controller.handle(session.id, "Review PR with Pi harness"))
+    assert "started task" in started.output
+    assert "Allow pi side effects?" in started.output
+    assert "checkpoint pending" in started.output
+
+    approved = run(controller.handle(session.id, "/approve"))
+    assert "approved checkpoint" in approved.output
+    assert "mem://pi-report" in approved.output or "artifact ready" in approved.output
+
+    reviewed = run(controller.handle(session.id, "/review approved"))
+    assert "verdict=approved" in reviewed.output
+    active = store.resume(session.id)
+    assert run(client.get_task(active.active_task_id)).state == "completed"
+
+
+def test_render_human_loop_summarizes_projected_checkpoint_and_inbox():
+    from loops.tui.render import render_human_loop
+    from loops.hlp import Checkpoint, HumanInboxItem
+
+    ckpt = Checkpoint(
+        task_id="task_1",
+        kind="approval",
+        prompt="Ship it?",
+        raised_by="agent",
+    )
+    inbox = [
+        HumanInboxItem(
+            kind="checkpoint",
+            action="resolve_checkpoint",
+            task_id="task_1",
+            subject_id=ckpt.id,
+            title="Ship it?",
+            principal="user_local",
+        ),
+    ]
+    text = render_human_loop([ckpt], inbox)
+    assert "checkpoint pending: Ship it?" in text
+    assert "inbox:" in text
+    assert "/approve" in text or "/inbox" in text
 
 
 def test_run_with_progress_emits_heartbeat_until_done():
@@ -889,7 +1054,7 @@ def test_run_lines_accepts_pi_adapter_metadata_with_injected_client(tmp_path):
     joined = "\n".join(outputs)
     assert "started task" in joined
     assert "adapter=pi" in joined
-    assert [name for name, _payload in adapter.calls] == ["delegate"]
+    assert "delegate" in [name for name, _payload in adapter.calls]
 
 
 def test_hlp_tui_demo_runs_full_offline_human_loop():
@@ -928,6 +1093,7 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
         "render_audit",
         "render_error",
         "render_help",
+        "render_human_loop",
         "render_inbox",
         "render_lines",
         "render_status",
