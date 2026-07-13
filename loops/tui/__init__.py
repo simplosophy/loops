@@ -5,6 +5,7 @@ from .commands import CommandDefinition, CommandParseError, InputIntent, parse_u
 from .compat import CompatibilityReport, compatibility_report
 from .controller import TUIController, TUIResult, TUISessionError, TUIUsageError
 from .render import (
+    render_agent_reply,
     render_audit,
     render_error,
     render_help,
@@ -32,6 +33,7 @@ __all__ = [
     "TUIController",
     "TUIResult",
     "parse_user_input",
+    "render_agent_reply",
     "render_audit",
     "render_error",
     "render_help",

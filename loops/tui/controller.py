@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
+from typing import Any
 
 from loops.hlp import (
     AgentAdapterError,
@@ -16,6 +17,7 @@ from loops.hlp import (
 
 from .commands import CommandParseError, InputIntent, parse_user_input
 from .render import (
+    render_agent_reply,
     render_audit,
     render_error,
     render_help,
@@ -123,8 +125,7 @@ class TUIController:
                 text=started,
                 ref=task.id,
             )
-            human = await self._sync_harness_human_loop(session_id)
-            return TUIResult(_join_output(started, human))
+            return await self._finish_with_harness_output(session_id, started)
 
         task = await self.client.amend(
             session.active_task_id,
@@ -139,8 +140,7 @@ class TUIController:
             text=amended,
             ref=task.id,
         )
-        human = await self._sync_harness_human_loop(session_id)
-        return TUIResult(_join_output(amended, human))
+        return await self._finish_with_harness_output(session_id, amended)
 
     async def _handle_command(self, session_id: str, intent: InputIntent) -> TUIResult:
         name = intent.name
@@ -341,8 +341,7 @@ class TUIController:
             text=resolved_line,
             ref=resolved.id,
         )
-        human = await self._sync_harness_human_loop(session_id)
-        return TUIResult(_join_output(resolved_line, human))
+        return await self._finish_with_harness_output(session_id, resolved_line)
 
     async def _review_current(self, session_id: str, intent: InputIntent) -> TUIResult:
         session = self._require_active(session_id)
@@ -391,6 +390,32 @@ class TUIController:
         line = f"reviewed artifact {review.artifact_id} verdict={review.verdict}"
         self._append(session_id, kind="review", text=line, ref=review.id)
         return TUIResult(line)
+
+    async def _finish_with_harness_output(
+        self,
+        session_id: str,
+        primary: str,
+    ) -> TUIResult:
+        """Attach agent reply + projected human work to a primary status line."""
+        parts = [primary]
+        session = self._require_session(session_id)
+        reply = render_agent_reply(self._adapter_process_payload(session.active_run_id))
+        if reply:
+            self._append(session_id, kind="agent", text=reply)
+            parts.append(reply)
+        human = await self._sync_harness_human_loop(session_id)
+        if human:
+            parts.append(human)
+        return TUIResult("\n".join(parts))
+
+    def _adapter_process_payload(self, run_id: str) -> dict[str, Any] | None:
+        if not run_id:
+            return None
+        results = getattr(self.client.adapter, "process_results", None)
+        if not isinstance(results, dict):
+            return None
+        payload = results.get(run_id)
+        return payload if isinstance(payload, dict) else None
 
     async def _sync_harness_human_loop(self, session_id: str) -> str:
         """Project harness human-facing events into HLP and summarize for the host."""

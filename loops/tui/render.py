@@ -79,6 +79,45 @@ def render_audit(events: Iterable[Any]) -> str:
     return render_lines("Audit:", rows)
 
 
+def render_agent_reply(payload: dict[str, Any] | None) -> str:
+    """Surface harness/process payload text for host channels.
+
+    HLP human events (checkpoints/artifacts) are separate; coding harnesses often
+    only return a summary/status JSON after a one-shot prompt. The TUI must still
+    show that reply or the session looks empty after "started task".
+    """
+    if not payload:
+        return ""
+    for key in (
+        "summary",
+        "output_text",
+        "final_output",
+        "message",
+        "text",
+        "content",
+        "result",
+    ):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return f"agent: {value.strip()}"
+        if isinstance(value, dict):
+            nested = render_agent_reply(value)
+            if nested:
+                return nested
+        if isinstance(value, list):
+            for item in reversed(value):
+                if isinstance(item, dict):
+                    nested = render_agent_reply(item)
+                    if nested:
+                        return nested
+                elif isinstance(item, str) and item.strip():
+                    return f"agent: {item.strip()}"
+    status = payload.get("status")
+    if status is not None and str(status).strip():
+        return f"agent status: {status}"
+    return ""
+
+
 def render_human_loop(
     projected: Iterable[Any],
     inbox: Iterable[Any] | None = None,

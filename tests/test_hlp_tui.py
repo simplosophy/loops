@@ -1004,6 +1004,45 @@ def test_render_human_loop_summarizes_projected_checkpoint_and_inbox():
     assert "/approve" in text or "/inbox" in text
 
 
+def test_render_agent_reply_prefers_summary_text():
+    from loops.tui.render import render_agent_reply
+
+    assert render_agent_reply({
+        "status": "success",
+        "summary": "Acknowledged hello request",
+        "run_id": "run_1",
+    }) == "agent: Acknowledged hello request"
+    assert render_agent_reply({"status": "ok"}) == "agent status: ok"
+    assert render_agent_reply(None) == ""
+
+
+def test_tui_surfaces_pi_summary_when_no_human_events(tmp_path):
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "run_id": "pi_summary_run",
+                "correlation_id": request["correlation_id"],
+                "status": "success",
+                "summary": "Acknowledged hello request",
+            }),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner, timeout=9.0)
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    started = run(controller.handle(session.id, "hello"))
+    assert "started task" in started.output
+    assert "agent: Acknowledged hello request" in started.output
+    active = store.resume(session.id)
+    transcript = "\n".join(event.text for event in active.transcript)
+    assert "agent: Acknowledged hello request" in transcript
+
+
 def test_run_with_progress_emits_heartbeat_until_done():
     from loops.tui.app import run_with_progress
 
@@ -1090,6 +1129,7 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
         "SessionStore",
         "TUISession",
         "TranscriptEvent",
+        "render_agent_reply",
         "render_audit",
         "render_error",
         "render_help",
