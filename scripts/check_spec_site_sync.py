@@ -55,6 +55,8 @@ CHECKS: list[tuple[str, Callable[[str], bool]]] = [
     ("HarnessEventDelivery", has_literal("HarnessEventDelivery")),
     ("peek_events", has_literal("peek_events")),
     ("HLP-industrial", has_literal("HLP-industrial")),
+    ("HLP-realtime", has_literal("HLP-realtime")),
+    ("Soft control", has_literal("Soft")),
     ("expected_task_revision", has_literal("expected_task_revision")),
     ("idempotency_key", has_literal("idempotency_key")),
     ("permission_scope", has_literal("permission_scope")),

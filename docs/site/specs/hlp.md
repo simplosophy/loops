@@ -729,6 +729,13 @@ Industrial claims additionally require per-task CAS, idempotency keys, durable
 outbox, reducer-ready audit payloads, permission scope grammar, object/wire
 JSON schemas, and version negotiation evidence.
 
+Optional `HLP-realtime` (see source spec appendix C) covers Soft/Hard control and
+Channel→HLP **promotion** for quasi-realtime interaction. It is not a media
+SLA and does not imply `HLP-industrial`. Claiming `HLP-realtime` **MUST** keep
+soft control out of the Task state machine, accept only host-merged soft
+promotions into `task.amend`, and **MUST NOT** allow BCI-alone resolve of
+high-risk hard checkpoints by default.
+
 ## Open Issues
 
 The following topics remain intentionally draft-scoped:
@@ -742,6 +749,8 @@ The following topics remain intentionally draft-scoped:
 | Multi-reviewer verdicts | Not standardized; single reviewer is the baseline. |
 | Cross-project artifact references | Require explicit authorization; mechanism is host-defined. |
 | Version compatibility | Expected to follow semantic versioning after implementation feedback. |
+| Soft control / realtime promotion | Converged in source `docs/specs/HLP.md` appendix C (0.3 draft). Soft **MUST NOT** enter the Task state machine; merge on host/profile; BCI **MUST NOT** alone close high-risk hard checkpoints by default. |
+| Concurrent hard checkpoints | Default **SHOULD** remain one pending hard checkpoint per task; `HLP-realtime` **MUST** declare Serialize, Scope-partition, or Priority stack. |
 
 ## Reference Flow
 
@@ -775,3 +784,4 @@ artifact delivery, rework, completion, ledger persistence, and audit replay.
 | --- | --- | --- |
 | 0.1.0-draft | 2026-06-19 | Initial draft. |
 | 0.2.0-draft | 2026-07-02 | Continuous-control extension: added `task.interrupt` / `task.amend` + `steering_log`; `PermissionGrant` / `autonomy` pre-authorization; `Checkpoint.proposed_actions` batch approval with partial approve/deny; `CheckpointResolution.state_patch` / `edited_artifact_ref` resume-with-state; `Review.kind` distinguishing plan vs deliverable review; state machine gains the interrupt edge and the plan-approved return to `in_progress`. See `docs/plans/2026-07-02-hlp-continuous-control-extension.md`. |
+| 0.2.0-draft | 2026-07-13 | Realtime control plane draft: Soft/Hard control, Channel→HLP promotion, `HLP-realtime` profile (source appendix C). Decisions: soft stays out of the state machine; host merges soft streams; BCI alone **MUST NOT** resolve high-risk hard checkpoints by default. See `docs/plans/2026-07-13-hlp-realtime-control-plane.md`. |
