@@ -93,15 +93,21 @@ def cli_operation_prompt(request: dict[str, Any]) -> str:
     )
 
 
-def chat_mode_prompt(request: dict[str, Any]) -> str:
-    """Chat-oriented prompt for TUI/user free-text on prompt-CLI harnesses.
+def _user_message_from_request(request: dict[str, Any]) -> str:
+    """Extract free-text user content from delegate input or steer amendment."""
+    operation = str(request.get("operation") or "")
+    if operation == "steer":
+        amendment = request.get("amendment")
+        if isinstance(amendment, dict):
+            text = str(amendment.get("text") or amendment.get("message") or "").strip()
+            if text:
+                return text
+        elif amendment is not None:
+            text = str(getattr(amendment, "text", "") or amendment).strip()
+            if text:
+                return text
 
-    Puts the user message first so coding agents behave like a chat turn, while
-    still requiring a JSON (or JSONL) result that preserves HLP correlation.
-    """
-    correlation = str(request.get("correlation_id") or request.get("task_id") or "")
     raw_input = request.get("input")
-    goal = ""
     if isinstance(raw_input, dict):
         goal = str(
             raw_input.get("goal")
@@ -109,12 +115,26 @@ def chat_mode_prompt(request: dict[str, Any]) -> str:
             or raw_input.get("prompt")
             or ""
         ).strip()
-        if not goal and raw_input:
-            goal = json.dumps(raw_input, sort_keys=True)
+        if goal:
+            return goal
+        if raw_input:
+            return json.dumps(raw_input, sort_keys=True)
     elif raw_input is not None:
-        goal = str(raw_input).strip()
-    if not goal:
-        goal = str(request.get("goal") or "Continue the task.").strip()
+        return str(raw_input).strip()
+    return str(request.get("goal") or "Continue the task.").strip()
+
+
+def chat_mode_prompt(request: dict[str, Any]) -> str:
+    """Chat-oriented prompt for TUI/user free-text on prompt-CLI harnesses.
+
+    Puts the user message first so coding agents behave like a chat turn, while
+    still requiring a JSON (or JSONL) result that preserves HLP correlation.
+    Used for ``delegate`` (first turn) and ``steer`` (follow-up turns via amend).
+    """
+    correlation = str(request.get("correlation_id") or request.get("task_id") or "")
+    goal = _user_message_from_request(request)
+    run_id = str(request.get("run_id") or "").strip()
+    run_line = f"- run_id SHOULD stay: {run_id}\n" if run_id else ""
 
     return (
         f"{goal}\n"
@@ -123,6 +143,7 @@ def chat_mode_prompt(request: dict[str, Any]) -> str:
         "Human-loop session constraints (keep these; do not ignore the user message "
         "above):\n"
         f"- correlation_id MUST be exactly: {correlation}\n"
+        f"{run_line}"
         "- Prefer one final JSON object (no markdown fences) with keys:\n"
         "  run_id (stable string), correlation_id, status, summary\n"
         "- Put your full reply text for the user in `summary`.\n"
@@ -140,7 +161,7 @@ def prompt_for_adapter_operation(
 ) -> str:
     """Select chat vs protocol prompt body for a harness operation request."""
     operation = str(request.get("operation") or "")
-    if mode == "chat" and operation == "delegate":
+    if mode == "chat" and operation in {"delegate", "steer"}:
         return chat_mode_prompt(request)
     return cli_operation_prompt(request)
 
@@ -266,13 +287,17 @@ class ProcessAgentAdapter(FakeAgentAdapter):
     ) -> None:
         handle = self._require_run(run_id, "steer", context=context)
         amendment_payload = util.adapter_payload(amendment)
-        await self._execute("steer", {
+        payload = await self._execute("steer", {
             "operation": "steer",
             "run_id": run_id,
             "amendment": amendment_payload,
             "correlation_id": handle.correlation_id,
             "operation_context": to_wire(context) if context is not None else None,
         })
+        # Follow-up chat turns (TUI amend → steer) must refresh process_results so
+        # hosts do not keep showing the previous delegate summary.
+        if isinstance(payload, dict):
+            self.process_results[run_id] = payload
         await FakeAgentAdapter.steer(self, run_id, amendment_payload, context=context)
 
     async def handoff(

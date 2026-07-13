@@ -176,6 +176,28 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         self._queue_codex_events(run_id, events)
         await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
 
+    async def steer(
+        self,
+        run_id: str,
+        amendment: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "steer", context=context)
+        amendment_payload = util.adapter_payload(amendment)
+        payload = await self._execute("steer", {
+            "operation": "steer",
+            "run_id": run_id,
+            "amendment": amendment_payload,
+            "correlation_id": handle.correlation_id,
+            "operation_context": to_wire(context) if context is not None else None,
+        })
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, handle.correlation_id, self.name, "steer")
+        self.process_results[run_id] = payload
+        self._queue_codex_events(run_id, events)
+        await FakeAgentAdapter.steer(self, run_id, amendment_payload, context=context)
+
     async def handoff(
         self,
         run_id: str,

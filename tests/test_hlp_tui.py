@@ -1067,6 +1067,74 @@ def test_chat_mode_prompt_puts_user_message_first():
     # Lifecycle ops stay protocol-shaped even in chat mode adapters.
     resume_req = {**request, "operation": "resume"}
     assert "HLP adapter operation" in prompt_for_adapter_operation(resume_req, mode="chat")
+    # Follow-up turns (amend → steer) also use chat shape.
+    steer_req = {
+        "operation": "steer",
+        "run_id": "run_1",
+        "correlation_id": "task_hello",
+        "amendment": {"text": "介绍下项目", "intent": "clarify", "by": "user_local"},
+    }
+    steer_chat = prompt_for_adapter_operation(steer_req, mode="chat")
+    assert steer_chat.startswith("介绍下项目\n")
+    assert "HLP adapter operation" not in steer_chat
+
+
+def test_tui_follow_up_prompt_reinvokes_chat_and_refreshes_agent_reply(tmp_path):
+    """Second user message must not reuse the first turn's summary."""
+    turns: list[str] = []
+
+    async def runner(command, request, timeout):
+        prompt = command[-1]
+        turns.append(request["operation"])
+        if request["operation"] == "delegate":
+            assert prompt.startswith("hello\n")
+            return ProcessResult(
+                exit_code=0,
+                stdout=json.dumps({
+                    "run_id": "chat_run_mt",
+                    "correlation_id": request["correlation_id"],
+                    "status": "success",
+                    "summary": "Hello! How can I help?",
+                }),
+                stderr="",
+            )
+        if request["operation"] == "steer":
+            assert prompt.startswith("介绍下项目\n")
+            assert "You are executing an HLP adapter operation." not in prompt
+            return ProcessResult(
+                exit_code=0,
+                stdout=json.dumps({
+                    "run_id": "chat_run_mt",
+                    "correlation_id": request["correlation_id"],
+                    "status": "success",
+                    "summary": "Loops is an HLP SDK for human-agent responsibility loops.",
+                }),
+                stderr="",
+            )
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "run_id": request.get("run_id") or "chat_run_mt",
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+            }),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner, timeout=9.0, prompt_mode="chat")
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    first = run(controller.handle(session.id, "hello"))
+    assert "agent: Hello! How can I help?" in first.output
+
+    second = run(controller.handle(session.id, "介绍下项目"))
+    assert "amended task" in second.output
+    assert "agent: Loops is an HLP SDK for human-agent responsibility loops." in second.output
+    assert "Hello! How can I help?" not in second.output
+    assert turns == ["delegate", "steer"]
 
 
 def test_tui_chat_mode_delegate_sends_user_first_prompt_and_shows_reply(tmp_path):

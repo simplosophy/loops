@@ -127,6 +127,8 @@ class TUIController:
             )
             return await self._finish_with_harness_output(session_id, started)
 
+        # Follow-up free-text: HLP task.amend → adapter.steer. In chat prompt mode
+        # that re-invokes the CLI with the new user message (not only steering log).
         task = await self.client.amend(
             session.active_task_id,
             by=session.principal,
