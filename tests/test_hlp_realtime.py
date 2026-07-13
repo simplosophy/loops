@@ -115,6 +115,26 @@ def test_d3_bci_alone_cannot_resolve_high_risk_hard_checkpoint():
     assert "D3" in err.value.message
 
 
+def test_realtime_promotion_demo_runs_offline():
+    from examples.hlp_realtime_promotion_demo import run_demo
+
+    result = run(run_demo())
+    assert result["profile"] == "HLP-realtime"
+    assert result["task_state_after_soft"] == "in_progress"
+    assert "先别动 production 配置" in result["steering_text"]
+    assert "重点看 token 过期路径" in result["steering_text"]
+    assert "嗯嗯" not in result["steering_text"]
+    assert result["soft_signals_in"] == 3
+    assert result["soft_signals_promoted"] == 2
+    assert result["promotion_profile"] == "HLP-realtime"
+    assert result["promotion_signal_count"] == 2
+    assert result["bci_alone_high_risk_allowed"] is False
+    assert result["bci_alone_error"] and "D3" in result["bci_alone_error"]
+    assert result["checkpoint_resolution"] == "reject"
+    assert result["decisions"]["D1_soft_no_state_change"] is True
+    assert result["decisions"]["D3_bci_alone_denied"] is True
+
+
 def test_task_amend_preserves_state_and_records_promotion_provenance():
     client = HLPClient()
     task = run(client.create_task(principal="user_alice", goal="ship safely"))

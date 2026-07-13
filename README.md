@@ -91,6 +91,13 @@ uv run loops-hlp-tui --adapter pi --timeout 30
 uv run loops-hlp-tui --adapter fake
 ```
 
+Run the offline **HLP-realtime promotion** demo (soft merge → amend provenance,
+BCI-alone high-risk deny; no voice/BCI hardware):
+
+```bash
+uv run loops-hlp-realtime-demo
+```
+
 Run the **PR Review Desk** host application (real embedding case, offline by
 default):
 

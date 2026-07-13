@@ -40,8 +40,8 @@ Media 一等对象、SFU/编解码、厂商 API 绑定、可编辑 audit 历史�
 |------|------|
 | 计划 + 附录 C 初稿 | 完成 |
 | 决策收敛写进附录 C / §7.8–7.9 / conformance | 完成 |
-| **0.3-reference：`ControlSignal` + merge/D3 helpers + amend provenance** | **完成** |
-| mock channel promotion 演示 | 后置 |
+| 0.3-reference：`ControlSignal` + merge/D3 helpers + amend provenance | 完成 |
+| **mock channel promotion 演示** | **完成**（`loops-hlp-realtime-demo`） |
 
 ### Reference API（`loops.hlp.realtime`）
 
