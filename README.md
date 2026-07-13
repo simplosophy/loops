@@ -98,6 +98,16 @@ BCI-alone high-risk deny; no voice/BCI hardware):
 uv run loops-hlp-realtime-demo
 ```
 
+Soft-control harness E2E (multi soft → merge → amend/steer; default offline):
+
+```bash
+uv run loops-hlp-soft-e2e --adapters codex,pi --strict
+uv run loops-hlp-soft-e2e --inventory
+# real installed CLIs (opt-in):
+uv run loops-hlp-soft-e2e --live --adapters pi --timeout 120
+HLP_RUN_EXTERNAL_CLI_E2E=1 uv run pytest tests/external/test_hlp_soft_real_cli_e2e.py -q
+```
+
 In the TUI, buffer multiple soft controls then merge-promote (HLP-realtime D2):
 
 ```bash
