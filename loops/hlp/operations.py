@@ -295,9 +295,15 @@ class HumanLoopOperations:
         intent: SteeringIntent = "clarify",
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
+        promotion_provenance: dict | None = None,
     ) -> Task:
-        """task.amend (HLP 0.2.0)：append steering without changing spec/state."""
+        """task.amend (HLP 0.2.0)：append steering without changing spec/state.
+
+        ``promotion_provenance`` is optional HLP-realtime intent provenance
+        (appendix C) for audit only; it does not alter Task.state.
+        """
         task = self.store._get_task_for_update(task_id)
+        state_before = task.state
         idempotency = self._begin_task_operation(
             task,
             "task.amend",
@@ -341,12 +347,22 @@ class HumanLoopOperations:
                 context=adapter_context,
             )
         task.steering_log = (*task.steering_log, amendment)
+        # D1: soft promotion path must not change Task.state (amend never does).
+        if task.state != state_before:
+            raise ProtocolError(
+                "PRECONDITION_FAILED",
+                "task.amend must not change Task.state",
+                details={"before": state_before, "after": task.state},
+            )
+        after: dict = {"text": text, "intent": intent, "state": task.state}
+        if promotion_provenance is not None:
+            after["promotion"] = promotion_provenance
         self._audit(
             actor=by,
             action="task.amended",
             subject=("task", task.id),
             task_id=task.id,
-            after={"text": text, "intent": intent},
+            after=after,
         )
         self._commit_task_operation(task, idempotency, task)
         return task

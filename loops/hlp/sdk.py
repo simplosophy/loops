@@ -139,6 +139,7 @@ class HLPClient:
         intent: SteeringIntent = "clarify",
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
+        promotion_provenance: dict | None = None,
     ) -> Task:
         task = await self.operations.task_amend(
             task_id,
@@ -147,12 +148,16 @@ class HLPClient:
             intent=intent,
             expected_task_revision=expected_task_revision,
             idempotency_key=idempotency_key,
+            promotion_provenance=promotion_provenance,
         )
+        payload: dict = {"by": by, "intent": intent}
+        if promotion_provenance is not None:
+            payload["promotion"] = promotion_provenance
         replayed = await self._after_mutation_unless_replay(
             "task.amended",
             task_id=task.id,
             subject=("task", task.id),
-            payload={"by": by, "intent": intent},
+            payload=payload,
         )
         return task if replayed else self.store.get_task(task.id)
 

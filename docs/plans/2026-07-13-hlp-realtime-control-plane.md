@@ -39,9 +39,17 @@ Media 一等对象、SFU/编解码、厂商 API 绑定、可编辑 audit 历史�
 | 阶段 | 状态 |
 |------|------|
 | 计划 + 附录 C 初稿 | 完成 |
-| **决策收敛写进附录 C / §7.8–7.9 / conformance** | **本提交** |
-| 0.3-reference（可选 ControlSignal + audit provenance 代码） | 未开始 |
+| 决策收敛写进附录 C / §7.8–7.9 / conformance | 完成 |
+| **0.3-reference：`ControlSignal` + merge/D3 helpers + amend provenance** | **完成** |
 | mock channel promotion 演示 | 后置 |
+
+### Reference API（`loops.hlp.realtime`）
+
+- `ControlSignal` / `InteractionRef`（值对象，非一等）
+- `merge_soft_control_signals` — host 合并 soft → 一条 `SteeringAmendment` + provenance
+- `assert_soft_does_not_change_task_state` — D1
+- `may_resolve_hard_checkpoint_with_signal` / `require_hard_resolve_allowed` — D3
+- `HLPClient.amend(..., promotion_provenance=...)` — audit 可追溯
 
 ## 参考
 

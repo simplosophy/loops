@@ -124,6 +124,10 @@ Voice duplex、屏幕共享流、BCI 等 **准实时交互** 属于 channel / se
 `docs/plans/2026-07-13-hlp-realtime-control-plane.md`。TUI 对 harness JSONL 的
 stream **展示** 是 channel 能力，不等于 HLP 拥有实时媒体协议。
 
+Reference helpers（可选，不改变状态机）：`ControlSignal`、
+`merge_soft_control_signals`、`require_hard_resolve_allowed`，以及
+`HLPClient.amend(..., promotion_provenance=...)` 写入 audit intent provenance。
+
 ## 设计原则
 
 - 极简：HLP SDK 只保留责任闭环必要对象和操作。

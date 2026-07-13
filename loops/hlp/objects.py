@@ -16,6 +16,10 @@ from .types import (
     CheckpointKind,
     CheckpointResolutionAction,
     CheckpointState,
+    ControlIntent,
+    ControlPromotion,
+    ControlSourceKind,
+    ControlStrength,
     HumanInboxAction,
     HumanInboxKind,
     OwnershipTransferVia,
@@ -102,6 +106,49 @@ class SteeringAmendment:
     intent: SteeringIntent = "clarify"
     by: str = ""
     at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True)
+class InteractionRef:
+    """Opaque channel session alignment (HLP-realtime appendix C). Not a first-class object."""
+
+    channel: str
+    session_id: str
+    episode_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ControlSignal:
+    """Host/channel intent sample before or at promotion (HLP-realtime appendix C).
+
+    Not a first-class HLP object. Soft signals must not change Task.state; hosts
+    merge soft streams and promote into task.amend / hard checkpoint ops.
+    """
+
+    strength: ControlStrength
+    intent: ControlIntent
+    principal_binding: str
+    confidence: float = 1.0
+    source_kind: ControlSourceKind = "text"
+    source_ref: str | None = None
+    text: str = ""
+    promotion: ControlPromotion = "none"
+    run_id: str | None = None
+    interaction: InteractionRef | None = None
+    effective_at: datetime = field(default_factory=_now)
+    recorded_at: datetime = field(default_factory=_now)
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= float(self.confidence) <= 1.0):
+            raise ProtocolError(
+                "INVALID_SPEC",
+                f"ControlSignal.confidence must be in [0, 1], got {self.confidence!r}",
+            )
+        if not self.principal_binding:
+            raise ProtocolError(
+                "INVALID_SPEC",
+                "ControlSignal.principal_binding is required",
+            )
 
 
 @dataclass(frozen=True)

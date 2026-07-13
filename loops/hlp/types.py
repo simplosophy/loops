@@ -124,3 +124,17 @@ HarnessEventKind = Literal[
 
 HumanInboxKind = Literal["checkpoint", "review"]
 HumanInboxAction = Literal["resolve_checkpoint", "submit_review"]
+
+# HLP-realtime profile (appendix C) — value-object enums, not first-class objects
+ControlStrength = Literal["soft", "hard"]
+ControlIntent = Literal[
+    "redirect",
+    "clarify",
+    "constrain",
+    "halt",
+    "resume",
+    "affirm",
+    "deny",
+]
+ControlSourceKind = Literal["speech", "text", "ui", "bci", "other"]
+ControlPromotion = Literal["none", "steering", "checkpoint", "grant_check"]
