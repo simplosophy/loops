@@ -13,10 +13,11 @@ from .render import (
     render_human_loop,
     render_inbox,
     render_lines,
+    render_soft_buffer,
     render_status,
     render_transcript,
 )
-from .session import SessionStore, TUISession, TranscriptEvent
+from .session import SessionStore, SoftBufferEntry, TUISession, TranscriptEvent
 
 __all__ = [
     "CommandDefinition",
@@ -24,6 +25,7 @@ __all__ = [
     "CompatibilityReport",
     "InputIntent",
     "SessionStore",
+    "SoftBufferEntry",
     "TUISession",
     "TUISessionError",
     "TranscriptEvent",
@@ -41,6 +43,7 @@ __all__ = [
     "render_human_loop",
     "render_inbox",
     "render_lines",
+    "render_soft_buffer",
     "render_status",
     "render_transcript",
     "run_lines",

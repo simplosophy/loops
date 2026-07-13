@@ -695,7 +695,7 @@ def test_tui_promote_soft_control_amends_with_provenance(tmp_path):
     assert active.active_task_id
 
     result = run(controller.handle(session.id, "/promote focus on auth boundaries"))
-    assert "promoted soft → amended task" in result.output
+    assert "promoted 1 soft → amended task" in result.output
     assert "HLP-realtime" in result.output or "profile=HLP-realtime" in result.output
 
     task = run(client.get_task(active.active_task_id))
@@ -707,6 +707,78 @@ def test_tui_promote_soft_control_amends_with_provenance(tmp_path):
     after = amended[-1].after
     assert isinstance(after, dict)
     assert after.get("promotion", {}).get("profile") == "HLP-realtime"
+
+
+def test_tui_multi_soft_buffer_merge_and_promote(tmp_path):
+    _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
+    run(controller.handle(session.id, "start work"))
+
+    added1 = run(controller.handle(session.id, "/soft 先别动 production 配置"))
+    assert "soft buffered (1)" in added1.output
+    assert "Soft buffer" in added1.output
+
+    added2 = run(controller.handle(
+        session.id,
+        "/soft --intent clarify 重点看 token 过期路径",
+    ))
+    assert "soft buffered (2)" in added2.output
+
+    listed = run(controller.handle(session.id, "/soft list"))
+    assert "先别动 production 配置" in listed.output
+    assert "重点看 token 过期路径" in listed.output
+    assert "2." in listed.output
+
+    softs = run(controller.handle(session.id, "/softs"))
+    assert "Soft buffer" in softs.output
+
+    active = store.resume(session.id)
+    assert len(active.soft_buffer) == 2
+
+    promoted = run(controller.handle(session.id, "/promote"))
+    assert "promoted 2 soft → amended task" in promoted.output
+    assert "merged=" in promoted.output
+    assert "先别动 production" in promoted.output
+    assert "token 过期" in promoted.output
+
+    after = store.resume(session.id)
+    assert after.soft_buffer == ()
+    task = run(client.get_task(after.active_task_id))
+    assert task.state == "in_progress"
+    text = task.steering_log[-1].text
+    assert "先别动 production 配置" in text
+    assert "重点看 token 过期路径" in text
+
+    empty = run(controller.handle(session.id, "/promote"))
+    assert "error:" in empty.output
+    assert "soft buffer empty" in empty.output
+
+
+def test_tui_soft_pop_and_clear(tmp_path):
+    _adapter, _client, store, session, controller = _started_hlp_tui(tmp_path)
+    run(controller.handle(session.id, "/soft one"))
+    run(controller.handle(session.id, "/soft two"))
+    popped = run(controller.handle(session.id, "/soft pop"))
+    assert "soft popped: two" in popped.output
+    assert len(store.resume(session.id).soft_buffer) == 1
+    cleared = run(controller.handle(session.id, "/soft clear"))
+    assert "soft buffer cleared" in cleared.output
+    assert store.resume(session.id).soft_buffer == ()
+
+
+def test_soft_buffer_persists_across_session_store_reload(tmp_path):
+    from loops.tui.session import SessionStore
+
+    path = tmp_path / "sess.json"
+    store = SessionStore(path)
+    session = store.create(cwd="/repo", adapter="fake")
+    store.add_soft(session.id, text="alpha", intent="constrain", confidence=0.9)
+    store.add_soft(session.id, text="beta", intent="clarify")
+    reloaded = SessionStore(path)
+    again = reloaded.resume(session.id)
+    assert len(again.soft_buffer) == 2
+    assert again.soft_buffer[0].text == "alpha"
+    assert again.soft_buffer[0].confidence == 0.9
+    assert again.soft_buffer[1].text == "beta"
 
 
 def test_hlp_permissions_record_session_metadata_only(tmp_path):
@@ -1342,6 +1414,7 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
         "TUISessionError",
         "TUIUsageError",
         "SessionStore",
+        "SoftBufferEntry",
         "TUISession",
         "TranscriptEvent",
         "render_agent_reply",
@@ -1351,6 +1424,7 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
         "render_human_loop",
         "render_inbox",
         "render_lines",
+        "render_soft_buffer",
         "render_status",
         "render_transcript",
     ):

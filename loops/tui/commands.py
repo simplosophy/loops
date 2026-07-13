@@ -47,9 +47,15 @@ COMMANDS: dict[str, CommandDefinition] = {
     "choose": CommandDefinition("choose", "Resolve a choice checkpoint.", "hlp"),
     "input": CommandDefinition("input", "Provide text to an input checkpoint.", "hlp"),
     "amend": CommandDefinition("amend", "Append HLP steering amendment.", "hlp"),
+    "soft": CommandDefinition(
+        "soft",
+        "Buffer soft control: /soft <text> | list | pop | clear.",
+        "hlp",
+    ),
+    "softs": CommandDefinition("softs", "List buffered soft controls.", "hlp"),
     "promote": CommandDefinition(
         "promote",
-        "Promote soft UI control into task.amend (HLP-realtime).",
+        "Merge soft buffer (or one-shot text) into task.amend.",
         "hlp",
     ),
     "interrupt": CommandDefinition("interrupt", "Raise a human interrupt checkpoint.", "hlp"),

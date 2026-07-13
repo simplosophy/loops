@@ -74,6 +74,17 @@ def render_inbox(items: Iterable[Any]) -> str:
     return render_lines("Human inbox:", rows)
 
 
+def render_soft_buffer(entries: Iterable[Any]) -> str:
+    """Render host soft-control buffer before multi-signal promotion."""
+    rows = []
+    for index, entry in enumerate(entries, start=1):
+        text = getattr(entry, "text", "")
+        intent = getattr(entry, "intent", "constrain")
+        confidence = getattr(entry, "confidence", 1.0)
+        rows.append(f"{index}. [{intent} c={confidence:g}] {text}")
+    return render_lines("Soft buffer (host merge → /promote):", rows)
+
+
 def render_audit(events: Iterable[Any]) -> str:
     rows = [f"{event.action} task={event.task_id}" for event in events]
     return render_lines("Audit:", rows)

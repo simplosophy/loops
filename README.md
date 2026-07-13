@@ -98,12 +98,17 @@ BCI-alone high-risk deny; no voice/BCI hardware):
 uv run loops-hlp-realtime-demo
 ```
 
-In the TUI, promote soft UI control into steering (with audit provenance):
+In the TUI, buffer multiple soft controls then merge-promote (HLP-realtime D2):
 
 ```bash
 uv run loops-hlp-tui --adapter fake
 > do the work
-> /promote focus on auth boundaries
+> /soft 先别动 production 配置
+> /soft --intent clarify 重点看 token 过期路径
+> /softs
+> /promote
+# or one-shot: /promote focus on auth boundaries
+# /soft list | pop | clear
 ```
 
 Optional profile constants: `HLP_REALTIME_PROFILE` / `HLP_REALTIME_SPEC_VERSION`
