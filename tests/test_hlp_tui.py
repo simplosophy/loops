@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import asyncio
+import sys
 
 from loops.tui import session as session_module
 from loops.tui.commands import (
@@ -1313,6 +1314,7 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
         "main",
         "run_lines",
         "run_with_progress",
+        "StreamPrinter",
         "TUIController",
         "TUIResult",
         "TUISessionError",
@@ -1332,3 +1334,85 @@ def test_tui_package_exports_app_controller_session_and_render_apis():
     ):
         assert hasattr(tui, name)
         assert name in tui.__all__
+
+
+def test_format_harness_stream_line_maps_pi_and_status_events():
+    from loops.hlp.adapters import format_harness_stream_line
+
+    assert format_harness_stream_line("") is None
+    assert format_harness_stream_line('{"type":"session","id":"x"}') is None
+    start = format_harness_stream_line('{"type":"agent_start"}')
+    assert start is not None and start.kind == "status" and "agent start" in start.text
+
+    thinking = format_harness_stream_line(json.dumps({
+        "type": "message_update",
+        "assistantMessageEvent": {"type": "thinking_delta", "delta": "noise"},
+    }))
+    assert thinking is None
+
+    delta = format_harness_stream_line(json.dumps({
+        "type": "message_update",
+        "assistantMessageEvent": {"type": "text_delta", "delta": "Hel"},
+    }))
+    assert delta is not None
+    assert delta.kind == "text"
+    assert delta.text == "Hel"
+    assert delta.newline is False
+
+    approval = format_harness_stream_line(json.dumps({
+        "type": "hlp.event",
+        "hlp": {"kind": "needs_approval", "prompt": "Ship?"},
+    }))
+    assert approval is not None
+    assert "needs_approval" in approval.text
+    assert "Ship?" in approval.text
+
+
+def test_stream_printer_coalesces_text_deltas():
+    from loops.tui.stream import StreamPrinter
+    from loops.hlp.adapters import StreamChunk
+
+    lines: list[str] = []
+
+    def printer(*args, **kwargs):
+        text = args[0] if args else ""
+        end = kwargs.get("end", "\n")
+        lines.append(text + ("" if end == "" else "\n"))
+
+    sp = StreamPrinter(printer=printer)
+    sp(StreamChunk(kind="status", text="agent start"))
+    sp(StreamChunk(kind="text", text="Hel", newline=False))
+    sp(StreamChunk(kind="text", text="lo", newline=False))
+    sp(StreamChunk(kind="status", text="turn end"))
+    sp.close()
+    joined = "".join(lines)
+    assert "⋯ agent start" in joined
+    assert "⋯ agent: Hello" in joined or ("⋯ agent: " in joined and "Hel" in joined and "lo" in joined)
+    assert "⋯ turn end" in joined
+
+
+def test_run_prompt_process_streaming_invokes_chunk_callback():
+    from loops.hlp.adapters import run_prompt_process_streaming, StreamChunk
+
+    chunks: list[StreamChunk] = []
+
+    async def on_chunk(chunk: StreamChunk) -> None:
+        chunks.append(chunk)
+
+    # Emit two JSONL events then exit — no network harness required.
+    script = (
+        "import sys\n"
+        "print('{\"type\":\"agent_start\"}', flush=True)\n"
+        "print('{\"type\":\"message_update\",\"assistantMessageEvent\":"
+        "{\"type\":\"text_delta\",\"delta\":\"Hi\"}}', flush=True)\n"
+    )
+    result = run(run_prompt_process_streaming(
+        (sys.executable, "-c", script),
+        {"operation": "delegate", "correlation_id": "task_x"},
+        5.0,
+        on_chunk=on_chunk,
+    ))
+    assert result.exit_code == 0
+    assert any(c.kind == "status" for c in chunks)
+    assert any(c.kind == "text" and c.text == "Hi" for c in chunks)
+    assert "agent_start" in result.stdout

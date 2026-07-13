@@ -27,9 +27,13 @@ from .frameworks import (
 from .process import (
     ProcessAgentAdapter,
     PromptCLIAdapter,
+    StreamChunk,
     chat_mode_prompt,
     cli_operation_prompt,
+    format_harness_stream_line,
+    make_streaming_prompt_runner,
     prompt_for_adapter_operation,
+    run_prompt_process_streaming,
 )
 from .protocol import (
     AgentAdapter,
@@ -72,7 +76,11 @@ __all__ = [
     "PromptCLIAdapter",
     "PythonCallableAgentAdapter",
     "ReliableHarnessEventAdapter",
+    "StreamChunk",
     "chat_mode_prompt",
     "cli_operation_prompt",
+    "format_harness_stream_line",
+    "make_streaming_prompt_runner",
     "prompt_for_adapter_operation",
+    "run_prompt_process_streaming",
 ]

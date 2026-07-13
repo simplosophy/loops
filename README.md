@@ -74,9 +74,11 @@ uv run loops-hlp-tui --adapter fake   # offline, no external CLI
 Live adapters (`codex` / `pi`) use **harness-capable** adapters
 (`CodexHarnessAdapter` / `PiHarnessAdapter`) in **chat prompt mode**: free-text
 prompts put the user message first (not the full “HLP adapter operation” JSON
-dump). Lifecycle ops (block/resume/cancel) stay protocol-shaped. After each
-prompt and checkpoint resolution, the TUI projects harness human-facing events
-into HLP and surfaces the agent `summary` plus pending work (`/inbox`,
+dump). Lifecycle ops (block/resume/cancel) stay protocol-shaped. While the CLI
+runs, the TUI **streams** compact harness events (`⋯ agent start`, live
+`⋯ agent: …` text deltas, tool/status milestones) instead of only a wait timer.
+After each prompt and checkpoint resolution, it projects human-facing events
+into HLP and surfaces the final agent `summary` plus pending work (`/inbox`,
 `/approve`, `/reject`, `/review`).
 
 Live adapters block on the external process for each prompt. The TUI prints a

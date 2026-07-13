@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from typing import Any
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from ..objects import AdapterOperationContext
 from ..schema import to_wire
@@ -16,6 +18,19 @@ from .protocol import (
     ProcessResult,
     ProcessRunner,
 )
+
+StreamChunkKind = Literal["status", "text", "thinking", "error", "raw"]
+StreamLineCallback = Callable[[str], Awaitable[None] | None]
+StreamChunkCallback = Callable[["StreamChunk"], Awaitable[None] | None]
+
+
+@dataclass(frozen=True)
+class StreamChunk:
+    """A compact, host-ready slice of harness process output."""
+
+    kind: StreamChunkKind
+    text: str
+    newline: bool = True
 
 
 async def run_json_process(
@@ -79,6 +94,230 @@ async def run_prompt_process(
         stdout=stdout.decode(errors="replace"),
         stderr=stderr.decode(errors="replace"),
     )
+
+
+def format_harness_stream_line(line: str) -> StreamChunk | None:
+    """Map a raw harness stdout/stderr line into a compact TUI stream chunk.
+
+    Suppresses high-frequency Pi ``thinking_delta`` noise while keeping status
+    milestones and assistant ``text_delta`` fragments for live display.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if not stripped.startswith("{"):
+        text = stripped if len(stripped) <= 240 else stripped[:237] + "..."
+        return StreamChunk(kind="raw", text=text)
+
+    try:
+        event = json.loads(stripped)
+    except json.JSONDecodeError:
+        text = stripped if len(stripped) <= 240 else stripped[:237] + "..."
+        return StreamChunk(kind="raw", text=text)
+    if not isinstance(event, dict):
+        return None
+
+    event_type = str(event.get("type") or "")
+    if event_type in {"session", "message_start", "message_end"}:
+        return None
+    if event_type in {"agent_start", "turn_start", "turn.started"}:
+        return StreamChunk(kind="status", text=event_type.replace("_", " ").replace(".", " "))
+    if event_type in {"agent_end", "turn_end", "turn.completed", "turn.failed"}:
+        return StreamChunk(kind="status", text=event_type.replace("_", " ").replace(".", " "))
+    if event_type == "error" or event.get("error"):
+        message = event.get("message") or event.get("error")
+        if isinstance(message, dict):
+            message = message.get("message") or message
+        return StreamChunk(kind="error", text=str(message or stripped)[:240])
+
+    if event_type == "message_update":
+        ame = event.get("assistantMessageEvent")
+        if not isinstance(ame, dict):
+            return None
+        ame_type = str(ame.get("type") or "")
+        if ame_type == "text_delta":
+            delta = str(ame.get("delta") or "")
+            if not delta:
+                return None
+            return StreamChunk(kind="text", text=delta, newline=False)
+        if ame_type == "text_start":
+            return StreamChunk(kind="status", text="assistant text")
+        if ame_type == "text_end":
+            content = str(ame.get("content") or "").strip()
+            if content and len(content) <= 200:
+                return StreamChunk(kind="status", text="text complete")
+            return None
+        if ame_type == "thinking_start":
+            return StreamChunk(kind="thinking", text="thinking…")
+        if ame_type in {"thinking_delta", "thinking_end"}:
+            return None
+        return None
+
+    # Codex / HLP-style JSONL events
+    if event_type.startswith("hlp.") or event_type.startswith("pi.") or event_type in {
+        "needs_approval",
+        "needs_choice",
+        "needs_input",
+        "artifact",
+        "item.completed",
+        "thread.started",
+    }:
+        kind = event_type
+        prompt = ""
+        for key in ("hlp", "pi", "human_loop"):
+            nested = event.get(key)
+            if isinstance(nested, dict):
+                kind = str(nested.get("kind") or kind)
+                prompt = str(nested.get("prompt") or nested.get("summary") or "")
+                break
+        if event.get("item") and isinstance(event["item"], dict):
+            prompt = str(event["item"].get("message") or prompt)
+        label = f"{kind}" + (f": {prompt}" if prompt else "")
+        return StreamChunk(kind="status", text=label[:240])
+
+    # Final-ish payloads with summary
+    summary = event.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return StreamChunk(kind="status", text=f"summary: {summary.strip()[:200]}")
+    return None
+
+
+async def _emit_stream_chunk(
+    chunk: StreamChunk,
+    *,
+    on_chunk: StreamChunkCallback | None,
+    on_line: StreamLineCallback | None,
+) -> None:
+    if on_chunk is not None:
+        result = on_chunk(chunk)
+        if inspect.isawaitable(result):
+            await result
+        return
+    if on_line is None:
+        return
+    if chunk.kind == "text" and not chunk.newline:
+        text = chunk.text
+    elif chunk.kind == "text":
+        text = chunk.text
+    elif chunk.kind == "thinking":
+        text = f"⋯ {chunk.text}"
+    elif chunk.kind == "error":
+        text = f"⋯ error: {chunk.text}"
+    else:
+        text = f"⋯ {chunk.text}"
+    result = on_line(text if chunk.newline else text)
+    if inspect.isawaitable(result):
+        await result
+
+
+async def run_prompt_process_streaming(
+    command: tuple[str, ...],
+    request: dict[str, Any],
+    timeout: float,
+    *,
+    on_chunk: StreamChunkCallback | None = None,
+    on_line: StreamLineCallback | None = None,
+    on_stderr_line: StreamLineCallback | None = None,
+) -> ProcessResult:
+    """Run a prompt CLI while streaming stdout/stderr lines to host callbacks.
+
+    Collects full stdout/stderr for the usual parse path so adapters keep
+    identical post-run semantics (process_results / projection).
+    """
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+
+    async def _read_stream(
+        stream: asyncio.StreamReader | None,
+        *,
+        sink: list[str],
+        is_stderr: bool = False,
+    ) -> None:
+        if stream is None:
+            return
+        while True:
+            raw = await stream.readline()
+            if not raw:
+                break
+            text = raw.decode(errors="replace")
+            sink.append(text)
+            line = text.rstrip("\n")
+            if is_stderr:
+                cb = on_stderr_line or on_line
+                if cb is not None and line.strip():
+                    result = cb(f"⋯ stderr: {line.strip()[:240]}")
+                    if inspect.isawaitable(result):
+                        await result
+                continue
+            chunk = format_harness_stream_line(line)
+            if chunk is not None:
+                await _emit_stream_chunk(chunk, on_chunk=on_chunk, on_line=on_line)
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(
+                _read_stream(process.stdout, sink=stdout_parts),
+                _read_stream(process.stderr, sink=stderr_parts, is_stderr=True),
+                process.wait(),
+            ),
+            timeout=timeout,
+        )
+    except TimeoutError:
+        process.kill()
+        try:
+            await process.wait()
+        except Exception:
+            pass
+        # Drain remaining buffers if any.
+        if process.stdout is not None:
+            rest = await process.stdout.read()
+            if rest:
+                stdout_parts.append(rest.decode(errors="replace"))
+        if process.stderr is not None:
+            rest = await process.stderr.read()
+            if rest:
+                stderr_parts.append(rest.decode(errors="replace"))
+        return ProcessResult(
+            exit_code=124,
+            stdout="".join(stdout_parts),
+            stderr=("".join(stderr_parts) + "\nprocess timed out").strip(),
+        )
+    return ProcessResult(
+        exit_code=process.returncode or 0,
+        stdout="".join(stdout_parts),
+        stderr="".join(stderr_parts),
+    )
+
+
+def make_streaming_prompt_runner(
+    *,
+    on_chunk: StreamChunkCallback | None = None,
+    on_line: StreamLineCallback | None = None,
+    on_stderr_line: StreamLineCallback | None = None,
+) -> ProcessRunner:
+    """Build a ProcessRunner that streams harness output to host callbacks."""
+
+    async def runner(
+        command: tuple[str, ...],
+        request: dict[str, Any],
+        timeout: float,
+    ) -> ProcessResult:
+        return await run_prompt_process_streaming(
+            command,
+            request,
+            timeout,
+            on_chunk=on_chunk,
+            on_line=on_line,
+            on_stderr_line=on_stderr_line,
+        )
+
+    return runner
 
 
 def cli_operation_prompt(request: dict[str, Any]) -> str:

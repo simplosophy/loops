@@ -14,9 +14,11 @@ from loops.hlp import (
     HLPClient,
     PiHarnessAdapter,
 )
+from loops.hlp.adapters.process import make_streaming_prompt_runner
 
 from .controller import TUIController
 from .session import SessionStore
+from .stream import StreamPrinter
 
 
 _SUPPORTED_ADAPTERS = frozenset({"fake", "codex", "pi"})
@@ -56,12 +58,24 @@ def build_client(
     adapter_name: str,
     *,
     timeout: float = _DEFAULT_TIMEOUT_S,
+    stream: bool = True,
+    stream_printer=print,
 ) -> HLPClient:
     _validate_adapter_name(adapter_name)
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     if adapter_name == "fake":
         return HLPClient(adapter=FakeAgentAdapter())
+
+    runner = None
+    if stream:
+        printer = StreamPrinter(printer=stream_printer)
+
+        def on_chunk(chunk) -> None:
+            printer(chunk)
+
+        runner = make_streaming_prompt_runner(on_chunk=on_chunk)
+
     if adapter_name == "codex":
         # Harness-capable path so JSONL human events project into checkpoints/artifacts.
         return HLPClient(adapter=CodexHarnessAdapter(
@@ -74,6 +88,7 @@ def build_client(
                 "--ephemeral",
                 "--skip-git-repo-check",
             ),
+            runner=runner,
             timeout=timeout,
             # TUI free-text is chat-first; block/resume stay protocol-shaped.
             prompt_mode="chat",
@@ -91,6 +106,7 @@ def build_client(
                 "--no-session",
                 "--no-tools",
             ),
+            runner=runner,
             timeout=timeout,
             prompt_mode="chat",
         ))
@@ -109,16 +125,26 @@ async def run_with_progress(
     timeout: float,
     every: float = _PROGRESS_EVERY_S,
     printer=print,
+    quiet_after_stream: bool = True,
 ) -> T:
-    """Await work while printing heartbeat lines for interactive TUI use."""
+    """Await work while printing heartbeat lines for interactive TUI use.
+
+    When harness streaming is active, heartbeats are less frequent once the
+    first few seconds pass so stream chunks stay readable.
+    """
     task = asyncio.ensure_future(awaitable)
     started = time.monotonic()
     printer(f"… {label} (timeout {timeout:.0f}s)", flush=True)
+    ticks = 0
     while True:
         done, _pending = await asyncio.wait({task}, timeout=every)
         if done:
             return task.result()
+        ticks += 1
         elapsed = time.monotonic() - started
+        # After 6s, only ping every other interval if streaming is noisy.
+        if quiet_after_stream and elapsed >= 6 and ticks % 2 == 0:
+            continue
         printer(
             f"… still waiting on {label} ({elapsed:.0f}s / {timeout:.0f}s)",
             flush=True,
