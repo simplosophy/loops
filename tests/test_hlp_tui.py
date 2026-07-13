@@ -1029,7 +1029,7 @@ def test_tui_surfaces_pi_summary_when_no_human_events(tmp_path):
             stderr="",
         )
 
-    adapter = PiHarnessAdapter(runner=runner, timeout=9.0)
+    adapter = PiHarnessAdapter(runner=runner, timeout=9.0, prompt_mode="chat")
     client = HLPClient(adapter=adapter)
     store = SessionStore(tmp_path / "sessions.json")
     session = store.create(cwd="/repo", adapter="pi", principal="user_local")
@@ -1041,6 +1041,129 @@ def test_tui_surfaces_pi_summary_when_no_human_events(tmp_path):
     active = store.resume(session.id)
     transcript = "\n".join(event.text for event in active.transcript)
     assert "agent: Acknowledged hello request" in transcript
+
+
+def test_chat_mode_prompt_puts_user_message_first():
+    from loops.hlp.adapters import chat_mode_prompt, cli_operation_prompt, prompt_for_adapter_operation
+
+    request = {
+        "operation": "delegate",
+        "task_id": "task_hello",
+        "correlation_id": "task_hello",
+        "input": {"goal": "hello"},
+    }
+    chat = chat_mode_prompt(request)
+    assert chat.startswith("hello\n")
+    assert "correlation_id MUST be exactly: task_hello" in chat
+    assert "You are executing an HLP adapter operation." not in chat
+    assert "HLP request:" not in chat
+
+    protocol = cli_operation_prompt(request)
+    assert "You are executing an HLP adapter operation." in protocol
+    assert "HLP request:" in protocol
+
+    assert prompt_for_adapter_operation(request, mode="chat").startswith("hello\n")
+    assert "HLP adapter operation" in prompt_for_adapter_operation(request, mode="protocol")
+    # Lifecycle ops stay protocol-shaped even in chat mode adapters.
+    resume_req = {**request, "operation": "resume"}
+    assert "HLP adapter operation" in prompt_for_adapter_operation(resume_req, mode="chat")
+
+
+def test_tui_chat_mode_delegate_sends_user_first_prompt_and_shows_reply(tmp_path):
+    captured: list[dict] = []
+
+    async def runner(command, request, timeout):
+        captured.append({"command": command, "request": request})
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "run_id": "chat_run_1",
+                "correlation_id": request["correlation_id"],
+                "status": "success",
+                "summary": "Hi there — chat mode works.",
+            }),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner, timeout=9.0, prompt_mode="chat")
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    started = run(controller.handle(session.id, "hello"))
+    assert captured, "runner was not invoked"
+    prompt = captured[0]["command"][-1]
+    assert prompt.startswith("hello\n")
+    assert "You are executing an HLP adapter operation." not in prompt
+    assert "correlation_id MUST be exactly:" in prompt
+    request_correlation = captured[0]["request"]["correlation_id"]
+    assert str(request_correlation).startswith("task_")
+    assert "agent: Hi there — chat mode works." in started.output
+    assert "started task" in started.output
+
+
+def test_tui_build_client_enables_chat_prompt_mode_for_live_harnesses():
+    from loops.tui.app import build_client
+
+    codex = build_client("codex")
+    pi = build_client("pi")
+    assert codex.adapter.prompt_mode == "chat"
+    assert pi.adapter.prompt_mode == "chat"
+
+
+def test_tui_chat_mode_still_projects_human_events_after_delegate(tmp_path):
+    async def runner(command, request, timeout):
+        correlation = request["correlation_id"]
+        if request["operation"] == "delegate":
+            # Chat prompt is still used, but harness may emit human events.
+            assert command[-1].startswith("Review PR with chat mode\n") or (
+                "Review PR with chat mode" in command[-1]
+            )
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join((
+                    json.dumps({
+                        "type": "pi.event",
+                        "run_id": "pi_chat_hl",
+                        "correlation_id": correlation,
+                        "pi": {
+                            "kind": "needs_approval",
+                            "agent_id": "agent_tui",
+                            "prompt": "Proceed with chat-mode work?",
+                        },
+                    }),
+                    json.dumps({
+                        "type": "turn.completed",
+                        "run_id": "pi_chat_hl",
+                        "correlation_id": correlation,
+                        "status": "ok",
+                        "summary": "Need approval before continuing",
+                    }),
+                )),
+                stderr="",
+            )
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({
+                "type": "turn.completed",
+                "run_id": request.get("run_id") or "pi_chat_hl",
+                "correlation_id": correlation,
+                "status": "ok",
+            }),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner, timeout=9.0, prompt_mode="chat")
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    started = run(controller.handle(session.id, "Review PR with chat mode"))
+    assert "agent: Need approval before continuing" in started.output
+    assert "checkpoint pending: Proceed with chat-mode work?" in started.output
+    assert "inbox:" in started.output
 
 
 def test_run_with_progress_emits_heartbeat_until_done():

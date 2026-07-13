@@ -27,6 +27,7 @@ class PiHarnessAdapter(CodexHarnessAdapter):
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
         capabilities: HarnessCapabilities | None = None,
+        prompt_mode: str = "protocol",
     ) -> None:
         super().__init__(
             command=command,
@@ -37,6 +38,7 @@ class PiHarnessAdapter(CodexHarnessAdapter):
                 conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
                 description="Projects Pi harness JSON events into HLP human-loop objects.",
             ),
+            prompt_mode=prompt_mode,
         )
         self.name = "pi-harness"
 

@@ -8,7 +8,11 @@ from ..schema import to_wire
 from . import _parsing as parsing
 from . import _util as util
 from .fake import FakeAgentAdapter
-from .process import PromptCLIAdapter, run_prompt_process, cli_operation_prompt
+from .process import (
+    PromptCLIAdapter,
+    prompt_for_adapter_operation,
+    run_prompt_process,
+)
 from .protocol import (
     AgentAdapterError,
     AgentRunHandle,
@@ -57,12 +61,14 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
         capabilities: HarnessCapabilities | None = None,
+        prompt_mode: str = "protocol",
     ) -> None:
         super().__init__(
             command,
             name="codex-harness",
             runner=runner or run_prompt_process,
             timeout=timeout,
+            prompt_mode=prompt_mode,
         )
         self._capabilities = capabilities or HarnessCapabilities(
             name="codex",
@@ -329,7 +335,7 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         )
 
     async def _execute(self, operation: str, request: dict[str, Any]) -> dict[str, Any]:
-        prompt = cli_operation_prompt(request)
+        prompt = prompt_for_adapter_operation(request, mode=self.prompt_mode)
         command = (*self.command, prompt)
         try:
             result = self.runner(command, request, self.timeout)

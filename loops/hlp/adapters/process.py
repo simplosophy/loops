@@ -82,6 +82,7 @@ async def run_prompt_process(
 
 
 def cli_operation_prompt(request: dict[str, Any]) -> str:
+    """Protocol-mode prompt: full HLP operation envelope for adapter contracts."""
     return (
         "You are executing an HLP adapter operation.\n"
         "Return exactly one JSON object and no markdown. The JSON object must "
@@ -90,6 +91,58 @@ def cli_operation_prompt(request: dict[str, Any]) -> str:
         "HLP request:\n"
         f"{json.dumps(request, indent=2, sort_keys=True)}"
     )
+
+
+def chat_mode_prompt(request: dict[str, Any]) -> str:
+    """Chat-oriented prompt for TUI/user free-text on prompt-CLI harnesses.
+
+    Puts the user message first so coding agents behave like a chat turn, while
+    still requiring a JSON (or JSONL) result that preserves HLP correlation.
+    """
+    correlation = str(request.get("correlation_id") or request.get("task_id") or "")
+    raw_input = request.get("input")
+    goal = ""
+    if isinstance(raw_input, dict):
+        goal = str(
+            raw_input.get("goal")
+            or raw_input.get("message")
+            or raw_input.get("prompt")
+            or ""
+        ).strip()
+        if not goal and raw_input:
+            goal = json.dumps(raw_input, sort_keys=True)
+    elif raw_input is not None:
+        goal = str(raw_input).strip()
+    if not goal:
+        goal = str(request.get("goal") or "Continue the task.").strip()
+
+    return (
+        f"{goal}\n"
+        "\n"
+        "---\n"
+        "Human-loop session constraints (keep these; do not ignore the user message "
+        "above):\n"
+        f"- correlation_id MUST be exactly: {correlation}\n"
+        "- Prefer one final JSON object (no markdown fences) with keys:\n"
+        "  run_id (stable string), correlation_id, status, summary\n"
+        "- Put your full reply text for the user in `summary`.\n"
+        "- Optional JSONL human-loop events may use nested `hlp` or `pi` payloads "
+        "with kind needs_approval / needs_choice / needs_input / artifact when a "
+        "human decision or delivery is required.\n"
+        "- Do not restate this entire protocol envelope as the user-facing answer.\n"
+    )
+
+
+def prompt_for_adapter_operation(
+    request: dict[str, Any],
+    *,
+    mode: str = "protocol",
+) -> str:
+    """Select chat vs protocol prompt body for a harness operation request."""
+    operation = str(request.get("operation") or "")
+    if mode == "chat" and operation == "delegate":
+        return chat_mode_prompt(request)
+    return cli_operation_prompt(request)
 
 
 class ProcessAgentAdapter(FakeAgentAdapter):
@@ -368,6 +421,10 @@ class PromptCLIAdapter(ProcessAgentAdapter):
     than HLP's generic JSON-over-stdin process contract. This adapter keeps the
     HLP boundary structured by embedding the operation request in the prompt and
     requiring the CLI to print a JSON result that carries the correlation id.
+
+    ``prompt_mode``:
+    - ``protocol`` (default): full HLP operation JSON envelope (adapter contracts)
+    - ``chat``: user message first for TUI free-text; lifecycle ops stay protocol
     """
 
     def __init__(
@@ -377,6 +434,7 @@ class PromptCLIAdapter(ProcessAgentAdapter):
         name: str = "prompt-cli",
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
+        prompt_mode: str = "protocol",
     ) -> None:
         super().__init__(
             command,
@@ -384,9 +442,12 @@ class PromptCLIAdapter(ProcessAgentAdapter):
             runner=runner or run_prompt_process,
             timeout=timeout,
         )
+        if prompt_mode not in {"protocol", "chat"}:
+            raise ValueError(f"unsupported prompt_mode: {prompt_mode}")
+        self.prompt_mode = prompt_mode
 
     async def _execute(self, operation: str, request: dict[str, Any]) -> dict[str, Any]:
-        prompt = cli_operation_prompt(request)
+        prompt = prompt_for_adapter_operation(request, mode=self.prompt_mode)
         command = (*self.command, prompt)
         try:
             result = self.runner(command, request, self.timeout)
@@ -438,6 +499,7 @@ class PromptCLIAdapter(ProcessAgentAdapter):
     async def healthcheck(self) -> dict[str, Any]:
         result = await super().healthcheck()
         result["prompt_mode"] = True
+        result["prompt_style"] = self.prompt_mode
         return result
 
 

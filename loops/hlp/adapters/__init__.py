@@ -24,7 +24,13 @@ from .frameworks import (
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
 )
-from .process import ProcessAgentAdapter, PromptCLIAdapter
+from .process import (
+    ProcessAgentAdapter,
+    PromptCLIAdapter,
+    chat_mode_prompt,
+    cli_operation_prompt,
+    prompt_for_adapter_operation,
+)
 from .protocol import (
     AgentAdapter,
     AgentAdapterError,
@@ -66,4 +72,7 @@ __all__ = [
     "PromptCLIAdapter",
     "PythonCallableAgentAdapter",
     "ReliableHarnessEventAdapter",
+    "chat_mode_prompt",
+    "cli_operation_prompt",
+    "prompt_for_adapter_operation",
 ]

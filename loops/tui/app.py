@@ -75,6 +75,8 @@ def build_client(
                 "--skip-git-repo-check",
             ),
             timeout=timeout,
+            # TUI free-text is chat-first; block/resume stay protocol-shaped.
+            prompt_mode="chat",
         ))
     if adapter_name == "pi":
         # Current Pi CLI: `pi --mode json -p --no-session <prompt>`.
@@ -90,6 +92,7 @@ def build_client(
                 "--no-tools",
             ),
             timeout=timeout,
+            prompt_mode="chat",
         ))
     raise AssertionError("unreachable adapter branch")
 
