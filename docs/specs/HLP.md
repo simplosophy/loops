@@ -750,6 +750,15 @@ Checkpoint 的 `proposed_actions` 批量提议。
 ### 7.7 版本兼容
 HLP v1 的 Task 能否被 v2 的 agent 执行？语义版本 + 向后兼容的具体规则待演进验证。
 
+### 7.8 Soft control 与准实时晋级
+高频软纠偏、语音双工、BCI 意图如何降采样为 `task.amend` / checkpoint，见附录 C
+（草案）。本版本 **不** 要求实现 `ControlSignal`；连续控制仍以 §2.3 / §3.2 / §4 为准。
+
+### 7.9 并发 hard checkpoint
+§3.4 仍 **SHOULD** 每 Task 单一 pending hard checkpoint。Realtime profile 可选
+Serialize / Scope-partition / Priority stack，见附录 C §C.5 与
+`docs/plans/2026-07-13-hlp-realtime-control-plane.md`。
+
 ---
 
 ## 8. 一致性级别（Conformance）
@@ -817,3 +826,115 @@ state_patch resume）；ownership 流转全部入 audit；HLP→harness adapter 
 |------|------|------|
 | 0.1.0-draft | 2026-06-19 | 首个 draft，提炼自设计稿 `docs/plans/2026-06-19-loops-protocol-stack.md` |
 | 0.2.0-draft | 2026-07-02 | 连续控制扩展：加 `task.interrupt`/`task.amend` + `steering_log`；`PermissionGrant`/`autonomy` 预授权；`Checkpoint.proposed_actions` 批量审批 + 部分批准；`CheckpointResolution.state_patch`/`edited_artifact_ref` resume-with-state；`Review.kind` 区分 plan/deliverable 评审；状态机加 interrupt 边与 plan-approved 回 in_progress。详见 `docs/plans/2026-07-02-hlp-continuous-control-extension.md` |
+| 0.2.0-draft | 2026-07-13 | 附录 C：Soft/Hard control、Channel→HLP 晋级（promotion）、InteractionRef、`HLP-realtime` profile 草案。**不** 新增一等对象或 media 绑定。设计全文见 `docs/plans/2026-07-13-hlp-realtime-control-plane.md` |
+
+## 附录 C：Soft / Hard Control 与准实时晋级（草案）
+
+> **状态**：草案。不改变 0.2.0 的 7 个一等对象与 23 个操作的规范性要求。  
+> **设计**：[realtime control plane 计划](../plans/2026-07-13-hlp-realtime-control-plane.md)
+
+### C.1 问题边界
+
+HLP **MUST** 继续只定义责任闭环语义，**MUST NOT** 拥有：
+
+- 音频/视频编解码、Realtime 房间、SFU  
+- Token/音频帧/脑电采样等媒体一等对象  
+- 具体厂商 Realtime API 或 BCI 设备 schema  
+
+准实时交互（语音双工、多模态、BCI）发生在 **channel / sensor plane**。HLP 通过
+**晋级（promotion）** 接收已降采样的责任事件。
+
+### C.2 三层时间尺度
+
+```text
+Channel / Sensor plane   高频、可丢、不可单独作法律责任依据
+        │ promotion
+        ▼
+HLP responsibility plane 低频、append-only、可重放
+        │ adapter
+        ▼
+Harness execution plane  模型 / 工具 / planning loop
+```
+
+### C.3 Soft control vs Hard control
+
+| | Hard control | Soft control |
+|---|--------------|--------------|
+| 语义 | 责任未闭合则不得继续关键动作 | 方向/偏好信号，不必然阻塞 |
+| Task.state | 通常进入 `blocked` | **SHOULD** 保持 `in_progress` |
+| 0.2.0 映射 | `checkpoint.*` / `task.interrupt` | `task.amend` / `steering_log` |
+| 例子 | 推生产、暴露密钥、资金操作 | “语气软一点”“再往左一点” |
+
+实现 **MAY** 在内部使用值对象 `ControlSignal`（见计划文档）描述意图来源、
+`confidence`、`source_kind`（`speech`/`text`/`ui`/`bci`/…）与 `principal_binding`。
+`ControlSignal` **不是** 一等对象；**MUST NOT** 替代 Task/Checkpoint。
+
+规范性草图（供 `HLP-realtime` profile 选用）：
+
+1. Soft **MUST NOT** 在 `confidence` 低于实现声明阈值时单独触发 hard 效果。  
+2. Soft **MUST NOT** 仅因存在 soft 信号就改变 `Task.state`。  
+3. Soft **MAY** 被合并后写入 **一条** `SteeringAmendment`（合并策略由 profile/host
+   声明；HLP core **SHOULD** 只收合并结果）。  
+4. Hard **MUST** 走 checkpoint 或 `task.interrupt`（或等价 hard resolve）。  
+5. Soft 与 active `PermissionGrant` 冲突时 **deny 优先**。  
+6. 每次晋级 **MUST** 在 audit 中可追溯（intent provenance）。  
+7. **Principal 永远是人**；BCI/语音等只是意图传感器。高风险 hard resolve：
+   realtime profile **SHOULD** 允许要求第二因子；**默认不得** 仅凭 BCI 关闭高风险
+   checkpoint。
+
+### C.4 晋级表示例
+
+| Channel 现象 | 晋级到 HLP？ | 结果 |
+|--------------|--------------|------|
+| 填充词 / 含糊反馈 | 否 | — |
+| 明确“停止推送” | 是 | hard：interrupt 或 checkpoint |
+| 短时连续微调指令 | 合并后是 | 一条 `task.amend` |
+| 低置信意图解码 | 否 | 等待确认 |
+| Agent token/音频流 | 否 | channel/harness；里程碑才 `artifact.commit` |
+
+### C.5 并发 hard checkpoint（profile 选择）
+
+在声明 `HLP-realtime` 时，实现 **MUST** 选择并文档化：
+
+1. **Serialize**：同一 Task 同时至多一个 hard pending checkpoint（强化 §3.4 SHOULD）  
+2. **Scope-partition**：不同 `permission_scope` 可并行 hard pending  
+3. **Priority stack**：hard > soft；较新 soft 可 supersede 旧 soft 的生效视图（存储仍
+   append-only）
+
+未声明 realtime profile 的实现 **SHOULD** 继续遵循 §3.4 单一 pending。
+
+### C.6 InteractionRef
+
+实现 **MAY** 在 audit / amendment / checkpoint 元数据中携带 opaque：
+
+```yaml
+InteractionRef:
+  channel: string
+  session_id: string
+  episode_id: string | null
+```
+
+**MUST NOT** 将 IM/Realtime Session 提升为 HLP 一等对象。
+
+### C.7 Artifact：ephemeral vs sealed
+
+- Harness/channel **MAY** 维护 ephemeral working copy（HLP 不存帧）。  
+- HLP Artifact 仍遵守 §2.3 / §3.7 不可变版本链。  
+- Review **MUST** 针对 sealed 版本。
+
+### C.8 Profile 关系
+
+| Profile | 含义 |
+|---------|------|
+| HLP-batch | 强 checkpoint 审批 |
+| HLP-continuous | 0.2.0 连续控制（本规范正文） |
+| HLP-industrial | CAS / outbox / schema 等（§6.4） |
+| HLP-realtime | Soft/Hard + promotion + 合流 + intent provenance（本附录草案） |
+
+声明 `HLP-realtime` **不等于** 提供媒体实时 SLA，只表示责任语义支持高频交互下的
+晋级与审计。
+
+### C.9 非目标
+
+见计划文档 §9。实现 **MUST NOT** 为支持本附录而引入 media 一等对象或破坏
+forward-only。

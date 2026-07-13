@@ -111,6 +111,19 @@ review-ready artifact -> HumanInboxItem(submit_review)
 Web、IM、CLI、桌面应用可以读取 `HLPClient.human_inbox(principal)`，再用自己的
 channel 进行渲染和送达。
 
+## 准实时与多模态（边界）
+
+Voice duplex、屏幕共享流、BCI 等 **准实时交互** 属于 channel / sensor plane，
+**不是** HLP core。HLP 通过 **晋级（promotion）** 接收已降采样的责任事件：
+
+- **Hard control** → checkpoint / `task.interrupt`（可阻塞 Task）  
+- **Soft control** → 合并后的 `task.amend` / steering（通常不改 state）  
+- Token/音频帧 **不** 进入一等对象；里程碑才 `artifact.commit`
+
+规范草案见 `docs/specs/HLP.md` 附录 C 与
+`docs/plans/2026-07-13-hlp-realtime-control-plane.md`。TUI 对 harness JSONL 的
+stream **展示** 是 channel 能力，不等于 HLP 拥有实时媒体协议。
+
 ## 设计原则
 
 - 极简：HLP SDK 只保留责任闭环必要对象和操作。
