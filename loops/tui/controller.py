@@ -9,10 +9,13 @@ from loops.hlp import (
     AgentAdapterError,
     CheckpointResolutionAction,
     Constraints,
+    ControlSignal,
     HLPClient,
+    InteractionRef,
     ProtocolError,
     ReviewComment,
     ReviewVerdict,
+    merge_soft_control_signals,
 )
 
 from .commands import CommandParseError, InputIntent, parse_user_input
@@ -263,13 +266,50 @@ class TUIController:
                 text=text,
                 intent="clarify",
             )
+            amended = f"amended task {task.id}"
             self._append(
                 session_id,
                 kind="task",
-                text=f"amended task {task.id}",
+                text=amended,
                 ref=task.id,
             )
-            return TUIResult(f"amended task {task.id}")
+            return await self._finish_with_harness_output(session_id, amended)
+        if intent.name == "promote":
+            # HLP-realtime: UI soft control → host merge → task.amend + provenance.
+            text = _required_text(intent, "/promote requires soft-control text")
+            session = self._require_active(session_id)
+            signal = ControlSignal(
+                strength="soft",
+                intent="constrain",
+                principal_binding=session.principal,
+                confidence=1.0,
+                source_kind="ui",
+                text=text,
+                promotion="steering",
+                run_id=session.active_run_id or None,
+                interaction=InteractionRef(
+                    channel="tui",
+                    session_id=session_id,
+                ),
+            )
+            promoted = merge_soft_control_signals(
+                (signal,),
+                by=session.principal,
+                intent="constrain",
+            )
+            task = await self.client.amend(
+                session.active_task_id,
+                by=session.principal,
+                text=promoted.amendment.text,
+                intent="constrain",
+                promotion_provenance=promoted.provenance,
+            )
+            line = (
+                f"promoted soft → amended task {task.id} "
+                f"(profile={promoted.provenance.get('profile')})"
+            )
+            self._append(session_id, kind="task", text=line, ref=task.id)
+            return await self._finish_with_harness_output(session_id, line)
         if intent.name == "interrupt":
             prompt = _required_text(intent, "/interrupt requires a reason")
             session = self._require_active(session_id)

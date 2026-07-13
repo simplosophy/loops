@@ -687,6 +687,28 @@ def test_hlp_review_commented_is_unsupported_and_does_not_create_review(tmp_path
     assert client.store.reviews_of_artifact(artifact.id) == []
 
 
+def test_tui_promote_soft_control_amends_with_provenance(tmp_path):
+    adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
+    # Need in_progress for amend.
+    run(controller.handle(session.id, "start work"))
+    active = store.resume(session.id)
+    assert active.active_task_id
+
+    result = run(controller.handle(session.id, "/promote focus on auth boundaries"))
+    assert "promoted soft → amended task" in result.output
+    assert "HLP-realtime" in result.output or "profile=HLP-realtime" in result.output
+
+    task = run(client.get_task(active.active_task_id))
+    assert task.state == "in_progress"
+    assert any("focus on auth boundaries" in item.text for item in task.steering_log)
+    events = run(client.replay_audit(task.id))
+    amended = [e for e in events if e.action == "task.amended"]
+    assert amended
+    after = amended[-1].after
+    assert isinstance(after, dict)
+    assert after.get("promotion", {}).get("profile") == "HLP-realtime"
+
+
 def test_hlp_permissions_record_session_metadata_only(tmp_path):
     adapter, _client, store, session, controller = _started_hlp_tui(tmp_path)
 

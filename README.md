@@ -98,6 +98,17 @@ BCI-alone high-risk deny; no voice/BCI hardware):
 uv run loops-hlp-realtime-demo
 ```
 
+In the TUI, promote soft UI control into steering (with audit provenance):
+
+```bash
+uv run loops-hlp-tui --adapter fake
+> do the work
+> /promote focus on auth boundaries
+```
+
+Optional profile constants: `HLP_REALTIME_PROFILE` / `HLP_REALTIME_SPEC_VERSION`
+(`0.3.0-draft`). Package version remains `0.2.0`.
+
 Run the **PR Review Desk** host application (real embedding case, offline by
 default):
 

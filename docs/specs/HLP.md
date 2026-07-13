@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **规范版本** | 0.2.0-draft |
-| **状态** | Draft — 0.2.0 核心语义已由参考实现和离线 conformance suite 覆盖 |
+| **规范版本** | 0.2.0-draft（核心）+ **0.3.0-draft**（附录 C / HLP-realtime，可选 profile） |
+| **状态** | Draft — 0.2.0 核心语义已由参考实现和离线 conformance suite 覆盖；0.3 realtime 为附录草案 + reference helpers |
 | **定位** | HLP-first：本项目核心协议和 SDK，下层通过既有 agent harness / capability 生态接入 |
 | **层级** | 人机责任闭环层 |
 | **设计稿** | [`docs/plans/2026-06-19-loops-protocol-stack.md`](../plans/2026-06-19-loops-protocol-stack.md) |
@@ -835,6 +835,7 @@ state_patch resume）；ownership 流转全部入 audit；HLP→harness adapter 
 | 0.2.0-draft | 2026-07-02 | 连续控制扩展：加 `task.interrupt`/`task.amend` + `steering_log`；`PermissionGrant`/`autonomy` 预授权；`Checkpoint.proposed_actions` 批量审批 + 部分批准；`CheckpointResolution.state_patch`/`edited_artifact_ref` resume-with-state；`Review.kind` 区分 plan/deliverable 评审；状态机加 interrupt 边与 plan-approved 回 in_progress。详见 `docs/plans/2026-07-02-hlp-continuous-control-extension.md` |
 | 0.2.0-draft | 2026-07-13 | 附录 C：Soft/Hard control、Channel→HLP 晋级（promotion）、InteractionRef、`HLP-realtime` profile 草案。**不** 新增一等对象或 media 绑定。设计全文见 `docs/plans/2026-07-13-hlp-realtime-control-plane.md` |
 | 0.2.0-draft | 2026-07-13 | 附录 C **决策收敛**：Soft 不进状态机；合并在 host/profile、HLP 只收结果；BCI 默认不得单独 hard-resolve 高风险 checkpoint。作为 0.3 规范草案收口，仍不改 0.2.0 操作集。 |
+| 0.3.0-draft | 2026-07-13 | **可选 profile 版本标签**（不替换 0.2.0 核心版本号）：`HLP_REALTIME_SPEC_VERSION` / 附录 C；reference：`ControlSignal`、`merge_soft_control_signals`、TUI `/promote`、`loops-hlp-realtime-demo`。Package 版本仍为 0.2.0。 |
 
 ## 附录 C：Soft / Hard Control 与准实时晋级（0.3 规范草案）
 

@@ -6,6 +6,9 @@ from typing import Literal
 HLP_SPEC_VERSION = "0.2.0-draft"
 HLP_SCHEMA_VERSION = "0.2"
 HLP_PROFILE = "HLP-industrial"
+# Optional realtime profile (appendix C); package version remains 0.2.0.
+HLP_REALTIME_PROFILE = "HLP-realtime"
+HLP_REALTIME_SPEC_VERSION = "0.3.0-draft"
 
 
 # ── 错误码 (HLP spec §6.1) ──

@@ -9,6 +9,8 @@ import pytest
 from loops.hlp import (
     ControlSignal,
     HLPClient,
+    HLP_REALTIME_PROFILE,
+    HLP_REALTIME_SPEC_VERSION,
     InteractionRef,
     ProtocolError,
     assert_soft_does_not_change_task_state,
@@ -20,6 +22,11 @@ from loops.hlp import (
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def test_realtime_profile_constants():
+    assert HLP_REALTIME_PROFILE == "HLP-realtime"
+    assert HLP_REALTIME_SPEC_VERSION == "0.3.0-draft"
 
 
 def test_merge_soft_signals_produces_one_amendment_without_state_semantics():

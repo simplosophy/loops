@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .objects import ControlSignal, InteractionRef, SteeringAmendment
-from .types import ProtocolError, SteeringIntent, TaskState
+from .types import (
+    HLP_REALTIME_PROFILE,
+    ProtocolError,
+    SteeringIntent,
+    TaskState,
+)
 
 
 # Default confidence floor for promoting soft signals to steering (profile MAY override).
@@ -172,7 +177,7 @@ def promotion_audit_payload(
 ) -> dict[str, Any]:
     """Build reducer-ready intent provenance for audit.after / reducer fields."""
     return {
-        "profile": "HLP-realtime",
+        "profile": HLP_REALTIME_PROFILE,
         "promotion": promotion,
         "principal": principal,
         "result_summary": result_summary,

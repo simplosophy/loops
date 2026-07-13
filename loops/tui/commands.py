@@ -47,6 +47,11 @@ COMMANDS: dict[str, CommandDefinition] = {
     "choose": CommandDefinition("choose", "Resolve a choice checkpoint.", "hlp"),
     "input": CommandDefinition("input", "Provide text to an input checkpoint.", "hlp"),
     "amend": CommandDefinition("amend", "Append HLP steering amendment.", "hlp"),
+    "promote": CommandDefinition(
+        "promote",
+        "Promote soft UI control into task.amend (HLP-realtime).",
+        "hlp",
+    ),
     "interrupt": CommandDefinition("interrupt", "Raise a human interrupt checkpoint.", "hlp"),
     "review": CommandDefinition("review", "Submit artifact review.", "hlp"),
     "audit": CommandDefinition("audit", "Replay HLP audit.", "hlp"),
