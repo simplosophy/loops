@@ -974,7 +974,9 @@ def test_pi_harness_adapter_projects_pi_jsonl_events_into_hlp():
     assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
         ("checkpoint", "resolve_checkpoint", checkpoint.id),
     ]
-    assert requests[0]["command"][:5] == ("pi", "--mode", "json", "-p", "--no-session")
+    assert requests[0]["command"][:4] == ("pi", "--mode", "json", "-p")
+    # Session continuity (default) drops --no-session so runs are resumable.
+    assert "--no-session" not in requests[0]["command"]
     assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
     assert requests[0]["timeout"] == 9.0
 

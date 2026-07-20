@@ -213,6 +213,18 @@ injected runners for every operation, a projection robustness suite
 (`tests/test_hlp_projection_robustness.py`), plus an opt-in real-CLI
 lifecycle suite (`HLP_RUN_EXTERNAL_CLI_E2E=1`, see Verification).
 
+**Session-resume continuity** (default; `session_continuity=False` restores
+one-shot behavior): delegate binds the CLI-native session id from the wire,
+and follow-up ops (`block` / `resume` / `steer` / `cancel`) resume the same
+native session — `codex exec resume`, `claude --resume`, `kimi --session`,
+`pi --session`. Continuity means *a new turn in the same session context*,
+the strongest form these CLIs offer today, not frozen-process resumption.
+Persistence-disabling flags (`--ephemeral`, `--no-session`,
+`--no-session-persistence`) are dropped automatically when continuity is on.
+Proven live with the codeword probe (`uv run loops-hlp-continuity-e2e`):
+the model recites a fact it was told before the checkpoint cycle — only
+possible in a truly resumed session.
+
 ## Industrial Profile (Reference)
 
 `HLP-industrial` in this repository is a **reference profile**: per-task CAS /

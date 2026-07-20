@@ -123,10 +123,10 @@ Adapter capability baseline:
 | `ProcessAgentAdapter` | JSON object or JSONL stdout | JSON command wrapper | JSON command wrapper | validates returned `correlation_id` when present |
 | `PromptCLIAdapter` | one-shot prompt + parsed JSON result | one-shot prompt wrapper | one-shot prompt wrapper | prompt requires returned `correlation_id`; validates when present |
 | `CodexCLIAdapter` / `KimiCLIAdapter` / `ClaudeCodeCLIAdapter` | local CLI prompt mode | local CLI prompt mode | local CLI prompt mode | HLP `task_id` kept as run correlation |
-| `CodexHarnessAdapter` | `codex exec --json` prompt mode | local CLI prompt mode | local CLI prompt mode | validates returned and projected event `correlation_id` when present |
-| `PiHarnessAdapter` | `pi --mode json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared JSONL projection + peek/ack |
-| `ClaudeCodeHarnessAdapter` | `claude -p --output-format stream-json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared projection; transport-level duplicate events（result envelope 重复 assistant 文本）按签名入队去重 |
-| `KimiHarnessAdapter` | `kimi -p --output-format stream-json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared projection（HLP payload 嵌在 assistant content 文本内） |
+| `CodexHarnessAdapter` | `codex exec --json` prompt mode | `codex exec resume`（session 连续性，默认开） | local CLI prompt mode | validates returned and projected event `correlation_id` when present |
+| `PiHarnessAdapter` | `pi --mode json` prompt mode | `pi --session <id>` 恢复原生会话 | local CLI prompt mode | same shared JSONL projection + peek/ack |
+| `ClaudeCodeHarnessAdapter` | `claude -p --output-format stream-json` prompt mode（protocol 模式原生 `--json-schema` 约束信封） | `claude --resume <id>` 恢复原生会话 | local CLI prompt mode | same shared projection; transport-level duplicate events（result envelope 重复 assistant 文本）按签名入队去重 |
+| `KimiHarnessAdapter` | `kimi -p --output-format stream-json` prompt mode | `kimi --session <id>` 恢复原生会话 | local CLI prompt mode | same shared projection（HLP payload 嵌在 assistant content 文本内） |
 | `OpenAIPythonSDKAdapter` | `client.responses.create(...)` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
 | `OpenAIAgentsSDKAdapter` | injected `runner.run/run_sync` | local contract recording, not real runtime pause yet | local contract recording | local handle |
 | `LangGraphAdapter` | `ainvoke/invoke` with `configurable.thread_id` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |

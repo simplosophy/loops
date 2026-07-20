@@ -95,10 +95,15 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         timeout: float = 120.0,
         capabilities: HarnessCapabilities | None = None,
         prompt_mode: str = "protocol",
+        session_continuity: bool = True,
     ) -> None:
-        if prompt_mode == "protocol" and command is _DEFAULT_HARNESS_COMMAND:
-            # Enforce the HLP result envelope natively; chat mode stays free-form.
-            command = (*command, "--output-schema", _hlp_result_schema_path())
+        if command is _DEFAULT_HARNESS_COMMAND:
+            if session_continuity:
+                # --ephemeral sessions are not recorded and cannot be resumed.
+                command = tuple(part for part in command if part != "--ephemeral")
+            if prompt_mode == "protocol":
+                # Enforce the HLP result envelope natively; chat mode stays free-form.
+                command = (*command, "--output-schema", _hlp_result_schema_path())
         super().__init__(
             command,
             name="codex-harness",
@@ -113,9 +118,21 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         )
         self._codex_events: dict[str, list[dict[str, Any]]] = {}
         self._codex_event_counter = 0
+        # run_id -> CLI-native session id (session-resume continuity).
+        self._session_continuity = session_continuity
+        self._run_sessions: dict[str, str] = {}
 
     def harness_capabilities(self) -> HarnessCapabilities:
         return self._capabilities
+
+    def session_of_run(self, run_id: str) -> str | None:
+        """The CLI-native session id bound to a run, when known."""
+        return self._run_sessions.get(run_id)
+
+    def _bind_session(self, run_id: str, events: tuple[dict[str, Any], ...]) -> None:
+        session_id = parsing.session_id_from_events(events)
+        if session_id:
+            self._run_sessions[run_id] = session_id
 
     async def delegate(
         self,
@@ -154,6 +171,7 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         )
         self.process_results[run_id] = payload
         self._queue_codex_events(run_id, events)
+        self._bind_session(run_id, events)
         self.calls.append(
             (
                 "delegate",
@@ -287,6 +305,7 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         )
         self.process_results[new_run_id] = payload
         self._queue_codex_events(new_run_id, events)
+        self._bind_session(new_run_id, events)
         self.calls.append(
             (
                 "handoff",
@@ -417,7 +436,7 @@ class CodexHarnessAdapter(PromptCLIAdapter):
 
     async def _execute(self, operation: str, request: dict[str, Any]) -> dict[str, Any]:
         prompt = prompt_for_adapter_operation(request, mode=self.prompt_mode)
-        command = (*self.command, prompt)
+        command = self._command_for_prompt(operation, request, prompt)
         try:
             result = self.runner(command, request, self.timeout)
             if inspect.isawaitable(result):
@@ -462,8 +481,42 @@ class CodexHarnessAdapter(PromptCLIAdapter):
                 "process stdout did not contain Codex JSON events",
                 details={"stdout": result.stdout, "stderr": result.stderr},
             ) from exc
+        # Schema-less CLIs may omit the echo; the adapter binds correlation locally.
+        # Present-but-different values were already rejected above.
+        expected_correlation = str(request.get("correlation_id") or "")
+        if expected_correlation and "correlation_id" not in payload:
+            payload["correlation_id"] = expected_correlation
         payload[parsing.CODEX_EVENTS_KEY] = events
         return payload
+
+    _RESUME_OPS = frozenset({"block", "resume", "steer", "cancel"})
+
+    def _command_for_prompt(
+        self,
+        operation: str,
+        request: dict[str, Any],
+        prompt: str,
+    ) -> tuple[str, ...]:
+        """One-shot command, or the CLI's session-resume command for follow-up ops.
+
+        Continuity means "a new turn in the same native session" — the strongest
+        form these CLIs offer today, not frozen-process resumption.
+        """
+        if self._session_continuity and operation in self._RESUME_OPS:
+            session_id = self._run_sessions.get(str(request.get("run_id") or ""))
+            if session_id:
+                return self._resume_command(session_id, prompt)
+        return (*self.command, prompt)
+
+    def _resume_command(self, session_id: str, prompt: str) -> tuple[str, ...]:
+        """codex exec resume [options] <thread_id> [prompt] (options come first)."""
+        command: tuple[str, ...] = ("codex", "exec", "resume")
+        if "--json" in self.command:
+            command = (*command, "--json")
+        if "--output-schema" in self.command:
+            index = self.command.index("--output-schema")
+            command = (*command, "--output-schema", self.command[index + 1])
+        return (*command, session_id, prompt)
 
     def _queue_codex_events(
         self,

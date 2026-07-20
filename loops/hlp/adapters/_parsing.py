@@ -112,6 +112,24 @@ def extract_last_json_object(text: str) -> dict[str, Any] | None:
     return candidates[-1] if candidates else None
 
 
+def session_id_from_events(events: tuple[dict[str, Any], ...]) -> str | None:
+    """Extract the CLI's native session id from one op's stdout events.
+
+    Shapes: codex ``thread.started.thread_id``, pi ``type=session.id``,
+    claude stream-json top-level ``session_id``, kimi meta-line ``session_id``.
+    """
+    for event in events:
+        event_type = str(event.get("type") or "")
+        if event_type == "thread.started" and event.get("thread_id"):
+            return str(event["thread_id"])
+        if event_type == "session" and event.get("id"):
+            return str(event["id"])
+    for event in events:
+        if event.get("session_id"):
+            return str(event["session_id"])
+    return None
+
+
 CODEX_EVENTS_KEY = "_codex_events"
 
 # Result envelope schema for CLIs with native structured-output support

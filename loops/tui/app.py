@@ -77,6 +77,7 @@ def build_client(
 
     if adapter_name == "codex":
         # Harness-capable path so JSONL human events project into checkpoints/artifacts.
+        # No --ephemeral: sessions must be recorded for resume continuity.
         return HLPClient(
             adapter=CodexHarnessAdapter(
                 command=(
@@ -85,7 +86,6 @@ def build_client(
                     "--json",
                     "--sandbox",
                     "read-only",
-                    "--ephemeral",
                     "--skip-git-repo-check",
                 ),
                 runner=runner,

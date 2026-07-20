@@ -213,6 +213,27 @@ def test_missing_correlation_echo_is_tolerated_but_run_still_binds():
     handle = run(client.delegate(task.id, "agent_k", capability="probe"))
     assert handle.run_id == "run_y"
     assert adapter.task_of_run(handle.run_id) == task.id
+    # The adapter fills the absent echo from the request (local binding).
+    assert adapter.process_results[handle.run_id]["correlation_id"] == task.id
+
+
+def test_wrong_correlation_echo_still_rejected():
+    async def runner(command, request, timeout):
+        line = json.dumps(
+            {
+                "role": "assistant",
+                "content": json.dumps(
+                    {"run_id": "run_z", "status": "ok", "correlation_id": "task_WRONG"}
+                ),
+            }
+        )
+        return ProcessResult(exit_code=0, stdout=line, stderr="")
+
+    adapter = KimiHarnessAdapter(runner=runner)
+    client = HLPClient(adapter=adapter)
+    task = run(client.create_task(principal="user_a", goal="wrong echo"))
+    with pytest.raises(AgentAdapterError):
+        run(client.delegate(task.id, "agent_k", capability="probe"))
 
 
 def test_malformed_json_line_fails_fast_with_adapter_error():

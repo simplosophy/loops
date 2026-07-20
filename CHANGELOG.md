@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Session-resume continuity for all four CLI harness adapters: delegate binds
+  the CLI-native session id from the wire (`thread.started`, `session_id`,
+  meta line, `type=session` event) and follow-up ops (`block` / `resume` /
+  `steer` / `cancel`) resume the same native session via
+  `codex exec resume`, `claude --resume`, `kimi --session`, `pi --session`.
+  `session_continuity=False` restores one-shot behavior; persistence-disabling
+  flags are dropped automatically. `session_of_run()` exposes the binding.
+  Proven live by the codeword probe (`loops-hlp-continuity-e2e`,
+  `tests/external/test_hlp_session_continuity_real_cli.py`) and offline
+  contract tests (`tests/test_hlp_session_continuity.py`).
 - Native structured output for the CLI projection contract: protocol-mode
   Codex (`--output-schema`) and Claude Code (`--json-schema`) adapters now
   enforce the shared `HLP_RESULT_SCHEMA` envelope (`run_id`,
@@ -78,6 +88,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Adapters now fill an absent `correlation_id` echo from the request (local
+  binding) for schema-less CLIs (Pi/Kimi prompt-contract variance);
+  present-but-mismatched echoes are still rejected.
 - Payload extraction now also digs `structured_output` — the field Claude
   Code fills when `--json-schema` validates the reply envelope.
 - `.env.example` now documents only the environment variables the repository
