@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- HTTP reference transport binding (`loops.hlp.transport`, spec §7.1):
+  stdlib-only `HLPHttpServer` serving all 23 operations via
+  `POST /v1/ops/<object.verb>` (CAS + idempotency pass-through), audit-event
+  SSE stream (`GET /v1/events`), version and health endpoints, §6.1 error
+  status mapping, and `X-HLP-Principal` binding for mutating ops.
+  `HttpHLPWireClient` reference client and `loops-hlp-serve` console entry.
+  Zero new dependencies; real-socket test suite
+  (`tests/test_hlp_transport.py`).
 - Session forking for handoff: on CLIs with native fork support the
   receiving agent inherits the full session context — `pi --fork` and
   `claude --resume --fork-session` (new session id bound from the wire).

@@ -186,7 +186,7 @@ HLP 参考实现刻意不依赖任何自研下层 runtime。这证明协议层�
 
 ## 不在本参考实现范围（spec §7 开放议题）
 
-- transport 绑定（HTTP/gRPC/WebSocket）— 当前纯内存 async API
+- transport 绑定（HTTP/gRPC/WebSocket）— 当前纯内存 async API；§7.1 已有 **stdlib 参考绑定 v1**（`loops.hlp.transport`：`POST /v1/ops/<object.verb>` 全 23 操作 + SSE audit 流 + version/health，零新增依赖；非目标：TLS/RBAC/WebSocket/远程 adapter 注册/typed from_wire；spec 文本未改，§7.1 收敛为后续提案）
 - vendor package 直接依赖 — 当前通过对象注入提供框架级契约，不强依赖第三方包
 - 服务端数据库后端 — 当前提供内存 store + SQLite 本地 snapshot store；生产级对象表、CAS、schema migration、audit hash chain 和 outbox/recovery 是后续 hardening 项
 - HLP server/CLI 管理面 — 当前只提供 SDK 和 demo console script

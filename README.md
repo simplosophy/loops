@@ -253,6 +253,38 @@ Recovery and timeout semantics are concrete and tested:
   operation; the reference policy keeps the task blocked (pure suspension,
   spec §7.2).
 
+## Transport (HTTP reference binding)
+
+Spec §7.1 leaves transport open; this repository ships a **stdlib-only
+reference binding** (zero new dependencies) so hosts and channels can talk to
+a remote HLP server. The wire contract is the deliverable — production
+deployments are expected to rebind with their own framework.
+
+```bash
+uv run loops-hlp-serve --adapter fake --port 8471
+curl -X POST http://127.0.0.1:8471/v1/ops/task.create \
+  -H 'Content-Type: application/json' -H 'X-HLP-Principal: user_alice' \
+  -d '{"params":{"principal":"user_alice","goal":"ship safely"}}'
+curl http://127.0.0.1:8471/v1/events   # SSE audit stream (hash-chained)
+```
+
+- `POST /v1/ops/<object.verb>` — all 23 protocol operations plus
+  `human.inbox`, `pending.outbox`, `checkpoints.expire_due`; body carries
+  `params`, optional `expected_task_revision` (CAS) and `idempotency_key`.
+- Errors map `ProtocolError` codes to their §6.1 HTTP analogies
+  (400/401/404/408/409/410/412) with the §6.2 error object.
+- Mutating operations require the `X-HLP-Principal` header; real
+  authentication stays deployment-side (spec §1.2 RBAC is not HLP's).
+- `GET /v1/events?after=<seq>` — SSE stream of the §3.9 audit events;
+  `GET /v1/version`, `GET /v1/health`.
+- `HttpHLPWireClient` (`loops.hlp.transport`) is the matching wire-level
+  reference client; results are wire dicts (the wire is the contract).
+
+Non-goals for this binding: no framework dependency, no TLS, no RBAC, no
+WebSocket/realtime soft-signal streaming, no remote adapter registration
+(adapters stay server-local), and no typed `from_wire` reconstruction
+(follow-up). The spec text is unchanged; converging §7.1 is a later proposal.
+
 For Kimi, the smoke demo can build a temporary `kimi-cli` config from
 `~/.metaworker/config.yaml` when native Kimi Code has no model configured. The
 temporary file is created in the system temp directory and deleted after the

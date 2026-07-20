@@ -45,6 +45,7 @@ loops-hlp-harness-demo = "examples.hlp_harness_wrap_demo:main"
 loops-hlp-local-cli-demo = "examples.hlp_local_cli_e2e:main"
 loops-hlp-pr-desk = "examples.hlp_pr_review_desk:main"
 loops-hlp-realtime-demo = "examples.hlp_realtime_promotion_demo:main"
+loops-hlp-serve = "loops.hlp.transport.serve:main"
 loops-hlp-soft-e2e = "examples.hlp_soft_harness_e2e:main"
 loops-hlp-tui = "loops.tui.app:main"
 
