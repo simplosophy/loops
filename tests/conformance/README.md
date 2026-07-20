@@ -38,3 +38,12 @@ envelopes, and version negotiation.
 
 The suite is intentionally offline. Real local CLI smoke tests remain opt-in
 because they depend on user-installed Codex/Kimi/Claude binaries and credentials.
+
+Adapter-level evidence lives next to the profiles: the four first-party CLI
+harness adapters (Codex, Pi, Claude Code, Kimi) have offline contract tests in
+`tests/test_hlp_sdk.py` (full operation surface, projection, correlation
+rejection, peek/ack) and wire-variance robustness tests in
+`tests/test_hlp_projection_robustness.py` (markdown fences, prose, CRLF,
+unicode, duplicate events, malformed lines, native structured-output wiring).
+Opt-in live runs (`tests/external/`) cover the full lifecycle against the real
+installed CLIs.

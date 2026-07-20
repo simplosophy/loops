@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -419,6 +420,44 @@ def test_checkpoint_resolve_expired_checkpoint_uses_specific_error_code():
         run(ops.checkpoint_resolve(ckpt.id, by="alice", action="approve"))
 
     assert e.value.code == "CHECKPOINT_EXPIRED"
+
+
+def test_expire_due_checkpoints_sweeps_only_due_pending():
+    """§7.2 参考扫描：到期 pending 被 expire，其余不动；重复扫描幂等。"""
+    ops = HumanLoopOperations()
+    due_task = run(ops._seed_to_in_progress())
+    due_ckpt = run(
+        ops.checkpoint_raise(task_id=due_task.id, kind="approval", prompt="due?", raised_by="agent")
+    )
+    due_ckpt.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+
+    future_task = run(ops._seed_to_in_progress())
+    future_ckpt = run(
+        ops.checkpoint_raise(
+            task_id=future_task.id, kind="approval", prompt="later?", raised_by="agent"
+        )
+    )
+    future_ckpt.expires_at = datetime.now(UTC) + timedelta(hours=1)
+
+    open_task = run(ops._seed_to_in_progress())
+    open_ckpt = run(
+        ops.checkpoint_raise(
+            task_id=open_task.id, kind="approval", prompt="open?", raised_by="agent"
+        )
+    )
+
+    expired = run(ops.expire_due_checkpoints())
+
+    assert [c.id for c in expired] == [due_ckpt.id]
+    assert due_ckpt.state == "expired"
+    assert future_ckpt.state == "pending"
+    assert open_ckpt.state == "pending"
+    # 参考策略：超时后 task 保持 blocked（纯挂起）
+    assert run(ops.task_get(due_task.id)).state == "blocked"
+    actions = [event.action for event in ops.store.audit_log.all()]
+    assert actions.count("task.checkpoint.expired") == 1
+    # 幂等：重复扫描无副作用
+    assert run(ops.expire_due_checkpoints()) == ()
 
 
 def test_checkpoint_resolve_adapter_failure_does_not_resolve_checkpoint():

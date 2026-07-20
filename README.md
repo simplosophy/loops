@@ -202,9 +202,16 @@ peek/ack event delivery, and chat/protocol prompt modes:
 Harness adapters project explicit `hlp` / `pi` human-loop payloads into HLP
 checkpoints and artifacts, validate correlation on every event line, and drop
 transport-level duplicates (e.g. Claude Code's `result` envelope repeats the
-final assistant text). End-to-end coverage: offline contract tests with
-injected runners for every operation, plus an opt-in real-CLI lifecycle suite
-(`HLP_RUN_EXTERNAL_CLI_E2E=1`, see Verification).
+final assistant text). In protocol mode, Codex and Claude Code additionally
+enforce the reply envelope **natively** — `--output-schema` / `--json-schema`
+against the shared `HLP_RESULT_SCHEMA` (closed object: `run_id`,
+`correlation_id`, `status`, `summary`, `error`) — so the correlation echo no
+longer depends on prompt discipline; Kimi and Pi have no such flag and are
+covered by the robust extraction layer (markdown fences, prose, CRLF, unicode
+variance all tested). End-to-end coverage: offline contract tests with
+injected runners for every operation, a projection robustness suite
+(`tests/test_hlp_projection_robustness.py`), plus an opt-in real-CLI
+lifecycle suite (`HLP_RUN_EXTERNAL_CLI_E2E=1`, see Verification).
 
 ## Industrial Profile (Reference)
 
@@ -213,6 +220,18 @@ idempotency, adapter outbox intent, reliable harness event peek/ack, permission
 scope grammar, reducer-ready audit with optional hash chain, and wire schema /
 version negotiation. It proves protocol semantics offline. It is **not** a
 multi-writer production backend or managed control plane.
+
+Recovery and timeout semantics are concrete and tested:
+
+- **Outbox recovery loop**: adapter intents are persisted before side effects
+  and stay `pending` on crash. `pending_adapter_outbox()` (client and
+  operations level) exposes them; retrying the original operation with the
+  same `idempotency_key` reuses the persisted intent and never repeats
+  committed side effects.
+- **Checkpoint timeout sweep**: `expire_due_checkpoints(now)` expires every
+  pending checkpoint past `expires_at` through the audited `checkpoint.expire`
+  operation; the reference policy keeps the task blocked (pure suspension,
+  spec §7.2).
 
 For Kimi, the smoke demo can build a temporary `kimi-cli` config from
 `~/.metaworker/config.yaml` when native Kimi Code has no model configured. The

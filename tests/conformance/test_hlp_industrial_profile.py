@@ -957,6 +957,57 @@ def test_retry_reuses_amendment_payload_from_pending_adapter_outbox():
     assert ops.store.adapter_outbox_records()[0].state == "succeeded"
 
 
+def test_pending_adapter_outbox_query_drives_recovery_loop():
+    class FailAfterSideEffectAdapter(FakeAgentAdapter):
+        def __init__(self):
+            super().__init__()
+            self.block_checkpoint_ids = []
+
+        async def block(self, run_id, checkpoint_id, reason, *, context=None):
+            self.block_checkpoint_ids.append(checkpoint_id)
+            if len(self.block_checkpoint_ids) == 1:
+                raise RuntimeError("simulated crash after adapter side effect")
+            await super().block(run_id, checkpoint_id, reason, context=context)
+
+    adapter = FailAfterSideEffectAdapter()
+    ops = HumanLoopOperations(adapter=adapter)
+    task = run(ops._seed_to_in_progress())
+    revision = run(ops.task_get(task.id)).revision
+
+    with pytest.raises(RuntimeError):
+        run(
+            ops.task_interrupt(
+                task.id,
+                by="alice",
+                prompt="Recover me.",
+                expected_task_revision=revision,
+                idempotency_key="recovery-loop",
+            )
+        )
+
+    pending = run(ops.pending_adapter_outbox())
+    assert len(pending) == 1
+    record = pending[0]
+    assert record.state == "pending"
+    assert record.operation == "task.interrupt"
+    assert record.task_id == task.id
+
+    # Recovery: retry the operation with the same idempotency key.
+    checkpoint = run(
+        ops.task_interrupt(
+            task.id,
+            by="alice",
+            prompt="Recover me.",
+            expected_task_revision=revision,
+            idempotency_key="recovery-loop",
+        )
+    )
+
+    assert run(ops.pending_adapter_outbox()) == ()
+    assert adapter.block_checkpoint_ids == [checkpoint.id, checkpoint.id]
+    assert ops.store.adapter_outbox_records()[0].state == "succeeded"
+
+
 def test_sqlite_restart_retries_pending_adapter_outbox_with_context(tmp_path):
     class FailAfterSideEffectAdapter(FakeAgentAdapter):
         async def block(self, run_id, checkpoint_id, reason, *, context=None):

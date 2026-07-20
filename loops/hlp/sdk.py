@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from .adapters import AgentAdapter, AgentRunHandle, FakeAgentAdapter
 from .events import EventBus, HLPEvent, InMemoryEventBus
 from .objects import (
+    AdapterOutboxRecord,
     Artifact,
     ArtifactPayload,
     Checkpoint,
@@ -339,6 +341,15 @@ class HLPClient:
 
     async def read_ledger(self, scope: str, key: str) -> Any | None:
         return await self.operations.ledger_read(scope, key)
+
+    async def pending_adapter_outbox(self) -> tuple[AdapterOutboxRecord, ...]:
+        """Adapter outbox records still pending; retry them via the original
+        idempotency-keyed operations (see HumanLoopOperations)."""
+        return await self.operations.pending_adapter_outbox()
+
+    async def expire_due_checkpoints(self, now: datetime | None = None) -> tuple[Checkpoint, ...]:
+        """Expire pending checkpoints past expires_at (spec §7.2 sweep)."""
+        return await self.operations.expire_due_checkpoints(now)
 
     async def project_harness_events(self, run_id: str) -> list[Any]:
         """Project existing harness events into HLP human-loop objects."""

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from ..objects import (
@@ -12,7 +13,7 @@ from ..objects import (
 )
 from ..state_machine import check_transition
 from ..types import CheckpointKind, CheckpointResolutionAction, ProtocolError
-from ._base import HumanLoopOperationsBase, _jsonable, _TaskOperationReplay
+from ._base import HumanLoopOperationsBase, _jsonable, _now, _TaskOperationReplay
 
 
 class CheckpointOps(HumanLoopOperationsBase):
@@ -267,3 +268,20 @@ class CheckpointOps(HumanLoopOperationsBase):
         )
         self._commit_task_operation(task, idempotency, ckpt)
         return ckpt
+
+    async def expire_due_checkpoints(self, now: datetime | None = None) -> tuple[Checkpoint, ...]:
+        """Expire every pending checkpoint whose expires_at has passed (§7.2 sweep).
+
+        Reference policy: pure suspension — the task stays blocked. Each expiry
+        goes through checkpoint_expire (preconditions, audit, CAS/idempotency),
+        so repeated sweeps are no-ops.
+        """
+        now = now or _now()
+        expired: list[Checkpoint] = []
+        for checkpoint in list(self.store.checkpoints.values()):
+            if checkpoint.state != "pending":
+                continue
+            if checkpoint.expires_at is None or checkpoint.expires_at > now:
+                continue
+            expired.append(await self.checkpoint_expire(checkpoint.id))
+        return tuple(expired)

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Native structured output for the CLI projection contract: protocol-mode
+  Codex (`--output-schema`) and Claude Code (`--json-schema`) adapters now
+  enforce the shared `HLP_RESULT_SCHEMA` envelope (`run_id`,
+  `correlation_id`, `status`, `summary`, `error`; closed object per Codex
+  strict mode), so the correlation echo no longer depends on prompt
+  discipline. Chat mode stays free-form; Kimi/Pi keep the prompt contract.
+- `pending_adapter_outbox()` recovery surface (operations + `HLPClient`):
+  crash-pending adapter intents are discoverable; retrying the original
+  idempotency-keyed operation completes them without duplicate side effects
+  (conformance-covered).
+- `expire_due_checkpoints(now)` checkpoint timeout sweep (spec §7.2
+  reference policy: pure suspension, audited, idempotent).
+- `tests/test_hlp_projection_robustness.py`: wire-variance fixtures for all
+  four CLIs (markdown fences, prose, CRLF, unicode, duplicate events,
+  missing correlation, malformed lines) plus structured-output wiring tests.
 - Reference BCI (brainwave) channel slice: `examples/hlp_bci_channel_demo.py`
   (`loops-hlp-bci-demo`) demonstrating appendix-C compatibility of
   brain-computer-interface input with zero protocol changes — soft BCI stream
@@ -63,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Payload extraction now also digs `structured_output` — the field Claude
+  Code fills when `--json-schema` validates the reply envelope.
 - `.env.example` now documents only the environment variables the repository
   actually reads (the opt-in external CLI E2E toggles).
 
