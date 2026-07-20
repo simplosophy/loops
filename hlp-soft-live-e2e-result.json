@@ -1,0 +1,64 @@
+{
+  "codex": {
+    "adapter": "codex",
+    "adapter_class": "CodexHarnessAdapter",
+    "adapter_operations": [
+      "delegate",
+      "steer"
+    ],
+    "bci_alone_error": "UNAUTHORIZED: HLP-realtime D3: high-risk hard checkpoint resolve requires a non-BCI-only principal confirmation (second factor)",
+    "bci_alone_high_risk_denied": true,
+    "correlation_id": "task_01KXYP9Q2VYHYR5MSTHPN2Z9Z7",
+    "decisions": {
+      "D1_soft_no_state_change": true,
+      "D2_host_merge": true,
+      "D3_bci_alone_denied": true,
+      "correlation_preserved": true
+    },
+    "mode": "live",
+    "promotion_profile": "HLP-realtime",
+    "promotion_signal_count": 2,
+    "returned_correlation_id": "task_01KXYP9Q2VYHYR5MSTHPN2Z9Z7",
+    "run_id": "codex_soft_control_e2e_01",
+    "soft_signals_in": 3,
+    "soft_signals_promoted": 2,
+    "status": "ok",
+    "steer_called": true,
+    "steering_text": "Keep the answer JSON-only\nPreserve the supplied correlation_id exactly",
+    "summary": "Ready for your request.",
+    "task_id": "task_01KXYP9Q2VYHYR5MSTHPN2Z9Z7",
+    "task_state_after_soft": "in_progress",
+    "task_state_before_soft": "in_progress"
+  },
+  "pi": {
+    "adapter": "pi",
+    "adapter_class": "PiHarnessAdapter",
+    "adapter_operations": [
+      "delegate",
+      "steer"
+    ],
+    "bci_alone_error": "UNAUTHORIZED: HLP-realtime D3: high-risk hard checkpoint resolve requires a non-BCI-only principal confirmation (second factor)",
+    "bci_alone_high_risk_denied": true,
+    "correlation_id": "task_01KXYPA8PFQREQ1VPFC9595E5K",
+    "decisions": {
+      "D1_soft_no_state_change": true,
+      "D2_host_merge": true,
+      "D3_bci_alone_denied": true,
+      "correlation_preserved": true
+    },
+    "mode": "live",
+    "promotion_profile": "HLP-realtime",
+    "promotion_signal_count": 2,
+    "returned_correlation_id": "task_01KXYPA8PFQREQ1VPFC9595E5K",
+    "run_id": "soft-control-e2e-pi-20260720",
+    "soft_signals_in": 3,
+    "soft_signals_promoted": 2,
+    "status": "ok",
+    "steer_called": true,
+    "steering_text": "Keep the answer JSON-only\nPreserve the supplied correlation_id exactly",
+    "summary": "Constraints acknowledged. Ready to proceed with correlation_id task_01KXYPA8PFQREQ1VPFC9595E5K and run_id soft-control-e2e-pi-20260720. Please provide the task or question.",
+    "task_id": "task_01KXYPA8PFQREQ1VPFC9595E5K",
+    "task_state_after_soft": "in_progress",
+    "task_state_before_soft": "in_progress"
+  }
+}

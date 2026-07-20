@@ -263,8 +263,8 @@ async def _run_adapter_lifecycle(
         "control_final_task_state": control_task.state,
         "summary": payload.get("summary", ""),
     }
-    if adapter_status != "ok":
-        entry["error"] = str(payload.get("error") or "adapter returned non-ok status")
+    if adapter_status in {"error", "failed", "failure"} or payload.get("error"):
+        entry["error"] = str(payload.get("error") or "adapter returned error status")
         entry["details"] = payload.get("details") or payload
     return entry
 

@@ -372,7 +372,9 @@ def cli_operation_prompt(request: dict[str, Any]) -> str:
         "You are executing an HLP adapter operation.\n"
         "Return exactly one JSON object and no markdown. The JSON object must "
         "include correlation_id exactly as provided. For delegate, include a "
-        "stable run_id string, status, and a short summary.\n\n"
+        "stable run_id string, status, and a short summary. The status value "
+        'MUST be exactly "ok" on success or "error" on failure (with an '
+        '"error" message field).\n\n'
         "HLP request:\n"
         f"{json.dumps(request, indent=2, sort_keys=True)}"
     )
@@ -428,6 +430,7 @@ def chat_mode_prompt(request: dict[str, Any]) -> str:
         f"{run_line}"
         "- Prefer one final JSON object (no markdown fences) with keys:\n"
         "  run_id (stable string), correlation_id, status, summary\n"
+        '- status MUST be exactly "ok" on success or "error" on failure.\n'
         "- Put your full reply text for the user in `summary`.\n"
         "- Optional JSONL human-loop events may use nested `hlp` or `pi` payloads "
         "with kind needs_approval / needs_choice / needs_input / artifact when a "
