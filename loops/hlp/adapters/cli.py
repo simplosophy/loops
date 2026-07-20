@@ -67,6 +67,10 @@ class PiHarnessAdapter(CodexHarnessAdapter):
     def _resume_command(self, session_id: str, prompt: str) -> tuple[str, ...]:
         return ("pi", "--mode", "json", "--session", session_id, "-p", prompt)
 
+    def _fork_command(self, session_id: str, prompt: str) -> tuple[str, ...] | None:
+        # pi --fork branches the source session into a NEW session for handoff.
+        return ("pi", "--mode", "json", "--fork", session_id, "-p", prompt)
+
 
 _DEFAULT_CLAUDE_CLI_COMMAND: tuple[str, ...] = (
     "claude",
@@ -170,6 +174,25 @@ class ClaudeCodeHarnessAdapter(CodexHarnessAdapter):
             command = (*command, "--json-schema", self.command[index + 1])
         return (*command, prompt)
 
+    def _fork_command(self, session_id: str, prompt: str) -> tuple[str, ...] | None:
+        # claude --resume <src> --fork-session: new session id with full history.
+        command: tuple[str, ...] = (
+            "claude",
+            "--resume",
+            session_id,
+            "--fork-session",
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--permission-mode",
+            "dontAsk",
+        )
+        if self.prompt_mode == "protocol" and "--json-schema" in self.command:
+            index = self.command.index("--json-schema")
+            command = (*command, "--json-schema", self.command[index + 1])
+        return (*command, prompt)
+
 
 class KimiCLIAdapter(PromptCLIAdapter):
     def __init__(
@@ -227,6 +250,11 @@ class KimiHarnessAdapter(CodexHarnessAdapter):
 
     def _resume_command(self, session_id: str, prompt: str) -> tuple[str, ...]:
         return ("kimi", "--output-format", "stream-json", "--session", session_id, "-p", prompt)
+
+    def _fork_command(self, session_id: str, prompt: str) -> tuple[str, ...] | None:
+        # Kimi has no native session-fork; handoff stays one-shot with the
+        # structured context in the envelope.
+        return None
 
 
 class HermsCLIAdapter(ProcessAgentAdapter):

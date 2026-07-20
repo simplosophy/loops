@@ -88,6 +88,7 @@ from .realtime import (
 from .schema import (
     HLP_JSON_SCHEMAS,
     VersionNegotiationResult,
+    from_wire,
     negotiate_hlp_version,
     schema_for,
     to_wire,
@@ -226,6 +227,7 @@ __all__ = [
     "VersionNegotiationResult",
     "assert_soft_does_not_change_task_state",
     "control_signal_to_wire",
+    "from_wire",
     "may_resolve_hard_checkpoint_with_signal",
     "merge_soft_control_signals",
     "negotiate_hlp_version",

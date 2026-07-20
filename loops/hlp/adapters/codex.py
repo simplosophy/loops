@@ -500,13 +500,24 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         """One-shot command, or the CLI's session-resume command for follow-up ops.
 
         Continuity means "a new turn in the same native session" — the strongest
-        form these CLIs offer today, not frozen-process resumption.
+        form these CLIs offer today, not frozen-process resumption. Handoff forks
+        the native session when the CLI supports it, so the receiving agent
+        inherits the full context; otherwise it falls back to one-shot.
         """
-        if self._session_continuity and operation in self._RESUME_OPS:
+        if self._session_continuity:
             session_id = self._run_sessions.get(str(request.get("run_id") or ""))
             if session_id:
-                return self._resume_command(session_id, prompt)
+                if operation == "handoff":
+                    fork = self._fork_command(session_id, prompt)
+                    if fork is not None:
+                        return fork
+                elif operation in self._RESUME_OPS:
+                    return self._resume_command(session_id, prompt)
         return (*self.command, prompt)
+
+    def _fork_command(self, session_id: str, prompt: str) -> tuple[str, ...] | None:
+        """Native session-fork command for handoff, or None when the CLI cannot fork."""
+        return None
 
     def _resume_command(self, session_id: str, prompt: str) -> tuple[str, ...]:
         """codex exec resume [options] <thread_id> [prompt] (options come first)."""

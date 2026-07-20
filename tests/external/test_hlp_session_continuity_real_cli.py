@@ -26,3 +26,14 @@ def test_real_local_cli_session_continuity():
         assert entry["session_id"], name
         assert entry["codeword_found"] is True, name
         assert entry["resumed_ops"] == entry["followup_ops"] > 0, name
+
+        handoff = entry["handoff"]
+        assert handoff["status"] == "ok", (name, handoff)
+        if name in ("pi", "claude"):
+            # Native fork: the receiving run inherits full session context.
+            assert handoff["codeword_found"] is True, name
+            assert handoff["new_session"], name
+            assert handoff["new_session"] != handoff["src_session"], name
+        else:
+            # No native fork (codex/kimi): one-shot envelope, no inheritance.
+            assert handoff["codeword_found"] is False, name

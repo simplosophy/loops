@@ -7,8 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-20
+
 ### Added
 
+- Typed `from_wire(name, value)` reconstruction (counterpart of `to_wire`):
+  29 registered wire objects (all first-class objects and value objects)
+  round-trip through wire dicts with alias inversion (`from`/`as`), nested
+  dataclasses, and ISO datetimes. `HttpHLPWireClient.call(..., as_="Task")`
+  returns typed results. Suite: `tests/test_hlp_from_wire.py`.
+- HTTP reference transport binding (`loops.hlp.transport`, spec §7.1):
+  stdlib-only `HLPHttpServer` serving all 23 operations via
+  `POST /v1/ops/<object.verb>` (CAS + idempotency pass-through), audit-event
+  SSE stream (`GET /v1/events`), version and health endpoints, §6.1 error
+  status mapping, and `X-HLP-Principal` binding for mutating ops.
+  `HttpHLPWireClient` reference client and `loops-hlp-serve` console entry.
+  Zero new dependencies; real-socket test suite
+  (`tests/test_hlp_transport.py`).
+- Session forking for handoff: on CLIs with native fork support the
+  receiving agent inherits the full session context — `pi --fork` and
+  `claude --resume --fork-session` (new session id bound from the wire).
+  Codex/Kimi have no native fork; handoff there stays a one-shot envelope
+  with the structured context (documented fallback, live-verified both ways).
 - Session-resume continuity for all four CLI harness adapters: delegate binds
   the CLI-native session id from the wire (`thread.started`, `session_id`,
   meta line, `type=session` event) and follow-up ops (`block` / `resume` /
@@ -124,5 +144,6 @@ Protocol SDK, with execution harnesses external behind adapter contracts.
 - VitePress documentation site (`docs/site`, published at
   https://ontheloops.com) with the HLP/AAP/CAP specs.
 
-[Unreleased]: https://github.com/simplosophy/loops/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/simplosophy/loops/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/simplosophy/loops/releases/tag/v0.3.0
 [0.2.0]: https://github.com/simplosophy/loops/releases/tag/v0.2.0
