@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-20
+
 ### Added
 
 - Typed `from_wire(name, value)` reconstruction (counterpart of `to_wire`):
@@ -142,5 +144,6 @@ Protocol SDK, with execution harnesses external behind adapter contracts.
 - VitePress documentation site (`docs/site`, published at
   https://ontheloops.com) with the HLP/AAP/CAP specs.
 
-[Unreleased]: https://github.com/simplosophy/loops/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/simplosophy/loops/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/simplosophy/loops/releases/tag/v0.3.0
 [0.2.0]: https://github.com/simplosophy/loops/releases/tag/v0.2.0

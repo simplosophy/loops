@@ -18,7 +18,7 @@ CLI adapters for real harness work; treat framework adapters as shims.
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from loops.hlp import (
     HLP_JSON_SCHEMAS,
