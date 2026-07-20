@@ -57,7 +57,16 @@ def parse_cli_stdout(stdout: str) -> dict[str, Any]:
 
 def extract_hlp_json_payload(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict):
-        for key in ("result", "output_text", "final_output", "raw", "message", "text", "content"):
+        for key in (
+            "result",
+            "output_text",
+            "final_output",
+            "structured_output",
+            "raw",
+            "message",
+            "text",
+            "content",
+        ):
             nested = extract_hlp_json_payload(value.get(key))
             if nested is not None:
                 return nested
@@ -104,6 +113,29 @@ def extract_last_json_object(text: str) -> dict[str, Any] | None:
 
 
 CODEX_EVENTS_KEY = "_codex_events"
+
+# Result envelope schema for CLIs with native structured-output support
+# (Codex --output-schema, Claude Code --json-schema). Protocol-mode requests ask
+# the model for exactly this shape; "hlp" stays an optional nested channel for
+# human-loop events. Kimi/Pi have no such flag and keep the prompt contract.
+# Result envelope schema for CLIs with native structured-output support
+# (Codex --output-schema, Claude Code --json-schema). Protocol-mode requests ask
+# the model for exactly this shape. Human-loop events keep flowing through
+# intermediate stream text (the existing extraction handles those); only the
+# final message is schema-locked, which is what makes run_id/correlation_id
+# deterministic. Codex strict mode requires additionalProperties: false.
+HLP_RESULT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "run_id": {"type": "string"},
+        "correlation_id": {"type": "string"},
+        "status": {"type": "string", "enum": ["ok", "error"]},
+        "summary": {"type": "string"},
+        "error": {"type": "string"},
+    },
+    "required": ["run_id", "correlation_id", "status", "summary", "error"],
+    "additionalProperties": False,
+}
 
 
 def parse_codex_stdout(stdout: str) -> tuple[dict[str, Any], tuple[dict[str, Any], ...]]:

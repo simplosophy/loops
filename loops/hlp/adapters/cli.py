@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import json
+
+from . import _parsing as parsing
 from .codex import CodexHarnessAdapter
 from .process import ProcessAgentAdapter, PromptCLIAdapter
 from .protocol import HarnessCapabilities, ProcessRunner
+
+
+def _with_json_schema(command: tuple[str, ...], prompt_mode: str) -> tuple[str, ...]:
+    """Append Claude Code's native structured-output flag in protocol mode."""
+    if prompt_mode != "protocol":
+        return command
+    schema = json.dumps(parsing.HLP_RESULT_SCHEMA, separators=(",", ":"))
+    return (*command, "--json-schema", schema)
 
 
 class PiHarnessAdapter(CodexHarnessAdapter):
@@ -45,22 +56,37 @@ class PiHarnessAdapter(CodexHarnessAdapter):
         self.name = "pi-harness"
 
 
+_DEFAULT_CLAUDE_CLI_COMMAND: tuple[str, ...] = (
+    "claude",
+    "-p",
+    "--output-format",
+    "json",
+    "--permission-mode",
+    "dontAsk",
+)
+_DEFAULT_CLAUDE_HARNESS_COMMAND: tuple[str, ...] = (
+    "claude",
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "dontAsk",
+    "--no-session-persistence",
+)
+
+
 class ClaudeCodeCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
-        command: tuple[str, ...] = (
-            "claude",
-            "-p",
-            "--output-format",
-            "json",
-            "--permission-mode",
-            "dontAsk",
-        ),
+        command: tuple[str, ...] = _DEFAULT_CLAUDE_CLI_COMMAND,
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
         prompt_mode: str = "protocol",
     ) -> None:
+        if command is _DEFAULT_CLAUDE_CLI_COMMAND:
+            command = _with_json_schema(command, prompt_mode)
         super().__init__(
             command,
             name="claude-code-cli",
@@ -74,30 +100,25 @@ class ClaudeCodeHarnessAdapter(CodexHarnessAdapter):
     """Claude Code CLI adapter with HLP harness event projection.
 
     Invoked as ``claude -p --output-format stream-json --verbose
-    --permission-mode dontAsk --no-session-persistence <prompt>``. Claude Code
-    emits ``system`` / ``assistant`` / ``result`` JSONL events; HLP result and
-    human-loop payloads ride inside the assistant/result text per the prompt
-    contract and are extracted by the shared JSONL machinery.
+    --permission-mode dontAsk --no-session-persistence [--json-schema S]
+    <prompt>``. Claude Code emits ``system`` / ``assistant`` / ``result`` JSONL
+    events; HLP result and human-loop payloads ride inside the assistant/result
+    text per the prompt contract and are extracted by the shared JSONL
+    machinery. In protocol mode the result envelope is enforced natively via
+    ``--json-schema``; chat mode stays free-form.
     """
 
     def __init__(
         self,
-        command: tuple[str, ...] = (
-            "claude",
-            "-p",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--permission-mode",
-            "dontAsk",
-            "--no-session-persistence",
-        ),
+        command: tuple[str, ...] = _DEFAULT_CLAUDE_HARNESS_COMMAND,
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
         capabilities: HarnessCapabilities | None = None,
         prompt_mode: str = "protocol",
     ) -> None:
+        if command is _DEFAULT_CLAUDE_HARNESS_COMMAND:
+            command = _with_json_schema(command, prompt_mode)
         super().__init__(
             command=command,
             runner=runner,

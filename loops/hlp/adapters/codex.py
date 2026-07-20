@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import atexit
 import inspect
+import json
+import os
+import tempfile
 from typing import Any
 
 from ..objects import AdapterOperationContext
@@ -22,21 +26,56 @@ from .protocol import (
     ProcessRunner,
 )
 
+_DEFAULT_CLI_COMMAND: tuple[str, ...] = (
+    "codex",
+    "exec",
+    "--sandbox",
+    "read-only",
+    "--ephemeral",
+)
+_DEFAULT_HARNESS_COMMAND: tuple[str, ...] = (
+    "codex",
+    "exec",
+    "--json",
+    "--sandbox",
+    "read-only",
+    "--ephemeral",
+)
+
+_schema_file_path: str | None = None
+
+
+def _unlink_quietly(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def _hlp_result_schema_path() -> str:
+    """Write the HLP result envelope schema once per process (codex --output-schema)."""
+    global _schema_file_path
+    if _schema_file_path is not None and os.path.exists(_schema_file_path):
+        return _schema_file_path
+    fd, path = tempfile.mkstemp(prefix="hlp-result-schema-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(parsing.HLP_RESULT_SCHEMA, handle)
+    atexit.register(_unlink_quietly, path)
+    _schema_file_path = path
+    return path
+
 
 class CodexCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
-        command: tuple[str, ...] = (
-            "codex",
-            "exec",
-            "--sandbox",
-            "read-only",
-            "--ephemeral",
-        ),
+        command: tuple[str, ...] = _DEFAULT_CLI_COMMAND,
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
     ) -> None:
+        if command is _DEFAULT_CLI_COMMAND:
+            # Protocol-only adapter: enforce the result envelope natively.
+            command = (*command, "--output-schema", _hlp_result_schema_path())
         super().__init__(command, name="codex-cli", runner=runner, timeout=timeout)
 
 
@@ -50,20 +89,16 @@ class CodexHarnessAdapter(PromptCLIAdapter):
 
     def __init__(
         self,
-        command: tuple[str, ...] = (
-            "codex",
-            "exec",
-            "--json",
-            "--sandbox",
-            "read-only",
-            "--ephemeral",
-        ),
+        command: tuple[str, ...] = _DEFAULT_HARNESS_COMMAND,
         *,
         runner: ProcessRunner | None = None,
         timeout: float = 120.0,
         capabilities: HarnessCapabilities | None = None,
         prompt_mode: str = "protocol",
     ) -> None:
+        if prompt_mode == "protocol" and command is _DEFAULT_HARNESS_COMMAND:
+            # Enforce the HLP result envelope natively; chat mode stays free-form.
+            command = (*command, "--output-schema", _hlp_result_schema_path())
         super().__init__(
             command,
             name="codex-harness",
