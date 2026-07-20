@@ -1,27 +1,19 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loops mark">
   <title>Loops</title>
   <defs>
-    <linearGradient id="lp-loop" x1="10" y1="37" x2="54" y2="55" gradientUnits="userSpaceOnUse">
+    <linearGradient id="lp-ring" x1="49" y1="32" x2="40.5" y2="17.3" gradientUnits="userSpaceOnUse">
       <stop stop-color="#22D3EE"/>
-      <stop offset="0.5" stop-color="#3B82F6"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
       <stop offset="1" stop-color="#A855F7"/>
-    </linearGradient>
-    <linearGradient id="lp-human" x1="24" y1="10" x2="40" y2="37" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F59E0B"/>
-      <stop offset="1" stop-color="#F97316"/>
     </linearGradient>
   </defs>
 
   <rect x="4" y="4" width="56" height="56" rx="14" fill="#101014" stroke="#2F2F38" stroke-width="1"/>
 
-  <circle cx="32" cy="15.8" r="5.8" fill="url(#lp-human)"/>
-  <path d="M22 34.8C22 27.9 26 24.4 32 24.4C38 24.4 42 27.9 42 34.8C42 36.2 40.8 37.4 39.4 37.4H24.6C23.2 37.4 22 36.2 22 34.8Z" fill="url(#lp-human)"/>
+  <!-- Forward-only ring: a 300-degree arc that closes at the human. -->
+  <path d="M49 32A17 17 0 1 1 40.5 17.28" stroke="url(#lp-ring)" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M35.9 20.5L42.5 19.5L40.1 13.3" stroke="#A855F7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <path d="M12 47C12 39 22 39 32 47C42 55 52 55 52 47" stroke="url(#lp-loop)" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M52 47C52 39 42 39 32 47C22 55 12 55 12 47" stroke="url(#lp-loop)" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <circle cx="12" cy="47" r="4.2" fill="#101014"/>
-  <circle cx="12" cy="47" r="2.6" fill="#22D3EE"/>
-  <circle cx="52" cy="47" r="4.2" fill="#101014"/>
-  <circle cx="52" cy="47" r="2.6" fill="#22D3EE"/>
+  <!-- The human principal holding the checkpoint: the loop closes here. -->
+  <circle cx="46.72" cy="23.5" r="5.2" fill="#F59E0B"/>
 </svg>
