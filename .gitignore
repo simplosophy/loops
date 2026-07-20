@@ -42,3 +42,6 @@ node_modules/
 docs/site/.vitepress/dist/
 docs/site/.vitepress/cache/
 docs/site/.vitepress/screenshots/
+
+# live E2E result artifacts
+hlp-soft-live-e2e-result.json
