@@ -226,6 +226,7 @@ ExternalRef:
 | `review_ready` | principal | 已交付待 review |
 | `under_review` | principal | review 中 |
 | `accepted` | principal | 验收通过 |
+| `rejected` | principal | 终态（deliverable review rejected） |
 | `completed` | principal | 终态 |
 
 **合法性转移**（未列出者 **MUST NOT** 发生）：
@@ -525,8 +526,11 @@ context 覆盖 `task.assign`、`task.cancel`、`task.amend`、`task.interrupt`�
 | ownership.transfer | `ownership.transferred` |
 | ownership.delegate | `ownership.delegated` |
 | review.submit | `review.submitted` |
+| review.comment | `review.commented` |
 | artifact.commit | `artifact.committed` |
+| artifact.reference | `artifact.referenced` |
 | ledger.write | `ledger.written` |
+| task.completed（副作用） | `task.completed`（由 review.submit `kind=deliverable, approved` 完成 Task 时产生） |
 
 ### 4.3 操作前置条件（Preconditions）
 
@@ -562,6 +566,8 @@ ecosystem 时，**MUST** 通过以下契约对象通信，**MUST NOT** 直接读
 | `task.interrupt` | `block` | 人发起的中断；harness **MUST** 停止当前 turn 并进入 blocked 状态 |
 | `task.amend` | `steer` | 方向修正 **MUST** 注入到正在运行的 agent run 上下文；**MUST NOT** 重启 run |
 | `ownership.delegate` | `delegate`（子 agent） | 同 task.assign，但 parent 可追 |
+| `ownership.transfer` | `handoff` | correlation_id **MUST** 在 handoff 前后的 runs 间保持 |
+| `task.cancel` | `cancel` | 绑定的 agent run **MUST** 停止 |
 
 参考实现的下行公开边界命名为 `AgentAdapter`。HLP 不定义新的 L1
 agent-to-agent 协议，也不暴露历史 AAP 兼容别名。

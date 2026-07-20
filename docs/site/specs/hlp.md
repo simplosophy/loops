@@ -252,6 +252,7 @@ State ownership:
 | `review_ready` | principal | Artifact delivered for review |
 | `under_review` | principal | Review in progress |
 | `accepted` | principal | Accepted, ready to complete |
+| `rejected` | principal | Terminal state (deliverable review rejected) |
 | `completed` | principal | Terminal successful or canceled state |
 
 ## Checkpoint
@@ -561,8 +562,11 @@ State-changing operations **MUST** map to audit actions.
 | `ownership.transfer` | `ownership.transferred` |
 | `ownership.delegate` | `ownership.delegated` |
 | `review.submit` | `review.submitted` |
+| `review.comment` | `review.commented` |
 | `artifact.commit` | `artifact.committed` |
+| `artifact.reference` | `artifact.referenced` |
 | `ledger.write` | `ledger.written` |
+| task completion (side effect) | `task.completed` (emitted when a `kind=deliverable, approved` review completes the Task) |
 
 ## Integration Contracts
 
@@ -578,6 +582,7 @@ HLP communicates downward through explicit adapter contracts:
 | `task.amend` | `agent.steer` | The direction correction **MUST** be injected into the running agent's context; the run **MUST NOT** be restarted |
 | `ownership.delegate` | `delegate` | Parent run **SHOULD** remain traceable |
 | `ownership.transfer` | `handoff` | Correlation **MUST** be preserved |
+| `task.cancel` | `cancel` | The bound run **MUST** stop |
 
 Existing harnesses can also project human-facing events upward:
 
