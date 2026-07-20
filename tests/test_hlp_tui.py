@@ -10,9 +10,11 @@ from loops.hlp import (
     AgentAdapterError,
     ArtifactPayload,
     CheckpointOption,
+    ClaudeCodeHarnessAdapter,
     CodexHarnessAdapter,
     FakeAgentAdapter,
     HLPClient,
+    KimiHarnessAdapter,
     PiHarnessAdapter,
     ProcessResult,
 )
@@ -1611,3 +1613,117 @@ def test_run_prompt_process_streaming_invokes_chunk_callback():
     assert any(c.kind == "status" for c in chunks)
     assert any(c.kind == "text" and c.text == "Hi" for c in chunks)
     assert "agent_start" in result.stdout
+
+
+def test_format_harness_stream_line_maps_kimi_shapes():
+    from loops.hlp.adapters import format_harness_stream_line
+
+    assistant = format_harness_stream_line(
+        json.dumps({"role": "assistant", "content": "Kimi reply text"})
+    )
+    assert assistant is not None
+    assert assistant.kind == "text"
+    assert assistant.text == "Kimi reply text"
+    assert assistant.newline is False
+
+    meta = format_harness_stream_line(
+        json.dumps(
+            {
+                "role": "meta",
+                "type": "session.resume_hint",
+                "session_id": "session_x",
+                "command": "kimi -r session_x",
+                "content": "To resume this session: kimi -r session_x",
+            }
+        )
+    )
+    assert meta is None
+
+
+def test_format_harness_stream_line_maps_claude_shapes():
+    from loops.hlp.adapters import format_harness_stream_line
+
+    assert (
+        format_harness_stream_line(
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m"})
+        )
+        is None
+    )
+
+    thinking = format_harness_stream_line(
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "reasoning"}],
+                },
+            }
+        )
+    )
+    assert thinking is not None
+    assert thinking.kind == "thinking"
+
+    text = format_harness_stream_line(
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "reasoning"},
+                        {"type": "text", "text": "Hel"},
+                        {"type": "text", "text": "lo"},
+                    ],
+                },
+            }
+        )
+    )
+    assert text is not None
+    assert text.kind == "text"
+    assert text.text == "Hello"
+    assert text.newline is False
+
+    assert (
+        format_harness_stream_line(
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": "done",
+                    "session_id": "s",
+                }
+            )
+        )
+        is None
+    )
+
+    error = format_harness_stream_line(
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "error",
+                "is_error": True,
+                "result": "permission denied",
+                "session_id": "s",
+            }
+        )
+    )
+    assert error is not None
+    assert error.kind == "error"
+    assert "permission denied" in error.text
+
+
+def test_build_client_supports_claude_and_kimi():
+    from loops.tui.app import build_client
+
+    claude = build_client("claude", stream=False)
+    kimi = build_client("kimi", stream=False)
+
+    assert isinstance(claude.adapter, ClaudeCodeHarnessAdapter)
+    assert claude.adapter.prompt_mode == "chat"
+    assert claude.adapter.command[:4] == ("claude", "-p", "--output-format", "stream-json")
+    assert isinstance(kimi.adapter, KimiHarnessAdapter)
+    assert kimi.adapter.prompt_mode == "chat"
+    assert kimi.adapter.command[:4] == ("kimi", "--output-format", "stream-json", "-p")

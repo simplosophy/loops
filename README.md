@@ -173,9 +173,26 @@ agent loop inside the selected harness adapter.
 
 | Level | Adapters | Meaning |
 | --- | --- | --- |
-| first-class | `CodexCLIAdapter`, `CodexHarnessAdapter`, `ClaudeCodeCLIAdapter`, `KimiCLIAdapter`, `PiHarnessAdapter`, `ProcessAgentAdapter`, `PromptCLIAdapter` | Real process/CLI boundary with correlation and (where applicable) harness event projection |
+| first-class | `CodexCLIAdapter`, `CodexHarnessAdapter`, `PiHarnessAdapter`, `ClaudeCodeCLIAdapter`, `ClaudeCodeHarnessAdapter`, `KimiCLIAdapter`, `KimiHarnessAdapter`, `ProcessAgentAdapter`, `PromptCLIAdapter` | Real process/CLI boundary with correlation and (where applicable) harness event projection |
 | shape-compatible | `OpenAIAgentsSDKAdapter`, `OpenAIPythonSDKAdapter`, `LangGraphAdapter`, `CrewAIAdapter` | Thin Python framework entry points; useful for embedding experiments, not a claim of full harness parity |
 | testing | In-memory fake adapters under `loops.hlp.adapters` | Offline unit tests and demos only |
+
+All four first-party CLIs share the same JSONL projection pipeline, reliable
+peek/ack event delivery, and chat/protocol prompt modes:
+
+| CLI | Delegate adapter | Harness adapter (projection + peek/ack) | Wire mode | TUI |
+| --- | --- | --- | --- | --- |
+| Codex | `CodexCLIAdapter` | `CodexHarnessAdapter` | `codex exec --json` | yes |
+| Pi | — | `PiHarnessAdapter` | `pi --mode json` | yes |
+| Claude Code | `ClaudeCodeCLIAdapter` | `ClaudeCodeHarnessAdapter` | `claude -p --output-format stream-json` | yes |
+| Kimi | `KimiCLIAdapter` | `KimiHarnessAdapter` | `kimi -p --output-format stream-json` | yes |
+
+Harness adapters project explicit `hlp` / `pi` human-loop payloads into HLP
+checkpoints and artifacts, validate correlation on every event line, and drop
+transport-level duplicates (e.g. Claude Code's `result` envelope repeats the
+final assistant text). End-to-end coverage: offline contract tests with
+injected runners for every operation, plus an opt-in real-CLI lifecycle suite
+(`HLP_RUN_EXTERNAL_CLI_E2E=1`, see Verification).
 
 ## Industrial Profile (Reference)
 

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- First-class harness adapters for all four first-party CLIs: new
+  `ClaudeCodeHarnessAdapter` (`claude -p --output-format stream-json`) and
+  `KimiHarnessAdapter` (`kimi -p --output-format stream-json`) join
+  `CodexHarnessAdapter` and `PiHarnessAdapter`; all four share the JSONL
+  projection pipeline with reliable peek/ack delivery.
+- `prompt_mode` (protocol/chat) on `ClaudeCodeCLIAdapter` and
+  `KimiCLIAdapter`.
+- `format_harness_stream_line` mappings for Kimi (`role=assistant`/`meta`)
+  and Claude Code (`system`/`assistant`/`result`) stream-json shapes.
+- TUI: `--adapter claude` and `--adapter kimi` (chat prompt mode, live
+  streaming), alongside the existing codex/pi/fake.
+- Harness event queue drops transport-level duplicates (Claude Code's
+  `result` envelope repeats the final assistant text) via per-batch event
+  signatures.
+- Offline contract tests for the new adapters (full operation surface,
+  projection, correlation rejection, stream formatting, TUI wiring) and Pi
+  handoff/cancel coverage; the real-CLI lifecycle E2E now includes `pi`.
 - Open-source readiness: Apache-2.0 `LICENSE`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `SECURITY.md`, and this changelog.
 - Packaging metadata: license expression, keywords, classifiers, project URLs,

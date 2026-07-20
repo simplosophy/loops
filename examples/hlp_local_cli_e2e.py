@@ -17,6 +17,7 @@ from loops.hlp import (
     CodexCLIAdapter,
     HLPClient,
     KimiCLIAdapter,
+    PiHarnessAdapter,
 )
 
 Runner = Any
@@ -78,7 +79,7 @@ def main() -> None:
     parser.add_argument(
         "--adapters",
         default="codex,kimi,claude",
-        help="Comma-separated adapter names: codex,kimi,claude",
+        help="Comma-separated adapter names: codex,kimi,claude,pi",
     )
     parser.add_argument(
         "--metaworker-config",
@@ -318,6 +319,8 @@ def _build_adapter(
         return KimiCLIAdapter(runner=runner, timeout=timeout)
     if name == "claude":
         return ClaudeCodeCLIAdapter(runner=runner, timeout=timeout)
+    if name == "pi":
+        return PiHarnessAdapter(runner=runner, timeout=timeout)
     raise ValueError(f"unknown local CLI adapter: {name}")
 
 

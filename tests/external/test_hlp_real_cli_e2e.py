@@ -17,7 +17,7 @@ def run(coro):
     reason="set HLP_RUN_EXTERNAL_CLI_E2E=1 to run real local CLI adapters",
 )
 def test_real_local_cli_adapters_run_hlp_e2e():
-    result = run(run_demo(adapters=("codex", "kimi", "claude"), strict=True))
+    result = run(run_demo(adapters=("codex", "kimi", "claude", "pi"), strict=True))
 
     failures = {name: entry for name, entry in result.items() if entry["status"] != "ok"}
     assert failures == {}

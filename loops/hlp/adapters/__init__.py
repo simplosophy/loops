@@ -11,9 +11,11 @@ from __future__ import annotations
 from .callable import PythonCallableAgentAdapter
 from .cli import (
     ClaudeCodeCLIAdapter,
+    ClaudeCodeHarnessAdapter,
     HermesCLIAdapter,
     HermsCLIAdapter,
     KimiCLIAdapter,
+    KimiHarnessAdapter,
     PiHarnessAdapter,
 )
 from .codex import CodexCLIAdapter, CodexHarnessAdapter
@@ -53,6 +55,7 @@ __all__ = [
     "AgentAdapterError",
     "AgentRunHandle",
     "ClaudeCodeCLIAdapter",
+    "ClaudeCodeHarnessAdapter",
     "CodexCLIAdapter",
     "CodexHarnessAdapter",
     "CrewAIAdapter",
@@ -66,6 +69,7 @@ __all__ = [
     "HermsCLIAdapter",
     "InMemoryAgentAdapter",
     "KimiCLIAdapter",
+    "KimiHarnessAdapter",
     "LangGraphAdapter",
     "OpenAIAgentsSDKAdapter",
     "OpenAIPythonSDKAdapter",

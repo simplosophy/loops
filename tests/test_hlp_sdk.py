@@ -22,6 +22,7 @@ from loops.hlp import (
     ArtifactPayload,
     CheckpointOption,
     ClaudeCodeCLIAdapter,
+    ClaudeCodeHarnessAdapter,
     CodexCLIAdapter,
     CodexHarnessAdapter,
     CrewAIAdapter,
@@ -36,6 +37,7 @@ from loops.hlp import (
     HLPHost,
     InMemoryEventBus,
     KimiCLIAdapter,
+    KimiHarnessAdapter,
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
@@ -1144,6 +1146,551 @@ def test_codex_harness_adapter_rejects_mismatched_event_correlation():
         assert exc.details == {"expected": "task_codex", "actual": "task_other"}
     else:
         raise AssertionError("expected AgentAdapterError")
+
+
+def test_kimi_harness_adapter_projects_stream_json_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "role": "assistant",
+                                "content": json.dumps(
+                                    {
+                                        "run_id": "kimi_run_1",
+                                        "correlation_id": request["correlation_id"],
+                                        "status": "ok",
+                                        "summary": "Kimi prepared a patch",
+                                        "hlp": {
+                                            "kind": "needs_approval",
+                                            "agent_id": "agent_kimi",
+                                            "prompt": "Apply the Kimi patch?",
+                                        },
+                                    }
+                                ),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "role": "meta",
+                                "type": "session.resume_hint",
+                                "session_id": "session_x",
+                                "command": "kimi -r session_x",
+                                "content": "To resume this session: kimi -r session_x",
+                            }
+                        ),
+                    )
+                ),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "role": "assistant",
+                                "content": json.dumps(
+                                    {
+                                        "run_id": "kimi_run_1",
+                                        "correlation_id": request["correlation_id"],
+                                        "status": "ok",
+                                        "summary": "Kimi patch is ready",
+                                        "hlp": {
+                                            "kind": "artifact",
+                                            "agent_id": "agent_kimi",
+                                            "artifact_type": "patch",
+                                            "artifact_uri": "mem://kimi.patch",
+                                            "artifact_checksum": "sha256:kimi.patch",
+                                            "artifact_size": 7,
+                                        },
+                                    }
+                                ),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "role": "meta",
+                                "type": "session.resume_hint",
+                                "session_id": "session_x",
+                                "command": "kimi -r session_x",
+                                "content": "To resume this session: kimi -r session_x",
+                            }
+                        ),
+                    )
+                ),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = KimiHarnessAdapter(
+        runner=runner,
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review a Kimi generated patch",
+            type="kimi-harness",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_kimi",
+            capability="code-edit",
+            input={"goal": task.spec.goal},
+        )
+    )
+    run(client.start(task.id))
+
+    checkpoint = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert handle.run_id == "kimi_run_1"
+    assert checkpoint.prompt == "Apply the Kimi patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:4] == ("kimi", "--output-format", "stream-json", "-p")
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 9.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://kimi.patch"
+    assert artifact.payload.checksum == "sha256:kimi.patch"
+    assert artifact.payload.size == 7
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_kimi_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        {
+                            "run_id": "kimi_run_1",
+                            "correlation_id": "task_wrong",
+                            "status": "ok",
+                            "hlp": {
+                                "kind": "needs_input",
+                                "agent_id": "agent_kimi",
+                                "prompt": "Need context",
+                            },
+                        }
+                    ),
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = KimiHarnessAdapter(runner=runner)
+
+    try:
+        run(
+            adapter.delegate(
+                task_id="task_kimi",
+                agent_id="agent_kimi",
+                capability="code-edit",
+                input={"goal": "edit"},
+            )
+        )
+    except AgentAdapterError as exc:
+        assert exc.adapter == "kimi-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_kimi", "actual": "task_wrong"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def _claude_stream_json_lines(correlation_id: str, hlp: dict) -> str:
+    """Claude stream-json delegate stdout: system + assistant + result envelopes.
+
+    Real Claude stream-json repeats the final assistant text verbatim in the
+    ``result`` envelope, so the embedded HLP JSON (result payload plus nested
+    ``hlp`` human-loop object) appears twice in one stream. The adapter drops
+    the transport-level duplicate at queue time, so each operation still
+    projects exactly one harness event; correlation validation still runs over
+    every line.
+    """
+    final_text = json.dumps(
+        {
+            "run_id": "claude_run_1",
+            "correlation_id": correlation_id,
+            "status": "ok",
+            "summary": "Claude prepared a patch",
+            "hlp": hlp,
+        }
+    )
+    return "\n".join(
+        (
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m"}),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "thinking": "planning the patch"},
+                            {"type": "text", "text": final_text},
+                        ],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": final_text,
+                    "session_id": "s",
+                }
+            ),
+        )
+    )
+
+
+def test_claude_harness_adapter_projects_stream_json_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout=_claude_stream_json_lines(
+                    request["correlation_id"],
+                    {
+                        "kind": "needs_approval",
+                        "agent_id": "agent_claude",
+                        "prompt": "Apply the Claude patch?",
+                    },
+                ),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout=_claude_stream_json_lines(
+                    request["correlation_id"],
+                    {
+                        "kind": "artifact",
+                        "agent_id": "agent_claude",
+                        "artifact_type": "patch",
+                        "artifact_uri": "mem://claude.patch",
+                        "artifact_checksum": "sha256:claude.patch",
+                        "artifact_size": 9,
+                    },
+                ),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = ClaudeCodeHarnessAdapter(
+        runner=runner,
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review a Claude generated patch",
+            type="claude-code-harness",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_claude",
+            capability="code-edit",
+            input={"goal": task.spec.goal},
+        )
+    )
+    run(client.start(task.id))
+
+    projected = run(client.project_harness_events(handle.run_id))
+    inbox = run(client.human_inbox("user_alice"))
+
+    # The assistant text and the result envelope carry the same hlp payload;
+    # transport-level dedup must project exactly one checkpoint.
+    assert len(projected) == 1
+    checkpoint = projected[0]
+    assert handle.run_id == "claude_run_1"
+    assert checkpoint.prompt == "Apply the Claude patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:4] == (
+        "claude",
+        "-p",
+        "--output-format",
+        "stream-json",
+    )
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 9.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://claude.patch"
+    assert artifact.payload.checksum == "sha256:claude.patch"
+    assert artifact.payload.size == 9
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_claude_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "system",
+                            "subtype": "init",
+                            "session_id": "s",
+                            "model": "m",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "assistant",
+                            "message": {
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": json.dumps(
+                                            {
+                                                "run_id": "claude_run_1",
+                                                "correlation_id": "task_wrong",
+                                                "status": "ok",
+                                                "hlp": {
+                                                    "kind": "needs_input",
+                                                    "agent_id": "agent_claude",
+                                                    "prompt": "Need context",
+                                                },
+                                            }
+                                        ),
+                                    }
+                                ],
+                            },
+                        }
+                    ),
+                )
+            ),
+            stderr="",
+        )
+
+    adapter = ClaudeCodeHarnessAdapter(runner=runner)
+
+    try:
+        run(
+            adapter.delegate(
+                task_id="task_claude",
+                agent_id="agent_claude",
+                capability="code-edit",
+                input={"goal": "edit"},
+            )
+        )
+    except AgentAdapterError as exc:
+        assert exc.adapter == "claude-code-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_claude", "actual": "task_wrong"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_pi_harness_adapter_handoff_creates_child_run():
+    async def runner(command, request, timeout):
+        run_id = "pi_run_2" if request["operation"] == "handoff" else "pi_run_1"
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "run_id": run_id,
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner)
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_pi",
+            agent_id="agent_pi",
+            capability="code-edit",
+            input={"goal": "edit"},
+        )
+    )
+    child_run_id = run(adapter.handoff(run_id, "agent_pi_reviewer", {"note": "take over"}))
+
+    assert run_id == "pi_run_1"
+    assert child_run_id == "pi_run_2"
+    child = adapter.run_handle(child_run_id)
+    assert child is not None
+    assert child.parent_run == "pi_run_1"
+    assert child.task_id == "task_pi"
+    assert child.agent_id == "agent_pi_reviewer"
+    assert [name for name, _payload in adapter.calls] == ["delegate", "handoff"]
+
+
+def test_pi_harness_adapter_cancel_completes_protocol_op():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "run_id": "pi_run_1",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner)
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_pi",
+            agent_id="agent_pi",
+            capability="code-edit",
+            input={"goal": "edit"},
+        )
+    )
+    run(adapter.cancel(run_id, "no longer needed"))
+
+    assert [name for name, _payload in adapter.calls] == ["delegate", "cancel"]
+
+
+def test_kimi_cli_adapter_accepts_prompt_mode():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        captured["request"] = request
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "run_id": "kimi_chat_1",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                    "summary": "chat reply",
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = KimiCLIAdapter(runner=runner, prompt_mode="chat")
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_kimi_chat",
+            agent_id="agent_kimi",
+            capability="chat",
+            input={"goal": "Say hi to the user"},
+        )
+    )
+
+    assert run_id == "kimi_chat_1"
+    assert adapter.prompt_mode == "chat"
+    assert captured["command"][:4] == ("kimi", "--output-format", "text", "-p")
+    prompt = captured["command"][-1]
+    assert prompt.startswith("Say hi to the user")
+    assert not prompt.startswith("You are executing an HLP adapter operation.")
+    assert "correlation_id MUST be exactly: task_kimi_chat" in prompt
+
+
+def test_claude_code_cli_adapter_accepts_prompt_mode():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        captured["request"] = request
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": json.dumps(
+                        {
+                            "run_id": "claude_chat_1",
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                            "summary": "chat reply",
+                        }
+                    ),
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = ClaudeCodeCLIAdapter(runner=runner, prompt_mode="chat")
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_claude_chat",
+            agent_id="agent_claude",
+            capability="chat",
+            input={"goal": "Say hi to the user"},
+        )
+    )
+
+    assert run_id == "claude_chat_1"
+    assert adapter.prompt_mode == "chat"
+    assert captured["command"][:5] == (
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--permission-mode",
+    )
+    prompt = captured["command"][-1]
+    assert prompt.startswith("Say hi to the user")
+    assert not prompt.startswith("You are executing an HLP adapter operation.")
+    assert "correlation_id MUST be exactly: task_claude_chat" in prompt
 
 
 def test_kimi_cli_adapter_executes_one_shot_prompt_and_extracts_json():

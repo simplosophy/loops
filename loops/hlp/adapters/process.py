@@ -153,6 +153,47 @@ def format_harness_stream_line(line: str) -> StreamChunk | None:
             return None
         return None
 
+    # Kimi stream-json: role-shaped lines (assistant reply + meta noise)
+    role = str(event.get("role") or "")
+    if role == "assistant":
+        reply = event.get("content")
+        if isinstance(reply, str) and reply:
+            return StreamChunk(kind="text", text=reply, newline=False)
+        return None
+    if role == "meta":
+        return None
+
+    # Claude Code stream-json: system / assistant / result envelopes
+    if event_type == "system":
+        return None
+    if event_type == "assistant":
+        message = event.get("message")
+        if not isinstance(message, dict):
+            return None
+        texts: list[str] = []
+        thinking = False
+        for block in message.get("content") or ():
+            if not isinstance(block, dict):
+                continue
+            block_type = str(block.get("type") or "")
+            if block_type == "text":
+                texts.append(str(block.get("text") or ""))
+            elif block_type == "thinking":
+                thinking = True
+        text = "".join(texts)
+        if text:
+            return StreamChunk(kind="text", text=text, newline=False)
+        if thinking:
+            return StreamChunk(kind="thinking", text="thinking…")
+        return None
+    if event_type == "result":
+        if event.get("is_error"):
+            return StreamChunk(
+                kind="error",
+                text=str(event.get("result") or "claude result error")[:240],
+            )
+        return None
+
     # Codex / HLP-style JSONL events
     if (
         event_type.startswith("hlp.")

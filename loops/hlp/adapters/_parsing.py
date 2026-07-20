@@ -268,6 +268,22 @@ def codex_event_may_project(event: dict[str, Any]) -> bool:
     return bool(event.get("artifact_uri") or event.get("patch_uri") or event.get("diff_uri"))
 
 
+def codex_event_signature(event: dict[str, Any]) -> str | None:
+    """Stable identity of the logical HLP event inside a raw stdout event.
+
+    Some CLIs emit the same logical event twice in one stream (e.g. Claude
+    Code's ``result`` envelope repeats the final assistant text). Adapters use
+    this signature to drop such transport-level duplicates at queue time.
+    """
+    payload = codex_hlp_payload(event)
+    if payload is not None:
+        return json.dumps(payload, sort_keys=True, default=str)
+    artifact_uri = event.get("artifact_uri") or event.get("patch_uri") or event.get("diff_uri")
+    if artifact_uri:
+        return json.dumps({"artifact_uri": str(artifact_uri)}, sort_keys=True)
+    return None
+
+
 def codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
     for key in ("hlp", "human_loop", "humanLoop", "pi"):
         payload = event.get(key)

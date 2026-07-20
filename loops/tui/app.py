@@ -8,9 +8,11 @@ from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
 
 from loops.hlp import (
+    ClaudeCodeHarnessAdapter,
     CodexHarnessAdapter,
     FakeAgentAdapter,
     HLPClient,
+    KimiHarnessAdapter,
     PiHarnessAdapter,
 )
 from loops.hlp.adapters.process import StreamChunk, make_streaming_prompt_runner
@@ -19,7 +21,7 @@ from .controller import TUIController
 from .session import SessionStore
 from .stream import StreamPrinter
 
-_SUPPORTED_ADAPTERS = frozenset({"fake", "codex", "pi"})
+_SUPPORTED_ADAPTERS = frozenset({"fake", "codex", "pi", "claude", "kimi"})
 _DEFAULT_TIMEOUT_S = 60.0
 _PROGRESS_EVERY_S = 2.0
 
@@ -111,6 +113,24 @@ def build_client(
                 prompt_mode="chat",
             )
         )
+    if adapter_name == "claude":
+        # Claude Code stream-json: system/assistant/result JSONL envelopes.
+        return HLPClient(
+            adapter=ClaudeCodeHarnessAdapter(
+                runner=runner,
+                timeout=timeout,
+                prompt_mode="chat",
+            )
+        )
+    if adapter_name == "kimi":
+        # Kimi stream-json: role-shaped assistant/meta lines.
+        return HLPClient(
+            adapter=KimiHarnessAdapter(
+                runner=runner,
+                timeout=timeout,
+                prompt_mode="chat",
+            )
+        )
     raise AssertionError("unreachable adapter branch")
 
 
@@ -154,7 +174,11 @@ async def run_with_progress[T](
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the HLP TUI channel.")
-    parser.add_argument("--adapter", choices=("codex", "fake", "pi"), default="codex")
+    parser.add_argument(
+        "--adapter",
+        choices=("codex", "fake", "pi", "claude", "kimi"),
+        default="codex",
+    )
     parser.add_argument("--session-path", default=".hlp-tui-sessions.json")
     parser.add_argument("--principal", default="user_local")
     parser.add_argument(

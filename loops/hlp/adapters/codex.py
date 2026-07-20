@@ -435,9 +435,17 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         fallback_run_id: str,
         events: tuple[dict[str, Any], ...],
     ) -> None:
+        seen_signatures: set[str] = set()
         for event in events:
             if not parsing.codex_event_may_project(event):
                 continue
+            # Drop transport-level duplicates within one batch (e.g. Claude
+            # Code's result envelope repeats the final assistant text).
+            signature = parsing.codex_event_signature(event)
+            if signature is not None:
+                if signature in seen_signatures:
+                    continue
+                seen_signatures.add(signature)
             event = dict(event)
             if parsing.codex_event_id(event) is None:
                 self._codex_event_counter += 1

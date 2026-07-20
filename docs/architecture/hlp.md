@@ -124,6 +124,9 @@ Adapter capability baseline:
 | `PromptCLIAdapter` | one-shot prompt + parsed JSON result | one-shot prompt wrapper | one-shot prompt wrapper | prompt requires returned `correlation_id`; validates when present |
 | `CodexCLIAdapter` / `KimiCLIAdapter` / `ClaudeCodeCLIAdapter` | local CLI prompt mode | local CLI prompt mode | local CLI prompt mode | HLP `task_id` kept as run correlation |
 | `CodexHarnessAdapter` | `codex exec --json` prompt mode | local CLI prompt mode | local CLI prompt mode | validates returned and projected event `correlation_id` when present |
+| `PiHarnessAdapter` | `pi --mode json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared JSONL projection + peek/ack |
+| `ClaudeCodeHarnessAdapter` | `claude -p --output-format stream-json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared projection; transport-level duplicate events（result envelope 重复 assistant 文本）按签名入队去重 |
+| `KimiHarnessAdapter` | `kimi -p --output-format stream-json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared projection（HLP payload 嵌在 assistant content 文本内） |
 | `OpenAIPythonSDKAdapter` | `client.responses.create(...)` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
 | `OpenAIAgentsSDKAdapter` | injected `runner.run/run_sync` | local contract recording, not real runtime pause yet | local contract recording | local handle |
 | `LangGraphAdapter` | `ainvoke/invoke` with `configurable.thread_id` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
