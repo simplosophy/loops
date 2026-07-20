@@ -60,6 +60,23 @@ adapter intent before side effects, passes `AdapterOperationContext` through
 fake and process adapters for delegate, handoff, cancel, steer, block, and
 resume, and marks committed outbox records succeeded.
 
+## Adapter-Level Evidence
+
+Beyond the profile suites, the four first-party CLI harness adapters (Codex,
+Pi, Claude Code, Kimi) each carry offline contract tests with injected runners:
+full operation surface, human-loop event projection, per-event correlation
+rejection, and reliable peek/ack cursor semantics. An opt-in live suite runs
+the full HLP lifecycle — delegate, steer, block, resume, artifact, review,
+ledger, audit replay, plus handoff and cancel — against the real installed
+CLIs:
+
+```bash
+HLP_RUN_EXTERNAL_CLI_E2E=1 uv run pytest tests/external/ -q
+```
+
+The live suite is offline by default in CI and requires user-installed CLI
+binaries and credentials.
+
 ## HLP 0.2.0-draft Requirements
 
 An implementation claiming HLP compatibility **MUST**:

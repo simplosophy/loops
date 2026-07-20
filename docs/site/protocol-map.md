@@ -30,6 +30,7 @@ objects.
 | Pause for human decision | `checkpoint.raise` | Block the corresponding agent run. |
 | Resume after decision | `checkpoint.resolve` | Resume the run with the resolution payload. |
 | Transfer responsibility | `ownership.transfer` | Handoff execution while preserving task correlation. |
+| Cancel work | `task.cancel` | Stop the bound agent run. |
 | Project harness events | `checkpoint.raise`, `artifact.commit` | Convert approval, input, choice, and artifact events into HLP objects. |
 | Produce output | `artifact.commit` | Preserve provenance from agent and capability use. |
 | Review output | `review.submit`, `review.comment` | Feed human verdicts back to the agent route when changes are requested. |
