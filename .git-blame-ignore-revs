@@ -1,0 +1,6 @@
+# Commits ignored by `git blame` (configure once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub reads this file automatically).
+
+# 2026-07-19 open-source hardening: one-time ruff format pass over the tree.
+22bae8b40e8f5f6b6a6f2cabbc621ade6626d0f5
