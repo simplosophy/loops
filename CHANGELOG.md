@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Typed `from_wire(name, value)` reconstruction (counterpart of `to_wire`):
+  29 registered wire objects (all first-class objects and value objects)
+  round-trip through wire dicts with alias inversion (`from`/`as`), nested
+  dataclasses, and ISO datetimes. `HttpHLPWireClient.call(..., as_="Task")`
+  returns typed results. Suite: `tests/test_hlp_from_wire.py`.
 - HTTP reference transport binding (`loops.hlp.transport`, spec §7.1):
   stdlib-only `HLPHttpServer` serving all 23 operations via
   `POST /v1/ops/<object.verb>` (CAS + idempotency pass-through), audit-event

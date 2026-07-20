@@ -1,7 +1,7 @@
 """Reference wire client for the HLP HTTP transport binding.
 
 Wire-level client: results are wire dicts (the wire is the contract, §6.4).
-Typed reconstruction (from_wire) is a documented follow-up. Stdlib only.
+Pass ``as_`` to ``call`` for typed reconstruction via from_wire. Stdlib only.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
+
+from ..schema import from_wire
 
 
 class TransportError(RuntimeError):
@@ -45,8 +47,14 @@ class HttpHLPWireClient:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
         principal: str | None = None,
+        as_: str | None = None,
     ) -> Any:
-        """POST /v1/ops/<operation> and return the wire result."""
+        """POST /v1/ops/<operation> and return the wire result.
+
+        When ``as_`` names a registered wire object (e.g. "Task"), a dict
+        result is reconstructed via from_wire before returning; list/scalar
+        results are returned as-is.
+        """
         body: dict[str, Any] = {"params": params or {}}
         if expected_task_revision is not None:
             body["expected_task_revision"] = expected_task_revision
@@ -62,7 +70,10 @@ class HttpHLPWireClient:
             headers=headers,
             method="POST",
         )
-        return self._send(request)
+        result = self._send(request)
+        if as_ is not None and isinstance(result, dict):
+            return from_wire(as_, result)
+        return result
 
     def version(self) -> dict[str, Any]:
         return self._get("/v1/version")
