@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field, fields, is_dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ._ids import gen_audit_id
@@ -11,25 +11,25 @@ from .types import HLP_PROFILE, HLP_SCHEMA_VERSION
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)
 class AuditEvent:
-    """不可变的审计日志条目 (spec §3.9)。
+    """Immutable audit log entry (spec §3.9).
 
-    - seq: scope 内单调递增
+    - seq: monotonically increasing within the scope
     - action: "<object>.<verb>" (spec §4.2)
-    - subject: 操作目标 {kind, id}
-    - task_id: 始终关联聚合根
-    - before/after: 变更前后状态 (可选)
+    - subject: operation target {kind, id}
+    - task_id: always associated with the aggregate root
+    - before/after: state before/after the change (optional)
     """
 
     seq: int
     at: datetime = field(default_factory=_now)
     actor: str = ""
-    action: str = ""                       # 如 "task.created"
-    subject: "tuple[str, str]" = ("", "")  # (kind, id)
+    action: str = ""  # e.g. "task.created"
+    subject: tuple[str, str] = ("", "")  # (kind, id)
     task_id: str | None = None
     before: Any = None
     after: Any = None
@@ -42,11 +42,11 @@ class AuditEvent:
 
 
 class AuditLog:
-    """append-only 审计日志 (spec §3.9)。
+    """Append-only audit log (spec §3.9).
 
-    - 永不删除/修改
-    - seq 单调递增
-    - 支持 query / replay
+    - never deleted or modified
+    - seq monotonically increasing
+    - supports query / replay
     """
 
     def __init__(self) -> None:
@@ -64,7 +64,7 @@ class AuditLog:
         after: Any = None,
         reducer: dict[str, Any] | None = None,
     ) -> AuditEvent:
-        """追加一条审计事件，返回该事件。永不失败、永不阻塞业务 (spec §3.9)。"""
+        """Append one audit event and return it. Never fails, never blocks the business flow (spec §3.9)."""
         self._seq += 1
         prev_hash = self._events[-1].hash if self._events else ""
         event = AuditEvent(
@@ -89,7 +89,7 @@ class AuditLog:
         actor: str | None = None,
         action: str | None = None,
     ) -> list[AuditEvent]:
-        """按条件查询 (spec §4.1 audit.query)。"""
+        """Query by the given criteria (spec §4.1 audit.query)."""
         result = self._events
         if task_id is not None:
             result = [e for e in result if e.task_id == task_id]
@@ -100,11 +100,11 @@ class AuditLog:
         return list(result)
 
     def replay(self, task_id: str) -> list[AuditEvent]:
-        """回放某 Task 的完整历史 (spec §4.1 audit.replay)。"""
+        """Replay the full history of a Task (spec §4.1 audit.replay)."""
         return [e for e in self._events if e.task_id == task_id]
 
     def all(self) -> list[AuditEvent]:
-        """全部事件，按 seq 升序。"""
+        """All events, in ascending seq order."""
         return list(self._events)
 
     def verify_hash_chain(self) -> bool:
@@ -136,10 +136,7 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
     if is_dataclass(value):
-        return {
-            field.name: _jsonable(getattr(value, field.name))
-            for field in fields(value)
-        }
+        return {field.name: _jsonable(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     if isinstance(value, list):

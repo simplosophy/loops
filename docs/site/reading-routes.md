@@ -177,6 +177,23 @@ Ask four questions:
 If any answer is no, the product may still be useful, but it should not claim
 HLP compatibility.
 
+## Reference Demos (Offline)
+
+Each demo runs without external services and prints its evidence as JSON:
+
+| Demo | Shows |
+| --- | --- |
+| `uv run loops-hlp-demo` | Full HLP workflow through the default Codex CLI adapter. |
+| `uv run loops-hlp-adapters-demo` | Adapter compatibility checks without external services. |
+| `uv run loops-hlp-realtime-demo` | HLP-realtime promotion: soft merge → amend provenance, BCI-alone high-risk deny. |
+| `uv run loops-hlp-bci-demo` | BCI (brainwave) channel compatibility: soft promotion, low-risk resolve, D3 fail-closed, second factor. |
+| `uv run loops-hlp-soft-e2e` | Soft-control harness E2E (multi soft → merge → amend/steer). |
+| `uv run loops-hlp-tui --adapter fake` | Interactive host channel with checkpoints, reviews, and soft-buffer promotion. |
+
+Live variants against installed CLIs (Codex, Pi, Claude Code, Kimi) are opt-in
+via `HLP_RUN_EXTERNAL_CLI_E2E=1`; see the repository README's Verification
+section.
+
 ## Recommended First Flow
 
 For a reference implementation, start with a single task:

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)
@@ -22,8 +22,7 @@ class HLPEvent:
 
 
 class EventBus(Protocol):
-    async def publish(self, event: HLPEvent) -> None:
-        ...
+    async def publish(self, event: HLPEvent) -> None: ...
 
 
 @dataclass
@@ -54,4 +53,3 @@ class InMemoryEventBus:
 
     async def publish(self, event: HLPEvent) -> None:
         self.events.append(event)
-

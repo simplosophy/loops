@@ -12,11 +12,12 @@ from typing import Any
 from loops.hlp import (
     AgentAdapterError,
     ArtifactPayload,
-    ClaudeCodeCLIAdapter,
     CheckpointOption,
+    ClaudeCodeCLIAdapter,
     CodexCLIAdapter,
     HLPClient,
     KimiCLIAdapter,
+    PiHarnessAdapter,
 )
 
 Runner = Any
@@ -78,7 +79,7 @@ def main() -> None:
     parser.add_argument(
         "--adapters",
         default="codex,kimi,claude",
-        help="Comma-separated adapter names: codex,kimi,claude",
+        help="Comma-separated adapter names: codex,kimi,claude,pi",
     )
     parser.add_argument(
         "--metaworker-config",
@@ -98,22 +99,22 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    selected = tuple(
-        item.strip()
-        for item in args.adapters.split(",")
-        if item.strip()
+    selected = tuple(item.strip() for item in args.adapters.split(",") if item.strip())
+    result = asyncio.run(
+        run_demo(
+            adapters=selected,
+            metaworker_config=None if args.no_metaworker_config else args.metaworker_config,
+            timeout=args.timeout,
+            strict=args.strict,
+        )
     )
-    result = asyncio.run(run_demo(
-        adapters=selected,
-        metaworker_config=None if args.no_metaworker_config else args.metaworker_config,
-        timeout=args.timeout,
-        strict=args.strict,
-    ))
-    print(json.dumps(
-        result,
-        indent=2,
-        sort_keys=True,
-    ))
+    print(
+        json.dumps(
+            result,
+            indent=2,
+            sort_keys=True,
+        )
+    )
     if args.strict and any(entry.get("status") != "ok" for entry in result.values()):
         sys.exit(1)
 
@@ -153,6 +154,9 @@ async def _run_adapter_lifecycle(
         )
         run_id = run.run_id
         correlation_id = adapter.task_of_run(run.run_id) or task.id
+        # Capture the delegate reply now: later ops (steer) refresh
+        # process_results, and the correlation-echo contract targets delegate.
+        delegate_payload = dict(adapter.process_results.get(run.run_id, {}))
         await client.start(task.id)
         await client.amend(
             task.id,
@@ -200,7 +204,7 @@ async def _run_adapter_lifecycle(
         )
         history = await client.replay_audit(task.id)
         final_task = await client.get_task(task.id)
-        payload = dict(adapter.process_results.get(run.run_id, {}))
+        final_payload = dict(adapter.process_results.get(run.run_id, {}))
 
         control_task = await client.create_task(
             principal="user_local",
@@ -237,8 +241,8 @@ async def _run_adapter_lifecycle(
             details=exc.details,
         )
 
-    adapter_status = str(payload.get("status") or "ok")
-    returned_correlation_id = str(payload.get("correlation_id") or "")
+    adapter_status = str(delegate_payload.get("status") or "ok")
+    returned_correlation_id = str(delegate_payload.get("correlation_id") or "")
     entry: dict[str, Any] = {
         "status": adapter_status,
         "adapter": name,
@@ -260,11 +264,12 @@ async def _run_adapter_lifecycle(
         "control_run_id": control_run.run_id,
         "handoff_run_id": handoff_run_id,
         "control_final_task_state": control_task.state,
-        "summary": payload.get("summary", ""),
+        "summary": delegate_payload.get("summary", ""),
+        "steer_summary": final_payload.get("summary", ""),
     }
-    if adapter_status != "ok":
-        entry["error"] = str(payload.get("error") or "adapter returned non-ok status")
-        entry["details"] = payload.get("details") or payload
+    if adapter_status in {"error", "failed", "failure"} or delegate_payload.get("error"):
+        entry["error"] = str(delegate_payload.get("error") or "adapter returned error status")
+        entry["details"] = delegate_payload.get("details") or delegate_payload
     return entry
 
 
@@ -318,6 +323,8 @@ def _build_adapter(
         return KimiCLIAdapter(runner=runner, timeout=timeout)
     if name == "claude":
         return ClaudeCodeCLIAdapter(runner=runner, timeout=timeout)
+    if name == "pi":
+        return PiHarnessAdapter(runner=runner, timeout=timeout)
     raise ValueError(f"unknown local CLI adapter: {name}")
 
 
@@ -337,7 +344,6 @@ def _kimi_command_from_metaworker(
         "w",
         prefix="hlp-kimi-",
         suffix=".toml",
-        dir="/private/tmp",
         delete=False,
     )
     temp_path = Path(handle.name)

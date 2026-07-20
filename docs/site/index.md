@@ -181,6 +181,26 @@ hero:
   </div>
 </section>
 
+<section class="sdk-strip" aria-label="First-class CLI harness adapters">
+  <div class="section-heading">
+    <p class="eyebrow">First-class adapters</p>
+    <h2>Four agent CLIs share one harness projection pipeline.</h2>
+    <p class="stack-caption">Codex, Pi, Claude Code, and Kimi wrap into HLP with the same JSONL projection of human-loop events, reliable peek/ack event delivery, and chat/protocol prompt modes — covered by offline contract suites and an opt-in live four-CLI lifecycle E2E.</p>
+  </div>
+  <table>
+    <thead>
+      <tr><th>CLI</th><th>Delegate adapter</th><th>Harness adapter (projection + peek/ack)</th><th>Wire mode</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Codex</td><td><code>CodexCLIAdapter</code></td><td><code>CodexHarnessAdapter</code></td><td><code>codex exec --json</code></td></tr>
+      <tr><td>Pi</td><td>—</td><td><code>PiHarnessAdapter</code></td><td><code>pi --mode json</code></td></tr>
+      <tr><td>Claude Code</td><td><code>ClaudeCodeCLIAdapter</code></td><td><code>ClaudeCodeHarnessAdapter</code></td><td><code>claude -p --output-format stream-json</code></td></tr>
+      <tr><td>Kimi</td><td><code>KimiCLIAdapter</code></td><td><code>KimiHarnessAdapter</code></td><td><code>kimi -p --output-format stream-json</code></td></tr>
+    </tbody>
+  </table>
+  <p class="stack-caption">Sensor input such as brain-computer interfaces (BCI) is compatible by design (spec appendix C): a decoder is only a channel-plane producer of <code>ControlSignal</code> values, high-risk checkpoints cannot close on BCI alone (fail-closed, second factor supported), and the offline <code>loops-hlp-bci-demo</code> proves it — zero protocol changes.</p>
+</section>
+
 <section class="contract-band" aria-label="Integration contracts">
   <div class="section-heading">
     <p class="eyebrow">Boundary rules</p>

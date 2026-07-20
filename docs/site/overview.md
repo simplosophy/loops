@@ -135,6 +135,13 @@ This project defines:
 - Integration contracts for routing HLP task identity, checkpoints, ownership,
   harness events, and optional external evidence into existing agent and capability
   protocols.
+- First-class harness adapters for the Codex, Pi, Claude Code, and Kimi CLIs —
+  one shared JSONL projection pipeline with reliable peek/ack event delivery and
+  per-event correlation validation.
+- An appendix-C channel model for high-frequency and sensor input: soft control
+  signals merge on the host and promote into existing responsibility operations,
+  so channels such as voice or brain-computer interfaces (BCI) stay compatible
+  without protocol changes (high-risk checkpoints still cannot close on BCI alone).
 - Introductory L1/L0 route pages that explain where A2A, ACP, AGNTCY-style
   meshes, MCP, Agent Skills, and local capability systems fit.
 - HLP conformance requirements that let implementations make precise claims.

@@ -2,28 +2,28 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from loops.hlp import (
-    ArtifactPayload,
     HLP_JSON_SCHEMAS,
     HLP_PROFILE,
     HLP_SCHEMA_VERSION,
     HLP_SPEC_VERSION,
+    AdapterOperationContext,
+    AdapterOutboxRecord,
+    ArtifactPayload,
+    ArtifactRef,
     FakeAgentAdapter,
     HLPClient,
     HumanLoopOperations,
-    PermissionGrant,
-    ProtocolError,
-    ProposedAction,
-    ArtifactRef,
-    AdapterOperationContext,
-    AdapterOutboxRecord,
     OwnershipTransfer,
+    PermissionGrant,
     ProcessAgentAdapter,
     ProcessResult,
+    ProposedAction,
+    ProtocolError,
     SQLiteHumanLoopStore,
     is_permission_scope_pre_authorized,
     negotiate_hlp_version,
@@ -50,11 +50,13 @@ def test_task_revision_increments_once_per_successful_task_mutation():
     started = run(ops.task_start(task.id))
     assert started.revision == 2
 
-    amended = run(ops.task_amend(
-        task.id,
-        by="user_alice",
-        text="Keep the scope narrow.",
-    ))
+    amended = run(
+        ops.task_amend(
+            task.id,
+            by="user_alice",
+            text="Keep the scope narrow.",
+        )
+    )
     assert amended.revision == 3
 
 
@@ -64,20 +66,24 @@ def test_task_amend_replay_with_same_idempotency_key_does_not_steer_or_audit_twi
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.task_amend(
-        task.id,
-        by="alice",
-        text="Review auth boundaries only.",
-        expected_task_revision=revision,
-        idempotency_key="amend-auth-boundaries",
-    ))
-    replay = run(ops.task_amend(
-        task.id,
-        by="alice",
-        text="Review auth boundaries only.",
-        expected_task_revision=revision,
-        idempotency_key="amend-auth-boundaries",
-    ))
+    first = run(
+        ops.task_amend(
+            task.id,
+            by="alice",
+            text="Review auth boundaries only.",
+            expected_task_revision=revision,
+            idempotency_key="amend-auth-boundaries",
+        )
+    )
+    replay = run(
+        ops.task_amend(
+            task.id,
+            by="alice",
+            text="Review auth boundaries only.",
+            expected_task_revision=revision,
+            idempotency_key="amend-auth-boundaries",
+        )
+    )
 
     assert replay == first
     assert len(first.steering_log) == 1
@@ -91,22 +97,26 @@ def test_same_idempotency_key_with_different_payload_conflicts_without_mutation(
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    run(ops.task_amend(
-        task.id,
-        by="alice",
-        text="Review auth boundaries only.",
-        expected_task_revision=revision,
-        idempotency_key="same-key",
-    ))
-
-    with pytest.raises(ProtocolError) as exc:
-        run(ops.task_amend(
+    run(
+        ops.task_amend(
             task.id,
             by="alice",
-            text="Review billing boundaries instead.",
+            text="Review auth boundaries only.",
             expected_task_revision=revision,
             idempotency_key="same-key",
-        ))
+        )
+    )
+
+    with pytest.raises(ProtocolError) as exc:
+        run(
+            ops.task_amend(
+                task.id,
+                by="alice",
+                text="Review billing boundaries instead.",
+                expected_task_revision=revision,
+                idempotency_key="same-key",
+            )
+        )
 
     assert exc.value.code == "CONFLICT"
     assert len(adapter.calls_of("steer")) == 1
@@ -119,13 +129,15 @@ def test_stale_expected_task_revision_conflicts_before_adapter_call():
     task = run(ops._seed_to_in_progress())
 
     with pytest.raises(ProtocolError) as exc:
-        run(ops.task_amend(
-            task.id,
-            by="alice",
-            text="This should not reach the adapter.",
-            expected_task_revision=1,
-            idempotency_key="stale-revision",
-        ))
+        run(
+            ops.task_amend(
+                task.id,
+                by="alice",
+                text="This should not reach the adapter.",
+                expected_task_revision=1,
+                idempotency_key="stale-revision",
+            )
+        )
 
     assert exc.value.code == "CONFLICT"
     assert adapter.calls_of("steer") == []
@@ -137,20 +149,24 @@ def test_interrupt_replay_returns_same_checkpoint_and_blocks_once():
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.task_interrupt(
-        task.id,
-        by="alice",
-        prompt="Pause for inspection.",
-        expected_task_revision=revision,
-        idempotency_key="interrupt-inspection",
-    ))
-    replay = run(ops.task_interrupt(
-        task.id,
-        by="alice",
-        prompt="Pause for inspection.",
-        expected_task_revision=revision,
-        idempotency_key="interrupt-inspection",
-    ))
+    first = run(
+        ops.task_interrupt(
+            task.id,
+            by="alice",
+            prompt="Pause for inspection.",
+            expected_task_revision=revision,
+            idempotency_key="interrupt-inspection",
+        )
+    )
+    replay = run(
+        ops.task_interrupt(
+            task.id,
+            by="alice",
+            prompt="Pause for inspection.",
+            expected_task_revision=revision,
+            idempotency_key="interrupt-inspection",
+        )
+    )
 
     assert replay == first
     assert len(adapter.calls_of("block")) == 1
@@ -161,28 +177,34 @@ def test_checkpoint_resolve_replay_returns_same_resolution_and_resumes_once():
     adapter = FakeAgentAdapter()
     ops = HumanLoopOperations(adapter=adapter)
     task = run(ops._seed_to_in_progress())
-    checkpoint = run(ops.checkpoint_raise(
-        task_id=task.id,
-        kind="approval",
-        prompt="Proceed?",
-        raised_by="agent_worker",
-    ))
+    checkpoint = run(
+        ops.checkpoint_raise(
+            task_id=task.id,
+            kind="approval",
+            prompt="Proceed?",
+            raised_by="agent_worker",
+        )
+    )
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.checkpoint_resolve(
-        checkpoint.id,
-        by="alice",
-        action="approve",
-        expected_task_revision=revision,
-        idempotency_key="resolve-approval",
-    ))
-    replay = run(ops.checkpoint_resolve(
-        checkpoint.id,
-        by="alice",
-        action="approve",
-        expected_task_revision=revision,
-        idempotency_key="resolve-approval",
-    ))
+    first = run(
+        ops.checkpoint_resolve(
+            checkpoint.id,
+            by="alice",
+            action="approve",
+            expected_task_revision=revision,
+            idempotency_key="resolve-approval",
+        )
+    )
+    replay = run(
+        ops.checkpoint_resolve(
+            checkpoint.id,
+            by="alice",
+            action="approve",
+            expected_task_revision=revision,
+            idempotency_key="resolve-approval",
+        )
+    )
 
     assert replay == first
     assert len(adapter.calls_of("resume")) == 1
@@ -198,22 +220,26 @@ def test_artifact_commit_replay_returns_same_artifact_and_does_not_create_v2():
         checksum="sha256:artifact-v1",
     )
 
-    first = run(ops.artifact_commit(
-        task_id=task.id,
-        type="report",
-        payload=payload,
-        produced_by="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="commit-report",
-    ))
-    replay = run(ops.artifact_commit(
-        task_id=task.id,
-        type="report",
-        payload=payload,
-        produced_by="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="commit-report",
-    ))
+    first = run(
+        ops.artifact_commit(
+            task_id=task.id,
+            type="report",
+            payload=payload,
+            produced_by="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="commit-report",
+        )
+    )
+    replay = run(
+        ops.artifact_commit(
+            task_id=task.id,
+            type="report",
+            payload=payload,
+            produced_by="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="commit-report",
+        )
+    )
 
     assert replay == first
     assert replay.version == "v1"
@@ -225,22 +251,26 @@ def test_task_assign_replay_does_not_delegate_or_audit_twice():
     ops = HumanLoopOperations(adapter=adapter)
     task = run(ops.task_create(principal="alice", goal="Assign once"))
 
-    first = run(ops.task_assign(
-        task.id,
-        "agent_worker",
-        capability="write",
-        input={"goal": "Assign once"},
-        expected_task_revision=task.revision,
-        idempotency_key="assign-once",
-    ))
-    replay = run(ops.task_assign(
-        task.id,
-        "agent_worker",
-        capability="write",
-        input={"goal": "Assign once"},
-        expected_task_revision=task.revision,
-        idempotency_key="assign-once",
-    ))
+    first = run(
+        ops.task_assign(
+            task.id,
+            "agent_worker",
+            capability="write",
+            input={"goal": "Assign once"},
+            expected_task_revision=task.revision,
+            idempotency_key="assign-once",
+        )
+    )
+    replay = run(
+        ops.task_assign(
+            task.id,
+            "agent_worker",
+            capability="write",
+            input={"goal": "Assign once"},
+            expected_task_revision=task.revision,
+            idempotency_key="assign-once",
+        )
+    )
 
     assert replay == first
     assert len(adapter.calls_of("delegate")) == 1
@@ -254,16 +284,20 @@ def test_task_start_replay_does_not_start_or_audit_twice():
     assigned = run(ops.task_assign(task.id, "agent_worker"))
     assigned_revision = assigned.revision
 
-    first = run(ops.task_start(
-        task.id,
-        expected_task_revision=assigned_revision,
-        idempotency_key="start-once",
-    ))
-    replay = run(ops.task_start(
-        task.id,
-        expected_task_revision=assigned_revision,
-        idempotency_key="start-once",
-    ))
+    first = run(
+        ops.task_start(
+            task.id,
+            expected_task_revision=assigned_revision,
+            idempotency_key="start-once",
+        )
+    )
+    replay = run(
+        ops.task_start(
+            task.id,
+            expected_task_revision=assigned_revision,
+            idempotency_key="start-once",
+        )
+    )
 
     assert replay == first
     assert [event.action for event in ops.store.audit_log.all()].count("task.started") == 1
@@ -276,12 +310,14 @@ def test_task_cancel_stale_revision_conflicts_before_adapter_call():
     task = run(ops._seed_to_in_progress())
 
     with pytest.raises(ProtocolError) as exc:
-        run(ops.task_cancel(
-            task.id,
-            by="alice",
-            expected_task_revision=1,
-            idempotency_key="cancel-stale",
-        ))
+        run(
+            ops.task_cancel(
+                task.id,
+                by="alice",
+                expected_task_revision=1,
+                idempotency_key="cancel-stale",
+            )
+        )
 
     assert exc.value.code == "CONFLICT"
     assert adapter.calls_of("cancel") == []
@@ -294,53 +330,67 @@ def test_checkpoint_raise_replay_returns_same_checkpoint_and_blocks_once():
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.checkpoint_raise(
-        task_id=task.id,
-        kind="approval",
-        prompt="Approve once?",
-        raised_by="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="raise-once",
-    ))
-    replay = run(ops.checkpoint_raise(
-        task_id=task.id,
-        kind="approval",
-        prompt="Approve once?",
-        raised_by="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="raise-once",
-    ))
+    first = run(
+        ops.checkpoint_raise(
+            task_id=task.id,
+            kind="approval",
+            prompt="Approve once?",
+            raised_by="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="raise-once",
+        )
+    )
+    replay = run(
+        ops.checkpoint_raise(
+            task_id=task.id,
+            kind="approval",
+            prompt="Approve once?",
+            raised_by="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="raise-once",
+        )
+    )
 
     assert replay == first
     assert len(adapter.calls_of("block")) == 1
     assert len(run(ops.task_get(task.id)).checkpoints) == 1
-    assert [event.action for event in ops.store.audit_log.all()].count("task.checkpoint.raised") == 1
+    assert [event.action for event in ops.store.audit_log.all()].count(
+        "task.checkpoint.raised"
+    ) == 1
 
 
 def test_checkpoint_expire_replay_does_not_expire_or_audit_twice():
     ops = HumanLoopOperations()
     task = run(ops._seed_to_in_progress())
-    checkpoint = run(ops.checkpoint_raise(
-        task_id=task.id,
-        kind="approval",
-        prompt="Expire once?",
-        raised_by="agent_worker",
-    ))
+    checkpoint = run(
+        ops.checkpoint_raise(
+            task_id=task.id,
+            kind="approval",
+            prompt="Expire once?",
+            raised_by="agent_worker",
+        )
+    )
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.checkpoint_expire(
-        checkpoint.id,
-        expected_task_revision=revision,
-        idempotency_key="expire-once",
-    ))
-    replay = run(ops.checkpoint_expire(
-        checkpoint.id,
-        expected_task_revision=revision,
-        idempotency_key="expire-once",
-    ))
+    first = run(
+        ops.checkpoint_expire(
+            checkpoint.id,
+            expected_task_revision=revision,
+            idempotency_key="expire-once",
+        )
+    )
+    replay = run(
+        ops.checkpoint_expire(
+            checkpoint.id,
+            expected_task_revision=revision,
+            idempotency_key="expire-once",
+        )
+    )
 
     assert replay == first
-    assert [event.action for event in ops.store.audit_log.all()].count("task.checkpoint.expired") == 1
+    assert [event.action for event in ops.store.audit_log.all()].count(
+        "task.checkpoint.expired"
+    ) == 1
     assert run(ops.task_get(task.id)).revision == revision + 1
 
 
@@ -350,22 +400,26 @@ def test_ownership_transfer_replay_does_not_handoff_or_audit_twice():
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.ownership_transfer(
-        task.id,
-        "agent_writer",
-        "handoff",
-        actor="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="handoff-once",
-    ))
-    replay = run(ops.ownership_transfer(
-        task.id,
-        "agent_writer",
-        "handoff",
-        actor="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="handoff-once",
-    ))
+    first = run(
+        ops.ownership_transfer(
+            task.id,
+            "agent_writer",
+            "handoff",
+            actor="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="handoff-once",
+        )
+    )
+    replay = run(
+        ops.ownership_transfer(
+            task.id,
+            "agent_writer",
+            "handoff",
+            actor="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="handoff-once",
+        )
+    )
 
     assert replay == first
     assert len(adapter.calls_of("handoff")) == 1
@@ -379,20 +433,24 @@ def test_ownership_delegate_replay_does_not_delegate_or_audit_twice():
     revision = run(ops.task_get(task.id)).revision
     delegate_calls_before = len(adapter.calls_of("delegate"))
 
-    first = run(ops.ownership_delegate(
-        task.id,
-        "agent_child",
-        actor="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="delegate-once",
-    ))
-    replay = run(ops.ownership_delegate(
-        task.id,
-        "agent_child",
-        actor="agent_worker",
-        expected_task_revision=revision,
-        idempotency_key="delegate-once",
-    ))
+    first = run(
+        ops.ownership_delegate(
+            task.id,
+            "agent_child",
+            actor="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="delegate-once",
+        )
+    )
+    replay = run(
+        ops.ownership_delegate(
+            task.id,
+            "agent_child",
+            actor="agent_worker",
+            expected_task_revision=revision,
+            idempotency_key="delegate-once",
+        )
+    )
 
     assert replay == first
     assert len(adapter.calls_of("delegate")) == delegate_calls_before + 1
@@ -402,34 +460,40 @@ def test_ownership_delegate_replay_does_not_delegate_or_audit_twice():
 def test_review_submit_replay_returns_same_review_and_completes_once():
     ops = HumanLoopOperations()
     task = run(ops._seed_to_in_progress())
-    artifact = run(ops.artifact_commit(
-        task_id=task.id,
-        type="report",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://review-once",
-            checksum="sha256:review-once",
-        ),
-        produced_by="agent_worker",
-    ))
+    artifact = run(
+        ops.artifact_commit(
+            task_id=task.id,
+            type="report",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://review-once",
+                checksum="sha256:review-once",
+            ),
+            produced_by="agent_worker",
+        )
+    )
     revision = run(ops.task_get(task.id)).revision
 
-    first = run(ops.review_submit(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="alice",
-        verdict="approved",
-        expected_task_revision=revision,
-        idempotency_key="review-once",
-    ))
-    replay = run(ops.review_submit(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="alice",
-        verdict="approved",
-        expected_task_revision=revision,
-        idempotency_key="review-once",
-    ))
+    first = run(
+        ops.review_submit(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="alice",
+            verdict="approved",
+            expected_task_revision=revision,
+            idempotency_key="review-once",
+        )
+    )
+    replay = run(
+        ops.review_submit(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="alice",
+            verdict="approved",
+            expected_task_revision=revision,
+            idempotency_key="review-once",
+        )
+    )
 
     assert replay == first
     assert len(ops.store.reviews_of_artifact(artifact.id)) == 1
@@ -455,7 +519,7 @@ def test_permission_scope_grammar_normalizes_and_rejects_invalid_scopes():
 
 
 def test_permission_scope_deny_precedence_and_expiry():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     grants = (
         PermissionGrant(
             scope="fs:/repo:*",
@@ -565,15 +629,18 @@ def test_json_schema_registry_covers_industrial_wire_objects():
     assert protocol_error["profile"] == HLP_PROFILE
 
     grant = PermissionGrant(scope="fs:/repo:*", decision="allow", granted_by="user_alice")
-    validate_wire_object("PermissionGrant", {
-        "scope": grant.scope,
-        "decision": grant.decision,
-        "until": grant.until,
-        "granted_by": grant.granted_by,
-        "granted_at": grant.granted_at.isoformat(),
-        "schema_version": HLP_SCHEMA_VERSION,
-        "profile": HLP_PROFILE,
-    })
+    validate_wire_object(
+        "PermissionGrant",
+        {
+            "scope": grant.scope,
+            "decision": grant.decision,
+            "until": grant.until,
+            "granted_by": grant.granted_by,
+            "granted_at": grant.granted_at.isoformat(),
+            "schema_version": HLP_SCHEMA_VERSION,
+            "profile": HLP_PROFILE,
+        },
+    )
 
     adapter_context = AdapterOperationContext(
         operation_id="op_schema",
@@ -585,14 +652,19 @@ def test_json_schema_registry_covers_industrial_wire_objects():
         task_revision=4,
     )
     validate_wire_object("AdapterOperationContext", to_wire(adapter_context))
-    validate_wire_object("AdapterOutboxRecord", to_wire(AdapterOutboxRecord(
-        operation_id="op_schema",
-        task_id="task_schema",
-        operation="task.amend",
-        request_fingerprint="fingerprint",
-        context=adapter_context,
-        request={"adapter_action": "steer"},
-    )))
+    validate_wire_object(
+        "AdapterOutboxRecord",
+        to_wire(
+            AdapterOutboxRecord(
+                operation_id="op_schema",
+                task_id="task_schema",
+                operation="task.amend",
+                request_fingerprint="fingerprint",
+                context=adapter_context,
+                request={"adapter_action": "steer"},
+            )
+        ),
+    )
 
     schema = schema_for("ProtocolError")
     assert schema["properties"]["spec_version"]["const"] == HLP_SPEC_VERSION
@@ -603,7 +675,9 @@ def test_schema_for_returns_copy_and_unknown_schema_is_not_found():
     schema = schema_for("ProtocolError")
     schema["properties"]["schema_version"]["const"] = "mutated"
 
-    assert schema_for("ProtocolError")["properties"]["schema_version"]["const"] == HLP_SCHEMA_VERSION
+    assert (
+        schema_for("ProtocolError")["properties"]["schema_version"]["const"] == HLP_SCHEMA_VERSION
+    )
 
     with pytest.raises(ProtocolError) as exc:
         schema_for("MissingSchema")
@@ -672,28 +746,34 @@ def test_adapter_context_is_passed_to_steer_block_and_resume():
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    run(ops.task_amend(
-        task.id,
-        by="alice",
-        text="Use the stable outbox context.",
-        expected_task_revision=revision,
-        idempotency_key="ctx-amend",
-    ))
-    checkpoint = run(ops.task_interrupt(
-        task.id,
-        by="alice",
-        prompt="Pause with outbox context.",
-        expected_task_revision=revision + 1,
-        idempotency_key="ctx-interrupt",
-    ))
+    run(
+        ops.task_amend(
+            task.id,
+            by="alice",
+            text="Use the stable outbox context.",
+            expected_task_revision=revision,
+            idempotency_key="ctx-amend",
+        )
+    )
+    checkpoint = run(
+        ops.task_interrupt(
+            task.id,
+            by="alice",
+            prompt="Pause with outbox context.",
+            expected_task_revision=revision + 1,
+            idempotency_key="ctx-interrupt",
+        )
+    )
     blocked_revision = run(ops.task_get(task.id)).revision
-    run(ops.checkpoint_resolve(
-        checkpoint.id,
-        by="alice",
-        action="approve",
-        expected_task_revision=blocked_revision,
-        idempotency_key="ctx-resolve",
-    ))
+    run(
+        ops.checkpoint_resolve(
+            checkpoint.id,
+            by="alice",
+            action="approve",
+            expected_task_revision=blocked_revision,
+            idempotency_key="ctx-resolve",
+        )
+    )
 
     steer_context = adapter.calls_of("steer")[0][1]["operation_context"]
     block_context = adapter.calls_of("block")[0][1]["operation_context"]
@@ -722,12 +802,14 @@ def test_adapter_context_is_passed_to_delegate_handoff_and_cancel():
 
     run(ops.task_assign(task.id, "agent_initial"))
     run(ops.task_start(task.id))
-    run(ops.ownership_transfer(
-        task.id,
-        "agent_writer",
-        "handoff",
-        actor="agent_initial",
-    ))
+    run(
+        ops.ownership_transfer(
+            task.id,
+            "agent_writer",
+            "handoff",
+            actor="agent_initial",
+        )
+    )
     run(ops.task_cancel(task.id, by="alice"))
 
     delegate_context = adapter.calls_of("delegate")[0][1]["operation_context"]
@@ -762,9 +844,9 @@ def test_outbox_is_persisted_before_adapter_side_effect():
             self.state_seen_before_side_effect = None
 
         async def steer(self, run_id, amendment, *, context=None):
-            self.state_seen_before_side_effect = (
-                self.ops.store.get_adapter_outbox_record(context.operation_id).state
-            )
+            self.state_seen_before_side_effect = self.ops.store.get_adapter_outbox_record(
+                context.operation_id
+            ).state
             await super().steer(run_id, amendment, context=context)
 
     ops = HumanLoopOperations()
@@ -773,13 +855,15 @@ def test_outbox_is_persisted_before_adapter_side_effect():
     task = run(ops._seed_to_in_progress())
     revision = run(ops.task_get(task.id)).revision
 
-    run(ops.task_amend(
-        task.id,
-        by="alice",
-        text="Outbox first.",
-        expected_task_revision=revision,
-        idempotency_key="outbox-first",
-    ))
+    run(
+        ops.task_amend(
+            task.id,
+            by="alice",
+            text="Outbox first.",
+            expected_task_revision=revision,
+            idempotency_key="outbox-first",
+        )
+    )
 
     assert adapter.state_seen_before_side_effect == "pending"
 
@@ -802,21 +886,25 @@ def test_retry_reuses_checkpoint_id_from_pending_adapter_outbox():
     revision = run(ops.task_get(task.id)).revision
 
     with pytest.raises(RuntimeError):
-        run(ops.task_interrupt(
+        run(
+            ops.task_interrupt(
+                task.id,
+                by="alice",
+                prompt="Reuse checkpoint id.",
+                expected_task_revision=revision,
+                idempotency_key="pending-outbox-retry",
+            )
+        )
+
+    checkpoint = run(
+        ops.task_interrupt(
             task.id,
             by="alice",
             prompt="Reuse checkpoint id.",
             expected_task_revision=revision,
             idempotency_key="pending-outbox-retry",
-        ))
-
-    checkpoint = run(ops.task_interrupt(
-        task.id,
-        by="alice",
-        prompt="Reuse checkpoint id.",
-        expected_task_revision=revision,
-        idempotency_key="pending-outbox-retry",
-    ))
+        )
+    )
 
     assert adapter.block_checkpoint_ids == [
         adapter.block_checkpoint_ids[0],
@@ -844,21 +932,25 @@ def test_retry_reuses_amendment_payload_from_pending_adapter_outbox():
     revision = run(ops.task_get(task.id)).revision
 
     with pytest.raises(RuntimeError):
-        run(ops.task_amend(
+        run(
+            ops.task_amend(
+                task.id,
+                by="alice",
+                text="Reuse amendment payload.",
+                expected_task_revision=revision,
+                idempotency_key="pending-amend-retry",
+            )
+        )
+
+    amended = run(
+        ops.task_amend(
             task.id,
             by="alice",
             text="Reuse amendment payload.",
             expected_task_revision=revision,
             idempotency_key="pending-amend-retry",
-        ))
-
-    amended = run(ops.task_amend(
-        task.id,
-        by="alice",
-        text="Reuse amendment payload.",
-        expected_task_revision=revision,
-        idempotency_key="pending-amend-retry",
-    ))
+        )
+    )
 
     assert adapter.steer_amendments[1] == adapter.steer_amendments[0]
     assert amended.steering_log[0].at.isoformat() == adapter.steer_amendments[0]["at"]
@@ -882,17 +974,20 @@ def test_sqlite_restart_retries_pending_adapter_outbox_with_context(tmp_path):
     revision = run(first.get_task(task.id)).revision
 
     with pytest.raises(RuntimeError):
-        run(first.interrupt(
-            task.id,
-            by="user_alice",
-            prompt="Persist pending outbox.",
-            expected_task_revision=revision,
-            idempotency_key="sqlite-pending-outbox",
-        ))
+        run(
+            first.interrupt(
+                task.id,
+                by="user_alice",
+                prompt="Persist pending outbox.",
+                expected_task_revision=revision,
+                idempotency_key="sqlite-pending-outbox",
+            )
+        )
 
     restarted_store = SQLiteHumanLoopStore(db_path)
     pending = next(
-        record for record in restarted_store.adapter_outbox_records()
+        record
+        for record in restarted_store.adapter_outbox_records()
         if record.operation == "task.interrupt"
     )
     assert pending.state == "pending"
@@ -902,20 +997,23 @@ def test_sqlite_restart_retries_pending_adapter_outbox_with_context(tmp_path):
         store=restarted_store,
         adapter=second_adapter,
     )
-    checkpoint = run(second.interrupt(
-        task.id,
-        by="user_alice",
-        prompt="Persist pending outbox.",
-        expected_task_revision=revision,
-        idempotency_key="sqlite-pending-outbox",
-    ))
+    checkpoint = run(
+        second.interrupt(
+            task.id,
+            by="user_alice",
+            prompt="Persist pending outbox.",
+            expected_task_revision=revision,
+            idempotency_key="sqlite-pending-outbox",
+        )
+    )
 
     block_call = second_adapter.calls_of("block")[0][1]
     assert checkpoint.id == pending.request["checkpoint_id"]
     assert block_call["checkpoint_id"] == pending.request["checkpoint_id"]
     assert block_call["operation_context"]["operation_id"] == pending.operation_id
     restored_interrupt = next(
-        record for record in restarted_store.adapter_outbox_records()
+        record
+        for record in restarted_store.adapter_outbox_records()
         if record.operation == "task.interrupt"
     )
     assert restored_interrupt.state == "succeeded"
@@ -1018,12 +1116,14 @@ def test_process_adapter_serializes_hlp_operation_context():
         name="industrial-process",
         runner=runner,
     )
-    run_id = run(adapter.delegate(
-        task_id="task_outbox",
-        agent_id="agent_proc",
-        capability="industrial",
-        input={"goal": "ctx"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_outbox",
+            agent_id="agent_proc",
+            capability="industrial",
+            input={"goal": "ctx"},
+        )
+    )
     context = AdapterOperationContext(
         operation_id="op_test",
         task_id="task_outbox",
@@ -1101,22 +1201,27 @@ def test_process_adapter_serializes_delegate_handoff_and_cancel_contexts():
         task_revision=3,
     )
 
-    run_id = run(adapter.delegate(
-        task_id="task_process",
-        agent_id="agent_proc",
-        capability="industrial",
-        input={"goal": "ctx"},
-        operation_context=delegate_context,
-    ))
-    handoff_run_id = run(adapter.handoff(
-        run_id,
-        "agent_next",
-        {"task_id": "task_process"},
-        operation_context=handoff_context,
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_process",
+            agent_id="agent_proc",
+            capability="industrial",
+            input={"goal": "ctx"},
+            operation_context=delegate_context,
+        )
+    )
+    handoff_run_id = run(
+        adapter.handoff(
+            run_id,
+            "agent_next",
+            {"task_id": "task_process"},
+            operation_context=handoff_context,
+        )
+    )
     run(adapter.cancel(handoff_run_id, "cancelled by alice", operation_context=cancel_context))
 
-    assert [
-        request["operation_context"]["operation_id"]
-        for request in captured
-    ] == ["op_delegate", "op_handoff", "op_cancel"]
+    assert [request["operation_context"]["operation_id"] for request in captured] == [
+        "op_delegate",
+        "op_handoff",
+        "op_cancel",
+    ]

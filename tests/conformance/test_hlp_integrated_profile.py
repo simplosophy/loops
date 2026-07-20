@@ -22,45 +22,57 @@ def run(coro):
 
 
 def test_hlp_integrated_profile_projects_harness_events_with_correlation():
-    adapter = FakeHarnessAdapter(capabilities=HarnessCapabilities(
-        name="conformance-harness",
-        conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
-    ))
+    adapter = FakeHarnessAdapter(
+        capabilities=HarnessCapabilities(
+            name="conformance-harness",
+            conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
+        )
+    )
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Project harness events",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Project harness events",
+        )
+    )
     handle = run(client.delegate(task.id, "agent_harness", capability="conformance"))
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_approval",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="Approve harness operation?",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_approval",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="Approve harness operation?",
+        ),
+    )
     checkpoint = run(client.project_harness_events(handle.run_id))[0]
     assert checkpoint.kind == "approval"
 
-    run(client.resolve_checkpoint(
-        checkpoint.id,
-        by="user_alice",
-        action="approve",
-        state_patch={"resume": "from-human-state"},
-    ))
+    run(
+        client.resolve_checkpoint(
+            checkpoint.id,
+            by="user_alice",
+            action="approve",
+            state_patch={"resume": "from-human-state"},
+        )
+    )
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="artifact",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        artifact_type="report",
-        artifact_uri="mem://integrated-report",
-        artifact_checksum="sha256:integrated-report",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="artifact",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            artifact_type="report",
+            artifact_uri="mem://integrated-report",
+            artifact_checksum="sha256:integrated-report",
+        ),
+    )
     artifact = run(client.project_harness_events(handle.run_id))[0]
     assert artifact.payload == ArtifactPayload(
         kind="ref",
@@ -83,13 +95,16 @@ def test_hlp_integrated_profile_rejects_mismatched_harness_correlation():
     handle = run(client.delegate(task.id, "agent_harness"))
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_input",
-        task_id="task_other",
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="Bad task id",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id="task_other",
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="Bad task id",
+        ),
+    )
 
     with pytest.raises(ProtocolError) as exc:
         run(client.project_harness_events(handle.run_id))
@@ -102,48 +117,66 @@ def test_hlp_integrated_profile_rejects_mismatched_harness_correlation():
 
 def test_hlp_integrated_profile_cursor_ack_is_forward_only_per_run():
     adapter = FakeHarnessAdapter()
-    run_id = run(adapter.delegate(
-        task_id="task_ack",
-        agent_id="agent_harness",
-        capability="conformance",
-        input={"goal": "ack"},
-    ))
-    other_run_id = run(adapter.delegate(
-        task_id="task_other",
-        agent_id="agent_harness",
-        capability="conformance",
-        input={"goal": "other"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_ack",
+            agent_id="agent_harness",
+            capability="conformance",
+            input={"goal": "ack"},
+        )
+    )
+    other_run_id = run(
+        adapter.delegate(
+            task_id="task_other",
+            agent_id="agent_harness",
+            capability="conformance",
+            input={"goal": "other"},
+        )
+    )
 
-    adapter.queue_event(run_id, HarnessEvent(
-        kind="needs_input",
-        task_id="task_ack",
-        run_id=run_id,
-        agent_id="agent_harness",
-        prompt="First event",
-    ))
-    adapter.queue_event(run_id, HarnessEvent(
-        kind="needs_input",
-        task_id="task_ack",
-        run_id=run_id,
-        agent_id="agent_harness",
-        prompt="Second event",
-    ))
-    adapter.queue_event(other_run_id, HarnessEvent(
-        kind="needs_input",
-        task_id="task_other",
-        run_id=other_run_id,
-        agent_id="agent_harness",
-        prompt="Other run event",
-    ))
+    adapter.queue_event(
+        run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id="task_ack",
+            run_id=run_id,
+            agent_id="agent_harness",
+            prompt="First event",
+        ),
+    )
+    adapter.queue_event(
+        run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id="task_ack",
+            run_id=run_id,
+            agent_id="agent_harness",
+            prompt="Second event",
+        ),
+    )
+    adapter.queue_event(
+        other_run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id="task_other",
+            run_id=other_run_id,
+            agent_id="agent_harness",
+            prompt="Other run event",
+        ),
+    )
 
     first = run(adapter.peek_events(run_id, limit=1))[0]
     run(adapter.ack_events(run_id, through=first.cursor))
 
-    assert [(delivery.cursor, delivery.event.prompt) for delivery in run(adapter.peek_events(run_id))] == [
+    assert [
+        (delivery.cursor, delivery.event.prompt) for delivery in run(adapter.peek_events(run_id))
+    ] == [
         ("evt_000002", "Second event"),
     ]
-    assert [(delivery.cursor, delivery.event.prompt) for delivery in run(adapter.peek_events(other_run_id))] == [
+    assert [
+        (delivery.cursor, delivery.event.prompt)
+        for delivery in run(adapter.peek_events(other_run_id))
+    ] == [
         ("evt_000003", "Other run event"),
     ]
     with pytest.raises(AgentAdapterError):
@@ -163,11 +196,13 @@ def test_hlp_integrated_profile_process_adapter_requires_external_run_id():
     )
 
     with pytest.raises(AgentAdapterError) as exc:
-        run(adapter.delegate(
-            task_id="task_proc",
-            agent_id="agent_proc",
-            capability="conformance",
-            input={"goal": "prove run id"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_proc",
+                agent_id="agent_proc",
+                capability="conformance",
+                input={"goal": "prove run id"},
+            )
+        )
     assert exc.value.operation == "delegate"
     assert "run_id" in str(exc.value)

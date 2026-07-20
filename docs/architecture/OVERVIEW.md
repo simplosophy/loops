@@ -62,15 +62,23 @@ loops/
     state_machine.py   # Task transition table
     store.py           # in-memory reference store
     sqlite_store.py    # local snapshot store
-    operations.py      # protocol operation layer
+    operations/        # protocol operation layer (per-domain mixin package)
     sdk.py             # HLPClient facade
-    adapters.py        # AgentAdapter / HarnessAdapter implementations
+    adapters/          # AgentAdapter / HarnessAdapter package
+      protocol.py      # contracts + handles / events
+      fake.py          # testing adapters
+      process.py       # process / prompt CLI base
+      codex.py         # Codex CLI + harness projection
+      cli.py           # Pi / Claude / Kimi CLI + harness, Hermes
+      frameworks.py    # shape-compatible OpenAI / LangGraph / CrewAI
     events.py          # event bus abstractions
     audit.py           # append-only audit log
+  tui/                 # optional host/channel (not protocol core)
 ```
 
 `loops.hlp` 当前承载 HLP 参考实现和稳定 SDK namespace。`loops` 顶层只
-re-export 稳定公共 API。
+re-export 稳定公共 API。Adapter 深度分 first-class / shape-compatible /
+testing 三档；`HLP-industrial` 是 reference profile，不是生产多 writer 后端。
 
 ## Adapter Boundary
 
@@ -103,6 +111,23 @@ review-ready artifact -> HumanInboxItem(submit_review)
 Web、IM、CLI、桌面应用可以读取 `HLPClient.human_inbox(principal)`，再用自己的
 channel 进行渲染和送达。
 
+## 准实时与多模态（边界）
+
+Voice duplex、屏幕共享流、BCI 等 **准实时交互** 属于 channel / sensor plane，
+**不是** HLP core。HLP 通过 **晋级（promotion）** 接收已降采样的责任事件：
+
+- **Hard control** → checkpoint / `task.interrupt`（可阻塞 Task）  
+- **Soft control** → 合并后的 `task.amend` / steering（通常不改 state）  
+- Token/音频帧 **不** 进入一等对象；里程碑才 `artifact.commit`
+
+规范草案见 `docs/specs/HLP.md` 附录 C 与
+`docs/plans/2026-07-13-hlp-realtime-control-plane.md`。TUI 对 harness JSONL 的
+stream **展示** 是 channel 能力，不等于 HLP 拥有实时媒体协议。
+
+Reference helpers（可选，不改变状态机）：`ControlSignal`、
+`merge_soft_control_signals`、`require_hard_resolve_allowed`，以及
+`HLPClient.amend(..., promotion_provenance=...)` 写入 audit intent provenance。
+
 ## 设计原则
 
 - 极简：HLP SDK 只保留责任闭环必要对象和操作。
@@ -119,4 +144,7 @@ channel 进行渲染和送达。
 - `loops-hlp-harness-demo` 验证 Codex harness adapter 对外部 human-facing 事件的投影。
 - `loops-hlp-codex-harness-demo` 验证 Codex JSONL harness adapter 的端到端投影。
 - `loops-hlp-local-cli-demo --adapters codex,kimi,claude --strict` 验证真实本机 CLI adapter 的完整 HLP lifecycle。
+- `loops-hlp-pr-desk` 验证**真实宿主嵌入**：PR Review Desk 拥有 PR 领域与 inbox
+  卡片，HLP 只做责任闭环，code-review harness 经 `CodexHarnessAdapter` 接入；
+  默认 offline runner，`--live` 走本机 Codex。
 - 站点验证确保文档定位保持 HLP-first、SDK-only。

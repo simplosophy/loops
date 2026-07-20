@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from ._ids import (
@@ -16,12 +16,16 @@ from .types import (
     CheckpointKind,
     CheckpointResolutionAction,
     CheckpointState,
+    ControlIntent,
+    ControlPromotion,
+    ControlSourceKind,
+    ControlStrength,
     HumanInboxAction,
     HumanInboxKind,
     OwnershipTransferVia,
     PermissionGrantDecision,
-    ProtocolError,
     ProposedActionRisk,
+    ProtocolError,
     ReviewCommentSeverity,
     ReviewKind,
     ReviewVerdict,
@@ -31,30 +35,30 @@ from .types import (
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ════════════════════════════════════════════════════════════
-# 不可变值对象 (frozen) —— spec §2.3 前进性约束
+# Immutable value objects (frozen) — spec §2.3 forward-progress constraint
 # ════════════════════════════════════════════════════════════
 
 
 @dataclass(frozen=True)
 class TaskSpec:
-    """Task 的意图层。创建后不可变 (spec §3.2)。"""
+    """The intent layer of a Task. Immutable after creation (spec §3.2)."""
 
     goal: str
     acceptance_criteria: tuple[str, ...] = ()
-    inputs: tuple["InputRef", ...] = ()
-    constraints: "Constraints | None" = None
+    inputs: tuple[InputRef, ...] = ()
+    constraints: Constraints | None = None
 
 
 @dataclass(frozen=True)
 class InputRef:
     kind: Literal["artifact", "resource"]
-    id: str | None = None        # kind=artifact 时为 art_
-    version: str | None = None   # kind=artifact 时必填
-    uri: str | None = None       # kind=resource 时必填
+    id: str | None = None  # an art_ id when kind=artifact
+    version: str | None = None  # required when kind=artifact
+    uri: str | None = None  # required when kind=resource
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,49 @@ class SteeringAmendment:
 
 
 @dataclass(frozen=True)
+class InteractionRef:
+    """Opaque channel session alignment (HLP-realtime appendix C). Not a first-class object."""
+
+    channel: str
+    session_id: str
+    episode_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ControlSignal:
+    """Host/channel intent sample before or at promotion (HLP-realtime appendix C).
+
+    Not a first-class HLP object. Soft signals must not change Task.state; hosts
+    merge soft streams and promote into task.amend / hard checkpoint ops.
+    """
+
+    strength: ControlStrength
+    intent: ControlIntent
+    principal_binding: str
+    confidence: float = 1.0
+    source_kind: ControlSourceKind = "text"
+    source_ref: str | None = None
+    text: str = ""
+    promotion: ControlPromotion = "none"
+    run_id: str | None = None
+    interaction: InteractionRef | None = None
+    effective_at: datetime = field(default_factory=_now)
+    recorded_at: datetime = field(default_factory=_now)
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= float(self.confidence) <= 1.0):
+            raise ProtocolError(
+                "INVALID_SPEC",
+                f"ControlSignal.confidence must be in [0, 1], got {self.confidence!r}",
+            )
+        if not self.principal_binding:
+            raise ProtocolError(
+                "INVALID_SPEC",
+                "ControlSignal.principal_binding is required",
+            )
+
+
+@dataclass(frozen=True)
 class ProposedAction:
     id: str
     kind: str
@@ -124,7 +171,7 @@ class ProposedAction:
 
 @dataclass(frozen=True)
 class OwnershipTransfer:
-    """ownership 转移链的一条记录 (spec §3.5)。"""
+    """One record in the ownership transfer chain (spec §3.5)."""
 
     from_: str
     to: str
@@ -142,17 +189,17 @@ class CheckpointOption:
 @dataclass(frozen=True)
 class Evidence:
     kind: Literal["artifact", "text"]
-    id: str | None = None      # kind=artifact
+    id: str | None = None  # kind=artifact
     content: str | None = None  # kind=text
 
 
 @dataclass(frozen=True)
 class CheckpointResolution:
-    by: str                     # 必须是人 (user_*)
+    by: str  # must be a human (user_*)
     action: CheckpointResolutionAction
-    choice: str | None = None   # action=choose 时
-    input: str | None = None    # action=provide 时
-    reassign_to: str | None = None  # action=reassign 时
+    choice: str | None = None  # when action=choose
+    input: str | None = None  # when action=provide
+    reassign_to: str | None = None  # when action=reassign
     approved_actions: tuple[str, ...] = ()
     denied_actions: tuple[str, ...] = ()
     state_patch: dict[str, Any] | None = None
@@ -170,7 +217,7 @@ class ReviewComment:
 
 @dataclass(frozen=True)
 class ArtifactProvenance:
-    produced_by: str            # task_id
+    produced_by: str  # task_id
     produced_at: datetime = field(default_factory=_now)
 
 
@@ -178,7 +225,7 @@ class ArtifactProvenance:
 class ArtifactPayload:
     kind: Literal["diff", "blob", "ref", "inline"]
     uri: str
-    checksum: str               # sha256:...
+    checksum: str  # sha256:...
     size: int = 0
 
 
@@ -192,7 +239,7 @@ class ArtifactRef:
 class LedgerEntry:
     key: str
     value: Any
-    by: str                     # 写入者 task_id
+    by: str  # writer's task_id
     written_at: datetime = field(default_factory=_now)
 
 
@@ -258,16 +305,16 @@ class IdempotencyRecord:
 
 
 # ════════════════════════════════════════════════════════════
-# 可变状态对象 —— 持有协议运行时状态
+# Mutable state objects — hold protocol runtime state
 # ════════════════════════════════════════════════════════════
 
 
 @dataclass
 class Ownership:
-    """可转移凭证 (spec §3.5)。principal 永不变，assignee 流转。"""
+    """Transferable credential (spec §3.5). principal never changes; assignee changes hands."""
 
-    principal: str              # 人, 永不变
-    assignee: str               # 当前执行者
+    principal: str  # the human; never changes
+    assignee: str  # current executor
     delegable: bool = True
     chain: tuple[OwnershipTransfer, ...] = ()
 
@@ -275,8 +322,8 @@ class Ownership:
         self,
         to: str,
         via: OwnershipTransferVia,
-    ) -> "Ownership":
-        """返回转移后的新 Ownership（chain 追加一条）。"""
+    ) -> Ownership:
+        """Return the new Ownership after the transfer (one entry appended to chain)."""
         return Ownership(
             principal=self.principal,
             assignee=to,
@@ -287,21 +334,19 @@ class Ownership:
 
 @dataclass
 class Task:
-    """协议主语 (spec §3.2)。spec 创建后不可变，state/ownership 可流转。"""
+    """Primary subject of the protocol (spec §3.2). spec is immutable after creation; state/ownership can transition."""
 
     id: str = field(default_factory=gen_task_id)
     type: str = ""
     spec: TaskSpec = field(default_factory=lambda: TaskSpec(goal=""))
-    ownership: Ownership = field(
-        default_factory=lambda: Ownership(principal="", assignee="")
-    )
+    ownership: Ownership = field(default_factory=lambda: Ownership(principal="", assignee=""))
     state: TaskState = "created"
     parent_task: str | None = None
     created_at: datetime = field(default_factory=_now)
     revision: int = 0
     deadline: datetime | None = None
-    checkpoints: list[str] = field(default_factory=list)     # ckpt_id 列表
-    artifacts: list[str] = field(default_factory=list)       # art_id 列表
+    checkpoints: list[str] = field(default_factory=list)  # list of ckpt_id
+    artifacts: list[str] = field(default_factory=list)  # list of art_id
     steering_log: tuple[SteeringAmendment, ...] = ()
 
     @property
@@ -311,7 +356,7 @@ class Task:
 
 @dataclass
 class Checkpoint:
-    """上行把关 (spec §3.4)。agent 声明，人回应。"""
+    """Upward gating (spec §3.4). The agent declares; the human responds."""
 
     id: str = field(default_factory=gen_checkpoint_id)
     task_id: str = ""
@@ -329,7 +374,7 @@ class Checkpoint:
 
 @dataclass
 class Review:
-    """人对 Artifact 的结构化反馈 (spec §3.6)。提交后不可变。"""
+    """Structured human feedback on an Artifact (spec §3.6). Immutable once submitted."""
 
     id: str = field(default_factory=lambda: "")
     task_id: str = ""
@@ -350,15 +395,15 @@ class Review:
             )
         object.__setattr__(self, name, value)
 
-    def seal(self) -> "Review":
-        """提交后封印，之后不可改 (spec §2.3)。"""
+    def seal(self) -> Review:
+        """Sealed on submission; immutable thereafter (spec §2.3)."""
         object.__setattr__(self, "_sealed", True)
         return self
 
 
 @dataclass
 class Artifact:
-    """独立生命周期的产物 (spec §3.7)。创建后不可变，要改产新版本。"""
+    """A product with its own lifecycle (spec §3.7). Immutable after creation; changes require a new version."""
 
     id: str = field(default_factory=gen_artifact_id)
     type: str = ""
@@ -377,14 +422,14 @@ class Artifact:
             )
         object.__setattr__(self, name, value)
 
-    def seal(self) -> "Artifact":
+    def seal(self) -> Artifact:
         object.__setattr__(self, "_sealed", True)
         return self
 
 
 @dataclass
 class Ledger:
-    """组织级状态沉淀 (spec §3.8)。append-only，永不删。"""
+    """Organization-level state accumulation (spec §3.8). append-only, never deleted."""
 
     id: str = field(default_factory=gen_ledger_id)
     scope: str = ""
@@ -395,7 +440,7 @@ class Ledger:
         return history[-1].value if history else None
 
     def write(self, key: str, value: Any, by: str) -> LedgerEntry:
-        """追加写入，读取时按 last-write-wins 取最新值。"""
+        """Append a write; reads resolve last-write-wins to the latest value."""
         entry = LedgerEntry(key=key, value=value, by=by)
         self.entries[key] = (*self.entries.get(key, ()), entry)
         return entry

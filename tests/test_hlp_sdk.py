@@ -5,39 +5,49 @@ import importlib
 import json
 from pathlib import Path
 
+from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
+from examples.hlp_codex_harness_demo import run_demo as run_codex_harness_demo
+from examples.hlp_e2e_demo import run_demo
+from examples.hlp_harness_wrap_demo import run_demo as run_harness_wrap_demo
+from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
+from examples.hlp_pr_review_desk import (
+    PullRequest,
+    adapter_error_report,
+    build_desk,
+    live_codex_command,
+    run_desk_demo,
+)
 from loops.hlp import (
     AgentAdapterError,
     ArtifactPayload,
-    ClaudeCodeCLIAdapter,
     CheckpointOption,
+    ClaudeCodeCLIAdapter,
+    ClaudeCodeHarnessAdapter,
     CodexCLIAdapter,
     CodexHarnessAdapter,
     CrewAIAdapter,
     FakeAgentAdapter,
     FakeHarnessAdapter,
-    HarnessEvent,
     HarnessCapabilities,
-    HLPEvent,
+    HarnessEvent,
     HermesCLIAdapter,
     HermsCLIAdapter,
     HLPClient,
+    HLPEvent,
     HLPHost,
     InMemoryEventBus,
     KimiCLIAdapter,
+    KimiHarnessAdapter,
     LangGraphAdapter,
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
+    PiHarnessAdapter,
     ProcessAgentAdapter,
-    PythonCallableAgentAdapter,
     ProcessResult,
     ProtocolError,
+    PythonCallableAgentAdapter,
     SQLiteHumanLoopStore,
 )
-from examples.hlp_e2e_demo import run_demo
-from examples.hlp_adapter_compat_demo import run_demo as run_adapter_demo
-from examples.hlp_codex_harness_demo import run_demo as run_codex_harness_demo
-from examples.hlp_harness_wrap_demo import run_demo as run_harness_wrap_demo
-from examples.hlp_local_cli_e2e import run_demo as run_local_cli_demo
 
 
 def run(coro):
@@ -74,10 +84,12 @@ def test_hlp_host_wires_client_adapter_store_and_events():
     adapter = FakeAgentAdapter()
     host = HLPHost.in_memory(adapter=adapter)
 
-    task = run(host.client.create_task(
-        principal="user_alice",
-        goal="Host HLP work",
-    ))
+    task = run(
+        host.client.create_task(
+            principal="user_alice",
+            goal="Host HLP work",
+        )
+    )
     run_handle = run(host.client.delegate(task.id, "agent_reviewer"))
 
     assert isinstance(host.client, HLPClient)
@@ -92,58 +104,72 @@ def test_hlp_client_runs_human_loop_without_low_level_operations():
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Review PR #1234 for security issues",
-        type="code-review",
-        acceptance_criteria=("All reviewer comments resolved",),
-    ))
-    run_handle = run(client.delegate(
-        task.id,
-        agent_id="agent_coder",
-        capability="code-review",
-        input={"goal": task.spec.goal, "repository": "web"},
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review PR #1234 for security issues",
+            type="code-review",
+            acceptance_criteria=("All reviewer comments resolved",),
+        )
+    )
+    run_handle = run(
+        client.delegate(
+            task.id,
+            agent_id="agent_coder",
+            capability="code-review",
+            input={"goal": task.spec.goal, "repository": "web"},
+        )
+    )
     run(client.start(task.id))
-    checkpoint = run(client.raise_checkpoint(
-        task_id=task.id,
-        kind="choice",
-        prompt="Delete obsolete index?",
-        options=(
-            CheckpointOption(id="safe", label="Keep risky index", risk="low"),
-            CheckpointOption(id="fast", label="Delete all", risk="high"),
-        ),
-        raised_by="agent_coder",
-    ))
-    run(client.resolve_checkpoint(
-        checkpoint.id,
-        by="user_alice",
-        action="choose",
-        choice="safe",
-        comment="Prefer the lower-risk path.",
-    ))
-    artifact = run(client.commit_artifact(
-        task_id=task.id,
-        type="report",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://report-v1",
-            checksum="sha256:report-v1",
-        ),
-        produced_by="agent_coder",
-    ))
-    review = run(client.submit_review(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="user_bob",
-        verdict="approved",
-    ))
-    entry = run(client.write_ledger(
-        scope="project:web",
-        key="pr.1234.status",
-        value="approved",
-        by=task.id,
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="choice",
+            prompt="Delete obsolete index?",
+            options=(
+                CheckpointOption(id="safe", label="Keep risky index", risk="low"),
+                CheckpointOption(id="fast", label="Delete all", risk="high"),
+            ),
+            raised_by="agent_coder",
+        )
+    )
+    run(
+        client.resolve_checkpoint(
+            checkpoint.id,
+            by="user_alice",
+            action="choose",
+            choice="safe",
+            comment="Prefer the lower-risk path.",
+        )
+    )
+    artifact = run(
+        client.commit_artifact(
+            task_id=task.id,
+            type="report",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://report-v1",
+                checksum="sha256:report-v1",
+            ),
+            produced_by="agent_coder",
+        )
+    )
+    review = run(
+        client.submit_review(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="user_bob",
+            verdict="approved",
+        )
+    )
+    entry = run(
+        client.write_ledger(
+            scope="project:web",
+            key="pr.1234.status",
+            value="approved",
+            by=task.id,
+        )
+    )
     history = run(client.replay_audit(task.id))
 
     assert run_handle.task_id == task.id
@@ -175,31 +201,40 @@ def test_hlp_client_runs_human_loop_without_low_level_operations():
 
 
 def test_harness_adapter_projects_human_interaction_events_into_hlp_inbox():
-    adapter = FakeHarnessAdapter(capabilities=HarnessCapabilities(
-        name="fake-review-harness",
-        conformance=("checkpoint-capable", "artifact-aware"),
-    ))
+    adapter = FakeHarnessAdapter(
+        capabilities=HarnessCapabilities(
+            name="fake-review-harness",
+            conformance=("checkpoint-capable", "artifact-aware"),
+        )
+    )
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Wrap an existing code-review harness",
-        type="harness-wrap",
-    ))
-    handle = run(client.delegate(
-        task.id,
-        "agent_review_harness",
-        capability="harness-wrap",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Wrap an existing code-review harness",
+            type="harness-wrap",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_review_harness",
+            capability="harness-wrap",
+        )
+    )
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_approval",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="Apply the generated patch?",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_approval",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="Apply the generated patch?",
+        ),
+    )
     projected = run(client.project_harness_events(handle.run_id))
 
     assert projected[0].__class__.__name__ == "Checkpoint"
@@ -209,20 +244,25 @@ def test_harness_adapter_projects_human_interaction_events_into_hlp_inbox():
     ]
     assert inbox[0].title == "Apply the generated patch?"
 
-    run(client.resolve_checkpoint(
-        projected[0].id,
-        by="user_alice",
-        action="approve",
-    ))
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="artifact",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        artifact_type="patch",
-        artifact_uri="mem://patch-v1",
-        artifact_checksum="sha256:patch-v1",
-    ))
+    run(
+        client.resolve_checkpoint(
+            projected[0].id,
+            by="user_alice",
+            action="approve",
+        )
+    )
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="artifact",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            artifact_type="patch",
+            artifact_uri="mem://patch-v1",
+            artifact_checksum="sha256:patch-v1",
+        ),
+    )
     projected = run(client.project_harness_events(handle.run_id))
 
     assert projected[0].__class__.__name__ == "Artifact"
@@ -237,20 +277,25 @@ def test_harness_event_projection_rejects_mismatched_task_correlation():
     adapter = FakeHarnessAdapter()
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Wrap an existing harness",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Wrap an existing harness",
+        )
+    )
     handle = run(client.delegate(task.id, "agent_harness"))
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_approval",
-        task_id="task_other",
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="This event belongs to a different task.",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_approval",
+            task_id="task_other",
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="This event belongs to a different task.",
+        ),
+    )
 
     try:
         run(client.project_harness_events(handle.run_id))
@@ -265,20 +310,25 @@ def test_harness_event_projection_peeks_until_successful_ack():
     adapter = FakeHarnessAdapter()
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Protect event delivery",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Protect event delivery",
+        )
+    )
     handle = run(client.delegate(task.id, "agent_harness"))
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_input",
-        task_id="task_other",
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="This should not be consumed on projection failure.",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id="task_other",
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="This should not be consumed on projection failure.",
+        ),
+    )
 
     try:
         run(client.project_harness_events(handle.run_id))
@@ -296,13 +346,16 @@ def test_harness_event_projection_peeks_until_successful_ack():
     ]
 
     run(adapter.ack_events(handle.run_id, through=deliveries[0].cursor))
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_input",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="Need deployment target.",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="Need deployment target.",
+        ),
+    )
 
     projected = run(client.project_harness_events(handle.run_id))
 
@@ -312,20 +365,25 @@ def test_harness_event_projection_peeks_until_successful_ack():
 
 def test_fake_harness_peek_is_nondestructive_until_ack():
     adapter = FakeHarnessAdapter()
-    run_id = run(adapter.delegate(
-        task_id="task_delivery",
-        agent_id="agent_harness",
-        capability="",
-        input={"goal": "delivery"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_delivery",
+            agent_id="agent_harness",
+            capability="",
+            input={"goal": "delivery"},
+        )
+    )
 
-    adapter.queue_event(run_id, HarnessEvent(
-        kind="needs_approval",
-        task_id="task_delivery",
-        run_id=run_id,
-        agent_id="agent_harness",
-        prompt="Approve?",
-    ))
+    adapter.queue_event(
+        run_id,
+        HarnessEvent(
+            kind="needs_approval",
+            task_id="task_delivery",
+            run_id=run_id,
+            agent_id="agent_harness",
+            prompt="Approve?",
+        ),
+    )
 
     first_peek = run(adapter.peek_events(run_id))
     second_peek = run(adapter.peek_events(run_id))
@@ -344,27 +402,35 @@ def test_project_harness_events_acks_only_successful_prefix():
     adapter = FakeHarnessAdapter()
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Project prefix",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Project prefix",
+        )
+    )
     handle = run(client.delegate(task.id, "agent_harness"))
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_input",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="Need region.",
-    ))
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_input",
-        task_id="task_other",
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="This event should remain queued.",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="Need region.",
+        ),
+    )
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id="task_other",
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="This event should remain queued.",
+        ),
+    )
 
     try:
         run(client.project_harness_events(handle.run_id))
@@ -383,24 +449,30 @@ def test_codex_harness_peek_ack_replays_until_ack():
     async def runner(command, request, timeout):
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": "codex_run_delivery",
-                    "correlation_id": request["correlation_id"],
-                    "hlp": {
-                        "kind": "needs_input",
-                        "agent_id": request["agent_id"],
-                        "prompt": "Need target branch.",
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": "codex_run_delivery",
-                    "correlation_id": request["correlation_id"],
-                    "status": "ok",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": "codex_run_delivery",
+                            "correlation_id": request["correlation_id"],
+                            "hlp": {
+                                "kind": "needs_input",
+                                "agent_id": request["agent_id"],
+                                "prompt": "Need target branch.",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": "codex_run_delivery",
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
 
@@ -409,12 +481,14 @@ def test_codex_harness_peek_ack_replays_until_ack():
         runner=runner,
     )
 
-    run_id = run(adapter.delegate(
-        task_id="task_codex_delivery",
-        agent_id="agent_codex",
-        capability="event-delivery",
-        input={"goal": "delivery"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_codex_delivery",
+            agent_id="agent_codex",
+            capability="event-delivery",
+            input={"goal": "delivery"},
+        )
+    )
     first_peek = run(adapter.peek_events(run_id))
     second_peek = run(adapter.peek_events(run_id))
 
@@ -447,19 +521,24 @@ def test_legacy_observe_adapter_still_projects_without_peek_ack():
     adapter = LegacyObserveHarness()
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Legacy observe",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Legacy observe",
+        )
+    )
     handle = run(client.delegate(task.id, "agent_legacy"))
     run(client.start(task.id))
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_approval",
-        task_id=task.id,
-        run_id=handle.run_id,
-        agent_id=handle.agent_id,
-        prompt="Approve legacy event?",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_approval",
+            task_id=task.id,
+            run_id=handle.run_id,
+            agent_id=handle.agent_id,
+            prompt="Approve legacy event?",
+        ),
+    )
 
     projected = run(client.project_harness_events(handle.run_id))
 
@@ -471,20 +550,25 @@ def test_harness_event_projection_does_not_ack_run_correlation_failure():
     adapter = FakeHarnessAdapter()
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Protect run correlation",
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Protect run correlation",
+        )
+    )
     handle = run(client.delegate(task.id, "agent_harness"))
     run(client.start(task.id))
 
-    adapter.queue_event(handle.run_id, HarnessEvent(
-        kind="needs_input",
-        task_id=task.id,
-        run_id="run_other",
-        agent_id=handle.agent_id,
-        prompt="This run mismatch should remain queued.",
-    ))
+    adapter.queue_event(
+        handle.run_id,
+        HarnessEvent(
+            kind="needs_input",
+            task_id=task.id,
+            run_id="run_other",
+            agent_id=handle.agent_id,
+            prompt="This run mismatch should remain queued.",
+        ),
+    )
 
     try:
         run(client.project_harness_events(handle.run_id))
@@ -501,12 +585,14 @@ def test_harness_event_projection_does_not_ack_run_correlation_failure():
 def test_fake_agent_adapter_records_contract_calls():
     adapter = FakeAgentAdapter()
 
-    delegate = run(adapter.delegate(
-        task_id="task_123",
-        agent_id="agent_reviewer",
-        capability="code-review",
-        input={"goal": "review"},
-    ))
+    delegate = run(
+        adapter.delegate(
+            task_id="task_123",
+            agent_id="agent_reviewer",
+            capability="code-review",
+            input={"goal": "review"},
+        )
+    )
     run(adapter.block(delegate, "ckpt_123", "Need approval"))
     run(adapter.resume(delegate, {"action": "approve"}))
     handoff = run(adapter.handoff(delegate, "agent_writer", {"reason": "rewrite"}))
@@ -544,16 +630,19 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     crewai = CrewAIAdapter(handler)
     codex = CodexCLIAdapter(command=("codex", "exec"))
     codex_harness = CodexHarnessAdapter(command=("codex", "exec", "--json"))
+    pi_harness = PiHarnessAdapter()
     claude = ClaudeCodeCLIAdapter(command=("claude", "-p"))
     kimi = KimiCLIAdapter(command=("kimi", "-p"))
     herms = HermsCLIAdapter(command=("herms", "run"))
 
-    run_id = run(python_adapter.delegate(
-        task_id="task_custom",
-        agent_id="agent_custom",
-        capability="demo",
-        input={"goal": "demo"},
-    ))
+    run_id = run(
+        python_adapter.delegate(
+            task_id="task_custom",
+            agent_id="agent_custom",
+            capability="demo",
+            input={"goal": "demo"},
+        )
+    )
     assert python_adapter.results[run_id] == {
         "handled": "task_custom",
         "agent": "agent_custom",
@@ -567,6 +656,12 @@ def test_named_adapter_targets_are_available_without_optional_dependencies():
     assert run(codex.healthcheck())["command"] == ("codex", "exec")
     assert run(codex_harness.healthcheck())["adapter"] == "codex-harness"
     assert codex_harness.harness_capabilities().conformance == (
+        "checkpoint-capable",
+        "artifact-aware",
+        "event-streaming",
+    )
+    assert run(pi_harness.healthcheck())["adapter"] == "pi-harness"
+    assert pi_harness.harness_capabilities().conformance == (
         "checkpoint-capable",
         "artifact-aware",
         "event-streaming",
@@ -597,12 +692,14 @@ def test_process_agent_adapter_executes_json_runner_contract():
         timeout=12.5,
     )
 
-    run_id = run(adapter.delegate(
-        task_id="task_proc",
-        agent_id="agent_codex",
-        capability="code-review",
-        input={"goal": "review"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_proc",
+            agent_id="agent_codex",
+            capability="code-review",
+            input={"goal": "review"},
+        )
+    )
     health = run(adapter.healthcheck())
 
     assert run_id == "external_run_1"
@@ -641,12 +738,14 @@ def test_process_agent_adapter_accepts_jsonl_event_stream_stdout():
 
     adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner)
 
-    run_id = run(adapter.delegate(
-        task_id="task_proc",
-        agent_id="agent_codex",
-        capability="code-review",
-        input={"goal": "review"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_proc",
+            agent_id="agent_codex",
+            capability="code-review",
+            input={"goal": "review"},
+        )
+    )
 
     assert run_id == "codex_run_1"
     assert adapter.process_results[run_id]["type"] == "turn.completed"
@@ -660,51 +759,63 @@ def test_codex_harness_adapter_projects_jsonl_events_into_hlp():
         if request["operation"] == "delegate":
             return ProcessResult(
                 exit_code=0,
-                stdout="\n".join((
-                    json.dumps({"type": "session.started", "session_id": "codex_session_1"}),
-                    json.dumps({
-                        "type": "hlp.event",
-                        "run_id": "codex_run_1",
-                        "correlation_id": request["correlation_id"],
-                        "hlp": {
-                            "kind": "needs_approval",
-                            "agent_id": "agent_codex",
-                            "prompt": "Apply the Codex patch?",
-                        },
-                    }),
-                    json.dumps({
-                        "type": "turn.completed",
-                        "run_id": "codex_run_1",
-                        "correlation_id": request["correlation_id"],
-                        "status": "ok",
-                    }),
-                )),
+                stdout="\n".join(
+                    (
+                        json.dumps({"type": "session.started", "session_id": "codex_session_1"}),
+                        json.dumps(
+                            {
+                                "type": "hlp.event",
+                                "run_id": "codex_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "hlp": {
+                                    "kind": "needs_approval",
+                                    "agent_id": "agent_codex",
+                                    "prompt": "Apply the Codex patch?",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": "codex_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "status": "ok",
+                            }
+                        ),
+                    )
+                ),
                 stderr="",
             )
         if request["operation"] == "resume":
             return ProcessResult(
                 exit_code=0,
-                stdout="\n".join((
-                    json.dumps({
-                        "type": "hlp.event",
-                        "run_id": "codex_run_1",
-                        "correlation_id": request["correlation_id"],
-                        "hlp": {
-                            "kind": "artifact",
-                            "agent_id": "agent_codex",
-                            "artifact_type": "patch",
-                            "artifact_uri": "mem://codex.patch",
-                            "artifact_checksum": "sha256:codex.patch",
-                            "artifact_size": 42,
-                        },
-                    }),
-                    json.dumps({
-                        "type": "turn.completed",
-                        "run_id": "codex_run_1",
-                        "correlation_id": request["correlation_id"],
-                        "status": "ok",
-                    }),
-                )),
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "type": "hlp.event",
+                                "run_id": "codex_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "hlp": {
+                                    "kind": "artifact",
+                                    "agent_id": "agent_codex",
+                                    "artifact_type": "patch",
+                                    "artifact_uri": "mem://codex.patch",
+                                    "artifact_checksum": "sha256:codex.patch",
+                                    "artifact_size": 42,
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": "codex_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "status": "ok",
+                            }
+                        ),
+                    )
+                ),
                 stderr="",
             )
         return ProcessResult(exit_code=0, stdout="{}", stderr="")
@@ -716,17 +827,21 @@ def test_codex_harness_adapter_projects_jsonl_events_into_hlp():
     )
     client = HLPClient(adapter=adapter)
 
-    task = run(client.create_task(
-        principal="user_alice",
-        goal="Review a Codex generated patch",
-        type="codex-harness",
-    ))
-    handle = run(client.delegate(
-        task.id,
-        "agent_codex",
-        capability="code-edit",
-        input={"goal": task.spec.goal},
-    ))
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review a Codex generated patch",
+            type="codex-harness",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_codex",
+            capability="code-edit",
+            input={"goal": task.spec.goal},
+        )
+    )
     run(client.start(task.id))
 
     checkpoint = run(client.project_harness_events(handle.run_id))[0]
@@ -760,44 +875,214 @@ def test_codex_harness_adapter_projects_jsonl_events_into_hlp():
     ]
 
 
+def test_pi_harness_adapter_projects_pi_jsonl_events_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "type": "pi.event",
+                                "run_id": "pi_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "pi": {
+                                    "kind": "needs_approval",
+                                    "agent_id": "agent_pi",
+                                    "prompt": "Apply the Pi patch?",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": "pi_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "status": "ok",
+                            }
+                        ),
+                    )
+                ),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "type": "pi.event",
+                                "run_id": "pi_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "pi": {
+                                    "kind": "artifact",
+                                    "agent_id": "agent_pi",
+                                    "artifact_type": "patch",
+                                    "artifact_uri": "mem://pi.patch",
+                                    "artifact_checksum": "sha256:pi.patch",
+                                    "artifact_size": 7,
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": "pi_run_1",
+                                "correlation_id": request["correlation_id"],
+                                "status": "ok",
+                            }
+                        ),
+                    )
+                ),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = PiHarnessAdapter(
+        runner=runner,
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review a Pi generated patch",
+            type="pi-harness",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_pi",
+            capability="code-edit",
+            input={"goal": task.spec.goal},
+        )
+    )
+    run(client.start(task.id))
+
+    checkpoint = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert handle.run_id == "pi_run_1"
+    assert checkpoint.prompt == "Apply the Pi patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:5] == ("pi", "--mode", "json", "-p", "--no-session")
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 9.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://pi.patch"
+    assert artifact.payload.checksum == "sha256:pi.patch"
+    assert artifact.payload.size == 7
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_pi_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "type": "pi.event",
+                    "run_id": "pi_run_1",
+                    "correlation_id": "task_other",
+                    "pi": {
+                        "kind": "needs_input",
+                        "agent_id": "agent_pi",
+                        "prompt": "Need context",
+                    },
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner)
+
+    try:
+        run(
+            adapter.delegate(
+                task_id="task_pi",
+                agent_id="agent_pi",
+                capability="code-edit",
+                input={"goal": "edit"},
+            )
+        )
+    except AgentAdapterError as exc:
+        assert exc.adapter == "pi-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_pi", "actual": "task_other"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
 def test_codex_harness_adapter_projects_real_agent_message_jsonl_shape():
     async def runner(command, request, timeout):
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "thread.started",
-                    "thread_id": "019efd48-85a1-7501-bc61-da75d1e60a79",
-                }),
-                json.dumps({"type": "turn.started"}),
-                json.dumps({
-                    "type": "item.completed",
-                    "item": {
-                        "id": "item_0",
-                        "type": "agent_message",
-                        "text": json.dumps({
-                            "run_id": "real_codex_run_1",
-                            "correlation_id": request["correlation_id"],
-                            "status": "ok",
-                            "summary": "actual codex json probe",
-                            "hlp": {
-                                "kind": "needs_approval",
-                                "agent_id": "agent_codex",
-                                "prompt": "Approve actual Codex harness projection?",
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "thread.started",
+                            "thread_id": "019efd48-85a1-7501-bc61-da75d1e60a79",
+                        }
+                    ),
+                    json.dumps({"type": "turn.started"}),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "id": "item_0",
+                                "type": "agent_message",
+                                "text": json.dumps(
+                                    {
+                                        "run_id": "real_codex_run_1",
+                                        "correlation_id": request["correlation_id"],
+                                        "status": "ok",
+                                        "summary": "actual codex json probe",
+                                        "hlp": {
+                                            "kind": "needs_approval",
+                                            "agent_id": "agent_codex",
+                                            "prompt": "Approve actual Codex harness projection?",
+                                        },
+                                    }
+                                ),
                             },
-                        }),
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "usage": {
-                        "input_tokens": 16814,
-                        "cached_input_tokens": 2432,
-                        "output_tokens": 120,
-                        "reasoning_output_tokens": 57,
-                    },
-                }),
-            )),
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "usage": {
+                                "input_tokens": 16814,
+                                "cached_input_tokens": 2432,
+                                "output_tokens": 120,
+                                "reasoning_output_tokens": 57,
+                            },
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
 
@@ -806,12 +1091,14 @@ def test_codex_harness_adapter_projects_real_agent_message_jsonl_shape():
         runner=runner,
     )
 
-    run_id = run(adapter.delegate(
-        task_id="task_real_probe",
-        agent_id="agent_codex",
-        capability="real-codex-harness",
-        input={"goal": "probe"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_real_probe",
+            agent_id="agent_codex",
+            capability="real-codex-harness",
+            input={"goal": "probe"},
+        )
+    )
     events = run(adapter.observe(run_id))
 
     assert run_id == "real_codex_run_1"
@@ -844,12 +1131,14 @@ def test_codex_harness_adapter_rejects_mismatched_event_correlation():
     )
 
     try:
-        run(adapter.delegate(
-            task_id="task_codex",
-            agent_id="agent_codex",
-            capability="code-edit",
-            input={"goal": "edit"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_codex",
+                agent_id="agent_codex",
+                capability="code-edit",
+                input={"goal": "edit"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "codex-harness"
         assert exc.operation == "delegate"
@@ -857,6 +1146,551 @@ def test_codex_harness_adapter_rejects_mismatched_event_correlation():
         assert exc.details == {"expected": "task_codex", "actual": "task_other"}
     else:
         raise AssertionError("expected AgentAdapterError")
+
+
+def test_kimi_harness_adapter_projects_stream_json_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "role": "assistant",
+                                "content": json.dumps(
+                                    {
+                                        "run_id": "kimi_run_1",
+                                        "correlation_id": request["correlation_id"],
+                                        "status": "ok",
+                                        "summary": "Kimi prepared a patch",
+                                        "hlp": {
+                                            "kind": "needs_approval",
+                                            "agent_id": "agent_kimi",
+                                            "prompt": "Apply the Kimi patch?",
+                                        },
+                                    }
+                                ),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "role": "meta",
+                                "type": "session.resume_hint",
+                                "session_id": "session_x",
+                                "command": "kimi -r session_x",
+                                "content": "To resume this session: kimi -r session_x",
+                            }
+                        ),
+                    )
+                ),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "role": "assistant",
+                                "content": json.dumps(
+                                    {
+                                        "run_id": "kimi_run_1",
+                                        "correlation_id": request["correlation_id"],
+                                        "status": "ok",
+                                        "summary": "Kimi patch is ready",
+                                        "hlp": {
+                                            "kind": "artifact",
+                                            "agent_id": "agent_kimi",
+                                            "artifact_type": "patch",
+                                            "artifact_uri": "mem://kimi.patch",
+                                            "artifact_checksum": "sha256:kimi.patch",
+                                            "artifact_size": 7,
+                                        },
+                                    }
+                                ),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "role": "meta",
+                                "type": "session.resume_hint",
+                                "session_id": "session_x",
+                                "command": "kimi -r session_x",
+                                "content": "To resume this session: kimi -r session_x",
+                            }
+                        ),
+                    )
+                ),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = KimiHarnessAdapter(
+        runner=runner,
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review a Kimi generated patch",
+            type="kimi-harness",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_kimi",
+            capability="code-edit",
+            input={"goal": task.spec.goal},
+        )
+    )
+    run(client.start(task.id))
+
+    checkpoint = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert handle.run_id == "kimi_run_1"
+    assert checkpoint.prompt == "Apply the Kimi patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:4] == ("kimi", "--output-format", "stream-json", "-p")
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 9.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://kimi.patch"
+    assert artifact.payload.checksum == "sha256:kimi.patch"
+    assert artifact.payload.size == 7
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_kimi_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        {
+                            "run_id": "kimi_run_1",
+                            "correlation_id": "task_wrong",
+                            "status": "ok",
+                            "hlp": {
+                                "kind": "needs_input",
+                                "agent_id": "agent_kimi",
+                                "prompt": "Need context",
+                            },
+                        }
+                    ),
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = KimiHarnessAdapter(runner=runner)
+
+    try:
+        run(
+            adapter.delegate(
+                task_id="task_kimi",
+                agent_id="agent_kimi",
+                capability="code-edit",
+                input={"goal": "edit"},
+            )
+        )
+    except AgentAdapterError as exc:
+        assert exc.adapter == "kimi-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_kimi", "actual": "task_wrong"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def _claude_stream_json_lines(correlation_id: str, hlp: dict) -> str:
+    """Claude stream-json delegate stdout: system + assistant + result envelopes.
+
+    Real Claude stream-json repeats the final assistant text verbatim in the
+    ``result`` envelope, so the embedded HLP JSON (result payload plus nested
+    ``hlp`` human-loop object) appears twice in one stream. The adapter drops
+    the transport-level duplicate at queue time, so each operation still
+    projects exactly one harness event; correlation validation still runs over
+    every line.
+    """
+    final_text = json.dumps(
+        {
+            "run_id": "claude_run_1",
+            "correlation_id": correlation_id,
+            "status": "ok",
+            "summary": "Claude prepared a patch",
+            "hlp": hlp,
+        }
+    )
+    return "\n".join(
+        (
+            json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m"}),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "thinking": "planning the patch"},
+                            {"type": "text", "text": final_text},
+                        ],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": final_text,
+                    "session_id": "s",
+                }
+            ),
+        )
+    )
+
+
+def test_claude_harness_adapter_projects_stream_json_into_hlp():
+    requests = []
+
+    async def runner(command, request, timeout):
+        requests.append({"command": command, "request": request, "timeout": timeout})
+        if request["operation"] == "delegate":
+            return ProcessResult(
+                exit_code=0,
+                stdout=_claude_stream_json_lines(
+                    request["correlation_id"],
+                    {
+                        "kind": "needs_approval",
+                        "agent_id": "agent_claude",
+                        "prompt": "Apply the Claude patch?",
+                    },
+                ),
+                stderr="",
+            )
+        if request["operation"] == "resume":
+            return ProcessResult(
+                exit_code=0,
+                stdout=_claude_stream_json_lines(
+                    request["correlation_id"],
+                    {
+                        "kind": "artifact",
+                        "agent_id": "agent_claude",
+                        "artifact_type": "patch",
+                        "artifact_uri": "mem://claude.patch",
+                        "artifact_checksum": "sha256:claude.patch",
+                        "artifact_size": 9,
+                    },
+                ),
+                stderr="",
+            )
+        return ProcessResult(exit_code=0, stdout="{}", stderr="")
+
+    adapter = ClaudeCodeHarnessAdapter(
+        runner=runner,
+        timeout=9.0,
+    )
+    client = HLPClient(adapter=adapter)
+
+    task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Review a Claude generated patch",
+            type="claude-code-harness",
+        )
+    )
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_claude",
+            capability="code-edit",
+            input={"goal": task.spec.goal},
+        )
+    )
+    run(client.start(task.id))
+
+    projected = run(client.project_harness_events(handle.run_id))
+    inbox = run(client.human_inbox("user_alice"))
+
+    # The assistant text and the result envelope carry the same hlp payload;
+    # transport-level dedup must project exactly one checkpoint.
+    assert len(projected) == 1
+    checkpoint = projected[0]
+    assert handle.run_id == "claude_run_1"
+    assert checkpoint.prompt == "Apply the Claude patch?"
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("checkpoint", "resolve_checkpoint", checkpoint.id),
+    ]
+    assert requests[0]["command"][:4] == (
+        "claude",
+        "-p",
+        "--output-format",
+        "stream-json",
+    )
+    assert requests[0]["command"][-1].startswith("You are executing an HLP adapter operation.")
+    assert requests[0]["timeout"] == 9.0
+
+    run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
+    artifact = run(client.project_harness_events(handle.run_id))[0]
+    inbox = run(client.human_inbox("user_alice"))
+
+    assert artifact.type == "patch"
+    assert artifact.payload.uri == "mem://claude.patch"
+    assert artifact.payload.checksum == "sha256:claude.patch"
+    assert artifact.payload.size == 9
+    assert [(item.kind, item.action, item.subject_id) for item in inbox] == [
+        ("review", "submit_review", artifact.id),
+    ]
+    assert [entry["request"]["operation"] for entry in requests] == [
+        "delegate",
+        "block",
+        "resume",
+    ]
+
+
+def test_claude_harness_adapter_rejects_mismatched_event_correlation():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "system",
+                            "subtype": "init",
+                            "session_id": "s",
+                            "model": "m",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "assistant",
+                            "message": {
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": json.dumps(
+                                            {
+                                                "run_id": "claude_run_1",
+                                                "correlation_id": "task_wrong",
+                                                "status": "ok",
+                                                "hlp": {
+                                                    "kind": "needs_input",
+                                                    "agent_id": "agent_claude",
+                                                    "prompt": "Need context",
+                                                },
+                                            }
+                                        ),
+                                    }
+                                ],
+                            },
+                        }
+                    ),
+                )
+            ),
+            stderr="",
+        )
+
+    adapter = ClaudeCodeHarnessAdapter(runner=runner)
+
+    try:
+        run(
+            adapter.delegate(
+                task_id="task_claude",
+                agent_id="agent_claude",
+                capability="code-edit",
+                input={"goal": "edit"},
+            )
+        )
+    except AgentAdapterError as exc:
+        assert exc.adapter == "claude-code-harness"
+        assert exc.operation == "delegate"
+        assert "correlation" in str(exc)
+        assert exc.details == {"expected": "task_claude", "actual": "task_wrong"}
+    else:
+        raise AssertionError("expected AgentAdapterError")
+
+
+def test_pi_harness_adapter_handoff_creates_child_run():
+    async def runner(command, request, timeout):
+        run_id = "pi_run_2" if request["operation"] == "handoff" else "pi_run_1"
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "run_id": run_id,
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner)
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_pi",
+            agent_id="agent_pi",
+            capability="code-edit",
+            input={"goal": "edit"},
+        )
+    )
+    child_run_id = run(adapter.handoff(run_id, "agent_pi_reviewer", {"note": "take over"}))
+
+    assert run_id == "pi_run_1"
+    assert child_run_id == "pi_run_2"
+    child = adapter.run_handle(child_run_id)
+    assert child is not None
+    assert child.parent_run == "pi_run_1"
+    assert child.task_id == "task_pi"
+    assert child.agent_id == "agent_pi_reviewer"
+    assert [name for name, _payload in adapter.calls] == ["delegate", "handoff"]
+
+
+def test_pi_harness_adapter_cancel_completes_protocol_op():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "run_id": "pi_run_1",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = PiHarnessAdapter(runner=runner)
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_pi",
+            agent_id="agent_pi",
+            capability="code-edit",
+            input={"goal": "edit"},
+        )
+    )
+    run(adapter.cancel(run_id, "no longer needed"))
+
+    assert [name for name, _payload in adapter.calls] == ["delegate", "cancel"]
+
+
+def test_kimi_cli_adapter_accepts_prompt_mode():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        captured["request"] = request
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "run_id": "kimi_chat_1",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                    "summary": "chat reply",
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = KimiCLIAdapter(runner=runner, prompt_mode="chat")
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_kimi_chat",
+            agent_id="agent_kimi",
+            capability="chat",
+            input={"goal": "Say hi to the user"},
+        )
+    )
+
+    assert run_id == "kimi_chat_1"
+    assert adapter.prompt_mode == "chat"
+    assert captured["command"][:4] == ("kimi", "--output-format", "text", "-p")
+    prompt = captured["command"][-1]
+    assert prompt.startswith("Say hi to the user")
+    assert not prompt.startswith("You are executing an HLP adapter operation.")
+    assert "correlation_id MUST be exactly: task_kimi_chat" in prompt
+
+
+def test_claude_code_cli_adapter_accepts_prompt_mode():
+    captured = {}
+
+    async def runner(command, request, timeout):
+        captured["command"] = command
+        captured["request"] = request
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": json.dumps(
+                        {
+                            "run_id": "claude_chat_1",
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                            "summary": "chat reply",
+                        }
+                    ),
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = ClaudeCodeCLIAdapter(runner=runner, prompt_mode="chat")
+
+    run_id = run(
+        adapter.delegate(
+            task_id="task_claude_chat",
+            agent_id="agent_claude",
+            capability="chat",
+            input={"goal": "Say hi to the user"},
+        )
+    )
+
+    assert run_id == "claude_chat_1"
+    assert adapter.prompt_mode == "chat"
+    assert captured["command"][:5] == (
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--permission-mode",
+    )
+    prompt = captured["command"][-1]
+    assert prompt.startswith("Say hi to the user")
+    assert not prompt.startswith("You are executing an HLP adapter operation.")
+    assert "correlation_id MUST be exactly: task_claude_chat" in prompt
 
 
 def test_kimi_cli_adapter_executes_one_shot_prompt_and_extracts_json():
@@ -877,12 +1711,14 @@ def test_kimi_cli_adapter_executes_one_shot_prompt_and_extracts_json():
 
     adapter = KimiCLIAdapter(command=("kimi", "-p"), runner=runner, timeout=9.0)
 
-    run_id = run(adapter.delegate(
-        task_id="task_kimi",
-        agent_id="agent_kimi",
-        capability="local-cli-smoke",
-        input={"goal": "Confirm HLP adapter compatibility"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_kimi",
+            agent_id="agent_kimi",
+            capability="local-cli-smoke",
+            input={"goal": "Confirm HLP adapter compatibility"},
+        )
+    )
 
     assert run_id == "kimi_run_1"
     assert adapter.task_of_run(run_id) == "task_kimi"
@@ -899,13 +1735,15 @@ def test_claude_cli_adapter_extracts_json_from_result_field():
     async def runner(command, request, timeout):
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "type": "result",
-                "result": (
-                    "Here is the HLP result:\n"
-                    '{"run_id": "claude_run_1", "correlation_id": "task_claude", "status": "ok"}'
-                ),
-            }),
+            stdout=json.dumps(
+                {
+                    "type": "result",
+                    "result": (
+                        "Here is the HLP result:\n"
+                        '{"run_id": "claude_run_1", "correlation_id": "task_claude", "status": "ok"}'
+                    ),
+                }
+            ),
             stderr="",
         )
 
@@ -914,12 +1752,14 @@ def test_claude_cli_adapter_extracts_json_from_result_field():
         runner=runner,
     )
 
-    run_id = run(adapter.delegate(
-        task_id="task_claude",
-        agent_id="agent_claude",
-        capability="local-cli-smoke",
-        input={"goal": "Confirm HLP adapter compatibility"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_claude",
+            agent_id="agent_claude",
+            capability="local-cli-smoke",
+            input={"goal": "Confirm HLP adapter compatibility"},
+        )
+    )
 
     assert run_id == "claude_run_1"
     assert adapter.process_results[run_id]["status"] == "ok"
@@ -936,12 +1776,14 @@ def test_process_agent_adapter_rejects_mismatched_correlation_id():
     adapter = CodexCLIAdapter(command=("codex", "exec", "--json"), runner=runner)
 
     try:
-        run(adapter.delegate(
-            task_id="task_proc",
-            agent_id="agent_codex",
-            capability="code-review",
-            input={"goal": "review"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_proc",
+                agent_id="agent_codex",
+                capability="code-review",
+                input={"goal": "review"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.operation == "delegate"
         assert "correlation" in str(exc)
@@ -960,12 +1802,14 @@ def test_process_agent_adapter_requires_delegate_run_id():
     )
 
     try:
-        run(adapter.delegate(
-            task_id="task_proc",
-            agent_id="agent_proc",
-            capability="code-review",
-            input={"goal": "review"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_proc",
+                agent_id="agent_proc",
+                capability="code-review",
+                input={"goal": "review"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.operation == "delegate"
         assert "run_id" in str(exc)
@@ -995,12 +1839,14 @@ def test_process_agent_adapter_raises_structured_error_on_failure():
     adapter = ClaudeCodeCLIAdapter(command=("claude", "-p"), runner=runner)
 
     try:
-        run(adapter.delegate(
-            task_id="task_proc",
-            agent_id="agent_claude",
-            capability="code-review",
-            input={"goal": "review"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_proc",
+                agent_id="agent_claude",
+                capability="code-review",
+                input={"goal": "review"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "claude-code-cli"
         assert exc.operation == "delegate"
@@ -1017,12 +1863,14 @@ def test_process_agent_adapter_wraps_runner_exception():
     adapter = CodexCLIAdapter(command=("missing-codex",), runner=runner)
 
     try:
-        run(adapter.delegate(
-            task_id="task_proc",
-            agent_id="agent_codex",
-            capability="code-review",
-            input={"goal": "review"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_proc",
+                agent_id="agent_codex",
+                capability="code-review",
+                input={"goal": "review"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "codex-cli"
         assert exc.operation == "delegate"
@@ -1051,12 +1899,14 @@ def test_openai_python_sdk_adapter_uses_responses_client():
     client = FakeClient()
     adapter = OpenAIPythonSDKAdapter(client=client, model="gpt-test")
 
-    run_id = run(adapter.delegate(
-        task_id="task_openai",
-        agent_id="agent_openai",
-        capability="analysis",
-        input={"goal": "summarize"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_openai",
+            agent_id="agent_openai",
+            capability="analysis",
+            input={"goal": "summarize"},
+        )
+    )
 
     assert run_id == "resp_123"
     assert adapter.task_of_run(run_id) == "task_openai"
@@ -1064,16 +1914,18 @@ def test_openai_python_sdk_adapter_uses_responses_client():
         "id": "resp_123",
         "output_text": "review completed",
     }
-    assert client.responses.requests == [{
-        "model": "gpt-test",
-        "input": "summarize",
-        "metadata": {
-            "hlp_task_id": "task_openai",
-            "hlp_agent_id": "agent_openai",
-            "hlp_capability": "analysis",
-            "hlp_parent_run": "",
-        },
-    }]
+    assert client.responses.requests == [
+        {
+            "model": "gpt-test",
+            "input": "summarize",
+            "metadata": {
+                "hlp_task_id": "task_openai",
+                "hlp_agent_id": "agent_openai",
+                "hlp_capability": "analysis",
+                "hlp_parent_run": "",
+            },
+        }
+    ]
 
 
 def test_openai_python_sdk_adapter_preserves_context_when_goal_has_siblings():
@@ -1092,12 +1944,14 @@ def test_openai_python_sdk_adapter_preserves_context_when_goal_has_siblings():
     client = FakeClient()
     adapter = OpenAIPythonSDKAdapter(client=client, model="gpt-test")
 
-    run(adapter.delegate(
-        task_id="task_openai",
-        agent_id="agent_openai",
-        capability="analysis",
-        input={"goal": "summarize", "repository": "web"},
-    ))
+    run(
+        adapter.delegate(
+            task_id="task_openai",
+            agent_id="agent_openai",
+            capability="analysis",
+            input={"goal": "summarize", "repository": "web"},
+        )
+    )
 
     assert json.loads(client.responses.requests[0]["input"]) == {
         "goal": "summarize",
@@ -1116,12 +1970,14 @@ def test_openai_python_sdk_adapter_wraps_client_exception():
     adapter = OpenAIPythonSDKAdapter(client=BrokenClient(), model="gpt-test")
 
     try:
-        run(adapter.delegate(
-            task_id="task_openai",
-            agent_id="agent_openai",
-            capability="analysis",
-            input={"goal": "summarize"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_openai",
+                agent_id="agent_openai",
+                capability="analysis",
+                input={"goal": "summarize"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "openai-python-sdk"
         assert exc.operation == "delegate"
@@ -1137,11 +1993,13 @@ def test_openai_agents_sdk_adapter_uses_runner_contract():
             self.calls = []
 
         def run_sync(self, agent, input, run_config=None):
-            self.calls.append({
-                "agent": agent,
-                "input": input,
-                "run_config": run_config,
-            })
+            self.calls.append(
+                {
+                    "agent": agent,
+                    "input": input,
+                    "run_config": run_config,
+                }
+            )
             return {
                 "id": "agents_run_123",
                 "final_output": "agents done",
@@ -1154,12 +2012,14 @@ def test_openai_agents_sdk_adapter_uses_runner_contract():
         run_config={"trace": "hlp"},
     )
 
-    run_id = run(adapter.delegate(
-        task_id="task_agents",
-        agent_id="agent_openai_agents",
-        capability="multi-agent",
-        input={"goal": "coordinate work"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_agents",
+            agent_id="agent_openai_agents",
+            capability="multi-agent",
+            input={"goal": "coordinate work"},
+        )
+    )
 
     assert run_id == "agents_run_123"
     assert adapter.task_of_run(run_id) == "task_agents"
@@ -1167,11 +2027,13 @@ def test_openai_agents_sdk_adapter_uses_runner_contract():
         "id": "agents_run_123",
         "final_output": "agents done",
     }
-    assert runner.calls == [{
-        "agent": "agent-object",
-        "input": "coordinate work",
-        "run_config": {"trace": "hlp"},
-    }]
+    assert runner.calls == [
+        {
+            "agent": "agent-object",
+            "input": "coordinate work",
+            "run_config": {"trace": "hlp"},
+        }
+    ]
 
 
 def test_openai_agents_sdk_adapter_wraps_runner_exception():
@@ -1182,12 +2044,14 @@ def test_openai_agents_sdk_adapter_wraps_runner_exception():
     adapter = OpenAIAgentsSDKAdapter(agent="agent-object", runner=BrokenRunner())
 
     try:
-        run(adapter.delegate(
-            task_id="task_agents",
-            agent_id="agent_openai_agents",
-            capability="multi-agent",
-            input={"goal": "coordinate work"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_agents",
+                agent_id="agent_openai_agents",
+                capability="multi-agent",
+                input={"goal": "coordinate work"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "openai-agents-sdk"
         assert exc.operation == "delegate"
@@ -1209,40 +2073,46 @@ def test_langgraph_adapter_invokes_compiled_graph():
     graph = FakeGraph()
     adapter = LangGraphAdapter(graph=graph, config={"thread_id": "thread-1"})
 
-    run_id = run(adapter.delegate(
-        task_id="task_graph",
-        agent_id="agent_langgraph",
-        capability="workflow",
-        input={"goal": "run graph", "state": {"foo": "bar"}},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_graph",
+            agent_id="agent_langgraph",
+            capability="workflow",
+            input={"goal": "run graph", "state": {"foo": "bar"}},
+        )
+    )
 
     assert run_id == "graph_run_123"
     assert adapter.task_of_run(run_id) == "task_graph"
     assert adapter.results[run_id] == {"messages": ["done"], "run_id": "graph_run_123"}
-    assert graph.calls == [{
-        "input": {
-            "messages": [{
-                "role": "user",
-                "content": '{"goal": "run graph", "state": {"foo": "bar"}}',
-            }],
-            "hlp": {
-                "task_id": "task_graph",
-                "agent_id": "agent_langgraph",
-                "capability": "workflow",
-                "parent_run": None,
+    assert graph.calls == [
+        {
+            "input": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": '{"goal": "run graph", "state": {"foo": "bar"}}',
+                    }
+                ],
+                "hlp": {
+                    "task_id": "task_graph",
+                    "agent_id": "agent_langgraph",
+                    "capability": "workflow",
+                    "parent_run": None,
+                },
+                "state": {"foo": "bar"},
             },
-            "state": {"foo": "bar"},
-        },
-        "config": {
-            "configurable": {"thread_id": "thread-1"},
-            "metadata": {
-                "hlp_task_id": "task_graph",
-                "hlp_agent_id": "agent_langgraph",
-                "hlp_capability": "workflow",
-                "hlp_parent_run": "",
+            "config": {
+                "configurable": {"thread_id": "thread-1"},
+                "metadata": {
+                    "hlp_task_id": "task_graph",
+                    "hlp_agent_id": "agent_langgraph",
+                    "hlp_capability": "workflow",
+                    "hlp_parent_run": "",
+                },
             },
-        },
-    }]
+        }
+    ]
 
 
 def test_langgraph_adapter_wraps_graph_exception():
@@ -1253,12 +2123,14 @@ def test_langgraph_adapter_wraps_graph_exception():
     adapter = LangGraphAdapter(graph=BrokenGraph())
 
     try:
-        run(adapter.delegate(
-            task_id="task_graph",
-            agent_id="agent_langgraph",
-            capability="workflow",
-            input={"goal": "run graph"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_graph",
+                agent_id="agent_langgraph",
+                capability="workflow",
+                input={"goal": "run graph"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "langgraph"
         assert exc.operation == "delegate"
@@ -1280,24 +2152,28 @@ def test_crewai_adapter_uses_async_kickoff_contract():
     crew = FakeCrew()
     adapter = CrewAIAdapter(crew=crew)
 
-    run_id = run(adapter.delegate(
-        task_id="task_crew",
-        agent_id="agent_crewai",
-        capability="crew",
-        input={"goal": "research topic", "topic": "HLP"},
-    ))
+    run_id = run(
+        adapter.delegate(
+            task_id="task_crew",
+            agent_id="agent_crewai",
+            capability="crew",
+            input={"goal": "research topic", "topic": "HLP"},
+        )
+    )
 
     assert run_id == "crew_run_123"
     assert adapter.task_of_run(run_id) == "task_crew"
     assert adapter.results[run_id] == {"id": "crew_run_123", "raw": "crew done"}
-    assert crew.calls == [{
-        "goal": "research topic",
-        "topic": "HLP",
-        "hlp_task_id": "task_crew",
-        "hlp_agent_id": "agent_crewai",
-        "hlp_capability": "crew",
-        "hlp_parent_run": "",
-    }]
+    assert crew.calls == [
+        {
+            "goal": "research topic",
+            "topic": "HLP",
+            "hlp_task_id": "task_crew",
+            "hlp_agent_id": "agent_crewai",
+            "hlp_capability": "crew",
+            "hlp_parent_run": "",
+        }
+    ]
 
 
 def test_crewai_adapter_wraps_crew_exception():
@@ -1308,12 +2184,14 @@ def test_crewai_adapter_wraps_crew_exception():
     adapter = CrewAIAdapter(crew=BrokenCrew())
 
     try:
-        run(adapter.delegate(
-            task_id="task_crew",
-            agent_id="agent_crewai",
-            capability="crew",
-            input={"goal": "research topic"},
-        ))
+        run(
+            adapter.delegate(
+                task_id="task_crew",
+                agent_id="agent_crewai",
+                capability="crew",
+                input={"goal": "research topic"},
+            )
+        )
     except AgentAdapterError as exc:
         assert exc.adapter == "crewai"
         assert exc.operation == "delegate"
@@ -1338,12 +2216,14 @@ def test_hlp_client_drives_process_adapter_block_and_resume():
     task = run(client.create_task(principal="user_alice", goal="Use Codex adapter"))
     run_handle = run(client.delegate(task.id, "agent_codex", capability="code-review"))
     run(client.start(task.id))
-    checkpoint = run(client.raise_checkpoint(
-        task_id=task.id,
-        kind="approval",
-        prompt="Apply patch?",
-        raised_by="agent_codex",
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Apply patch?",
+            raised_by="agent_codex",
+        )
+    )
     run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
 
     assert run_handle.run_id == "proc_run_1"
@@ -1374,29 +2254,35 @@ def test_hlp_client_emits_lifecycle_events_in_order():
     task = run(client.create_task(principal="user_alice", goal="Ship release notes"))
     run_handle = run(client.delegate(task.id, "agent_writer"))
     run(client.start(task.id))
-    checkpoint = run(client.raise_checkpoint(
-        task_id=task.id,
-        kind="approval",
-        prompt="Publish draft?",
-        raised_by="agent_writer",
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Publish draft?",
+            raised_by="agent_writer",
+        )
+    )
     run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
-    artifact = run(client.commit_artifact(
-        task_id=task.id,
-        type="release-notes",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://release-notes-v1",
-            checksum="sha256:release-notes-v1",
-        ),
-        produced_by="agent_writer",
-    ))
-    run(client.submit_review(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="user_alice",
-        verdict="approved",
-    ))
+    artifact = run(
+        client.commit_artifact(
+            task_id=task.id,
+            type="release-notes",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://release-notes-v1",
+                checksum="sha256:release-notes-v1",
+            ),
+            produced_by="agent_writer",
+        )
+    )
+    run(
+        client.submit_review(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="user_alice",
+            verdict="approved",
+        )
+    )
     run(client.write_ledger("project:demo", "release.status", "approved", by=task.id))
     run(client.replay_audit(task.id))
 
@@ -1458,29 +2344,35 @@ def test_sqlite_store_persists_hlp_state_across_restart(tmp_path):
     task = run(first.create_task(principal="user_alice", goal="Persist HLP state"))
     run(first.delegate(task.id, "agent_persistent"))
     run(first.start(task.id))
-    checkpoint = run(first.raise_checkpoint(
-        task_id=task.id,
-        kind="approval",
-        prompt="Continue?",
-        raised_by="agent_persistent",
-    ))
+    checkpoint = run(
+        first.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Continue?",
+            raised_by="agent_persistent",
+        )
+    )
     run(first.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
-    artifact = run(first.commit_artifact(
-        task_id=task.id,
-        type="report",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://persisted-report",
-            checksum="sha256:persisted-report",
-        ),
-        produced_by="agent_persistent",
-    ))
-    review = run(first.submit_review(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="user_alice",
-        verdict="approved",
-    ))
+    artifact = run(
+        first.commit_artifact(
+            task_id=task.id,
+            type="report",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://persisted-report",
+                checksum="sha256:persisted-report",
+            ),
+            produced_by="agent_persistent",
+        )
+    )
+    review = run(
+        first.submit_review(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="user_alice",
+            verdict="approved",
+        )
+    )
     run(first.write_ledger("project:persist", "status", "approved", by=task.id))
 
     second = HLPClient(
@@ -1519,25 +2411,31 @@ def test_sqlite_store_persists_idempotency_records_across_restart(tmp_path):
         event_bus=first_bus,
     )
 
-    task = run(first.create_task(
-        principal="user_alice",
-        goal="Persist idempotency",
-    ))
-    handle = run(first.delegate(
-        task.id,
-        "agent_persistent",
-        expected_task_revision=task.revision,
-        idempotency_key="delegate-once",
-    ))
+    task = run(
+        first.create_task(
+            principal="user_alice",
+            goal="Persist idempotency",
+        )
+    )
+    handle = run(
+        first.delegate(
+            task.id,
+            "agent_persistent",
+            expected_task_revision=task.revision,
+            idempotency_key="delegate-once",
+        )
+    )
     run(first.start(task.id))
     revision = run(first.get_task(task.id)).revision
-    amended = run(first.amend(
-        task.id,
-        by="user_alice",
-        text="Replay must not steer twice.",
-        expected_task_revision=revision,
-        idempotency_key="amend-once",
-    ))
+    amended = run(
+        first.amend(
+            task.id,
+            by="user_alice",
+            text="Replay must not steer twice.",
+            expected_task_revision=revision,
+            idempotency_key="amend-once",
+        )
+    )
 
     second_adapter = FakeAgentAdapter()
     second_bus = InMemoryEventBus()
@@ -1546,19 +2444,23 @@ def test_sqlite_store_persists_idempotency_records_across_restart(tmp_path):
         adapter=second_adapter,
         event_bus=second_bus,
     )
-    replayed_handle = run(second.delegate(
-        task.id,
-        "agent_persistent",
-        expected_task_revision=task.revision,
-        idempotency_key="delegate-once",
-    ))
-    replayed = run(second.amend(
-        task.id,
-        by="user_alice",
-        text="Replay must not steer twice.",
-        expected_task_revision=revision,
-        idempotency_key="amend-once",
-    ))
+    replayed_handle = run(
+        second.delegate(
+            task.id,
+            "agent_persistent",
+            expected_task_revision=task.revision,
+            idempotency_key="delegate-once",
+        )
+    )
+    replayed = run(
+        second.amend(
+            task.id,
+            by="user_alice",
+            text="Replay must not steer twice.",
+            expected_task_revision=revision,
+            idempotency_key="amend-once",
+        )
+    )
 
     assert replayed_handle == handle
     assert replayed == amended
@@ -1577,80 +2479,98 @@ def test_sdk_replay_covers_primary_task_mutations_without_duplicate_events():
     client = HLPClient(adapter=adapter, event_bus=bus)
 
     task = run(client.create_task(principal="user_alice", goal="Replay SDK operations"))
-    handle = run(client.delegate(
-        task.id,
-        "agent_worker",
-        expected_task_revision=task.revision,
-        idempotency_key="sdk-delegate",
-    ))
-    replayed_handle = run(client.delegate(
-        task.id,
-        "agent_worker",
-        expected_task_revision=task.revision,
-        idempotency_key="sdk-delegate",
-    ))
+    handle = run(
+        client.delegate(
+            task.id,
+            "agent_worker",
+            expected_task_revision=task.revision,
+            idempotency_key="sdk-delegate",
+        )
+    )
+    replayed_handle = run(
+        client.delegate(
+            task.id,
+            "agent_worker",
+            expected_task_revision=task.revision,
+            idempotency_key="sdk-delegate",
+        )
+    )
     assert replayed_handle == handle
 
     assigned_revision = run(client.get_task(task.id)).revision
-    started = run(client.start(
-        task.id,
-        expected_task_revision=assigned_revision,
-        idempotency_key="sdk-start",
-    ))
-    replayed_start = run(client.start(
-        task.id,
-        expected_task_revision=assigned_revision,
-        idempotency_key="sdk-start",
-    ))
+    started = run(
+        client.start(
+            task.id,
+            expected_task_revision=assigned_revision,
+            idempotency_key="sdk-start",
+        )
+    )
+    replayed_start = run(
+        client.start(
+            task.id,
+            expected_task_revision=assigned_revision,
+            idempotency_key="sdk-start",
+        )
+    )
     assert replayed_start == started
 
     in_progress_revision = run(client.get_task(task.id)).revision
-    checkpoint = run(client.raise_checkpoint(
-        task_id=task.id,
-        kind="approval",
-        prompt="Approve SDK replay?",
-        raised_by="agent_worker",
-        expected_task_revision=in_progress_revision,
-        idempotency_key="sdk-raise",
-    ))
-    replayed_checkpoint = run(client.raise_checkpoint(
-        task_id=task.id,
-        kind="approval",
-        prompt="Approve SDK replay?",
-        raised_by="agent_worker",
-        expected_task_revision=in_progress_revision,
-        idempotency_key="sdk-raise",
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Approve SDK replay?",
+            raised_by="agent_worker",
+            expected_task_revision=in_progress_revision,
+            idempotency_key="sdk-raise",
+        )
+    )
+    replayed_checkpoint = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Approve SDK replay?",
+            raised_by="agent_worker",
+            expected_task_revision=in_progress_revision,
+            idempotency_key="sdk-raise",
+        )
+    )
     assert replayed_checkpoint == checkpoint
 
     run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
-    artifact = run(client.commit_artifact(
-        task_id=task.id,
-        type="report",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://sdk-replay",
-            checksum="sha256:sdk-replay",
-        ),
-        produced_by="agent_worker",
-    ))
+    artifact = run(
+        client.commit_artifact(
+            task_id=task.id,
+            type="report",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://sdk-replay",
+                checksum="sha256:sdk-replay",
+            ),
+            produced_by="agent_worker",
+        )
+    )
     review_revision = run(client.get_task(task.id)).revision
-    review = run(client.submit_review(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="user_alice",
-        verdict="approved",
-        expected_task_revision=review_revision,
-        idempotency_key="sdk-review",
-    ))
-    replayed_review = run(client.submit_review(
-        task_id=task.id,
-        artifact_id=artifact.id,
-        reviewer="user_alice",
-        verdict="approved",
-        expected_task_revision=review_revision,
-        idempotency_key="sdk-review",
-    ))
+    review = run(
+        client.submit_review(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="user_alice",
+            verdict="approved",
+            expected_task_revision=review_revision,
+            idempotency_key="sdk-review",
+        )
+    )
+    replayed_review = run(
+        client.submit_review(
+            task_id=task.id,
+            artifact_id=artifact.id,
+            reviewer="user_alice",
+            verdict="approved",
+            expected_task_revision=review_revision,
+            idempotency_key="sdk-review",
+        )
+    )
     assert replayed_review == review
 
     actions = [event.action for event in bus.events]
@@ -1666,146 +2586,186 @@ def test_sdk_delayed_replay_returns_first_mutation_result():
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter, event_bus=InMemoryEventBus())
 
-    delegate_task = run(client.create_task(
-        principal="user_alice",
-        goal="Replay delegate after handoff",
-    ))
-    handle = run(client.delegate(
-        delegate_task.id,
-        "agent_worker",
-        expected_task_revision=delegate_task.revision,
-        idempotency_key="sdk-delayed-delegate",
-    ))
-    run(client.operations.ownership_transfer(
-        delegate_task.id,
-        "agent_writer",
-        "handoff",
-        actor="agent_worker",
-    ))
+    delegate_task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Replay delegate after handoff",
+        )
+    )
+    handle = run(
+        client.delegate(
+            delegate_task.id,
+            "agent_worker",
+            expected_task_revision=delegate_task.revision,
+            idempotency_key="sdk-delayed-delegate",
+        )
+    )
+    run(
+        client.operations.ownership_transfer(
+            delegate_task.id,
+            "agent_writer",
+            "handoff",
+            actor="agent_worker",
+        )
+    )
     assert client.store.run_of_task(delegate_task.id) != handle.run_id
-    replayed_handle = run(client.delegate(
-        delegate_task.id,
-        "agent_worker",
-        expected_task_revision=delegate_task.revision,
-        idempotency_key="sdk-delayed-delegate",
-    ))
+    replayed_handle = run(
+        client.delegate(
+            delegate_task.id,
+            "agent_worker",
+            expected_task_revision=delegate_task.revision,
+            idempotency_key="sdk-delayed-delegate",
+        )
+    )
     assert replayed_handle.run_id == handle.run_id
 
-    start_task = run(client.create_task(
-        principal="user_alice",
-        goal="Replay start after blocking",
-    ))
+    start_task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Replay start after blocking",
+        )
+    )
     run(client.delegate(start_task.id, "agent_worker"))
     assigned_revision = run(client.get_task(start_task.id)).revision
-    started = run(client.start(
-        start_task.id,
-        expected_task_revision=assigned_revision,
-        idempotency_key="sdk-delayed-start",
-    ))
-    run(client.raise_checkpoint(
-        task_id=start_task.id,
-        kind="approval",
-        prompt="Block after start.",
-        raised_by="agent_worker",
-    ))
-    replayed_start = run(client.start(
-        start_task.id,
-        expected_task_revision=assigned_revision,
-        idempotency_key="sdk-delayed-start",
-    ))
+    started = run(
+        client.start(
+            start_task.id,
+            expected_task_revision=assigned_revision,
+            idempotency_key="sdk-delayed-start",
+        )
+    )
+    run(
+        client.raise_checkpoint(
+            task_id=start_task.id,
+            kind="approval",
+            prompt="Block after start.",
+            raised_by="agent_worker",
+        )
+    )
+    replayed_start = run(
+        client.start(
+            start_task.id,
+            expected_task_revision=assigned_revision,
+            idempotency_key="sdk-delayed-start",
+        )
+    )
     assert replayed_start == started
     assert replayed_start.state == "in_progress"
     assert run(client.get_task(start_task.id)).state == "blocked"
 
-    amend_task = run(client.create_task(
-        principal="user_alice",
-        goal="Replay amend after blocking",
-    ))
+    amend_task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Replay amend after blocking",
+        )
+    )
     run(client.delegate(amend_task.id, "agent_worker"))
     run(client.start(amend_task.id))
     amend_revision = run(client.get_task(amend_task.id)).revision
-    amended = run(client.amend(
-        amend_task.id,
-        by="user_alice",
-        text="Keep this result stable.",
-        expected_task_revision=amend_revision,
-        idempotency_key="sdk-delayed-amend",
-    ))
-    run(client.raise_checkpoint(
-        task_id=amend_task.id,
-        kind="approval",
-        prompt="Block after amend.",
-        raised_by="agent_worker",
-    ))
-    replayed_amend = run(client.amend(
-        amend_task.id,
-        by="user_alice",
-        text="Keep this result stable.",
-        expected_task_revision=amend_revision,
-        idempotency_key="sdk-delayed-amend",
-    ))
+    amended = run(
+        client.amend(
+            amend_task.id,
+            by="user_alice",
+            text="Keep this result stable.",
+            expected_task_revision=amend_revision,
+            idempotency_key="sdk-delayed-amend",
+        )
+    )
+    run(
+        client.raise_checkpoint(
+            task_id=amend_task.id,
+            kind="approval",
+            prompt="Block after amend.",
+            raised_by="agent_worker",
+        )
+    )
+    replayed_amend = run(
+        client.amend(
+            amend_task.id,
+            by="user_alice",
+            text="Keep this result stable.",
+            expected_task_revision=amend_revision,
+            idempotency_key="sdk-delayed-amend",
+        )
+    )
     assert replayed_amend == amended
     assert replayed_amend.state == "in_progress"
     assert run(client.get_task(amend_task.id)).state == "blocked"
 
-    interrupt_task = run(client.create_task(
-        principal="user_alice",
-        goal="Replay interrupt after resolve",
-    ))
+    interrupt_task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Replay interrupt after resolve",
+        )
+    )
     run(client.delegate(interrupt_task.id, "agent_worker"))
     run(client.start(interrupt_task.id))
     interrupt_revision = run(client.get_task(interrupt_task.id)).revision
-    interrupted = run(client.interrupt(
-        interrupt_task.id,
-        by="user_alice",
-        prompt="Pause once.",
-        expected_task_revision=interrupt_revision,
-        idempotency_key="sdk-delayed-interrupt",
-    ))
-    run(client.resolve_checkpoint(
-        interrupted.id,
-        by="user_alice",
-        action="approve",
-    ))
-    replayed_interrupt = run(client.interrupt(
-        interrupt_task.id,
-        by="user_alice",
-        prompt="Pause once.",
-        expected_task_revision=interrupt_revision,
-        idempotency_key="sdk-delayed-interrupt",
-    ))
+    interrupted = run(
+        client.interrupt(
+            interrupt_task.id,
+            by="user_alice",
+            prompt="Pause once.",
+            expected_task_revision=interrupt_revision,
+            idempotency_key="sdk-delayed-interrupt",
+        )
+    )
+    run(
+        client.resolve_checkpoint(
+            interrupted.id,
+            by="user_alice",
+            action="approve",
+        )
+    )
+    replayed_interrupt = run(
+        client.interrupt(
+            interrupt_task.id,
+            by="user_alice",
+            prompt="Pause once.",
+            expected_task_revision=interrupt_revision,
+            idempotency_key="sdk-delayed-interrupt",
+        )
+    )
     assert replayed_interrupt == interrupted
     assert replayed_interrupt.state == "pending"
     assert client.store.get_checkpoint(interrupted.id).state == "resolved"
 
-    raise_task = run(client.create_task(
-        principal="user_alice",
-        goal="Replay checkpoint after resolve",
-    ))
+    raise_task = run(
+        client.create_task(
+            principal="user_alice",
+            goal="Replay checkpoint after resolve",
+        )
+    )
     run(client.delegate(raise_task.id, "agent_worker"))
     run(client.start(raise_task.id))
     raise_revision = run(client.get_task(raise_task.id)).revision
-    checkpoint = run(client.raise_checkpoint(
-        task_id=raise_task.id,
-        kind="approval",
-        prompt="Raise once.",
-        raised_by="agent_worker",
-        expected_task_revision=raise_revision,
-        idempotency_key="sdk-delayed-raise",
-    ))
-    run(client.resolve_checkpoint(
-        checkpoint.id,
-        by="user_alice",
-        action="approve",
-    ))
-    replayed_checkpoint = run(client.raise_checkpoint(
-        task_id=raise_task.id,
-        kind="approval",
-        prompt="Raise once.",
-        raised_by="agent_worker",
-        expected_task_revision=raise_revision,
-        idempotency_key="sdk-delayed-raise",
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=raise_task.id,
+            kind="approval",
+            prompt="Raise once.",
+            raised_by="agent_worker",
+            expected_task_revision=raise_revision,
+            idempotency_key="sdk-delayed-raise",
+        )
+    )
+    run(
+        client.resolve_checkpoint(
+            checkpoint.id,
+            by="user_alice",
+            action="approve",
+        )
+    )
+    replayed_checkpoint = run(
+        client.raise_checkpoint(
+            task_id=raise_task.id,
+            kind="approval",
+            prompt="Raise once.",
+            raised_by="agent_worker",
+            expected_task_revision=raise_revision,
+            idempotency_key="sdk-delayed-raise",
+        )
+    )
     assert replayed_checkpoint == checkpoint
     assert replayed_checkpoint.state == "pending"
     assert client.store.get_checkpoint(checkpoint.id).state == "resolved"
@@ -1818,12 +2778,14 @@ def _local_cli_runner(name):
             run_id = f"{name}_handoff_run"
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": run_id,
-                "correlation_id": request["correlation_id"],
-                "status": "ok",
-                "summary": f"{name} {request['operation']} passed",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": run_id,
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                    "summary": f"{name} {request['operation']} passed",
+                }
+            ),
             stderr="",
         )
 
@@ -1876,6 +2838,7 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
         "crewai",
         "codex_cli",
         "codex_harness",
+        "pi_harness",
         "claude_code_cli",
         "herms_cli",
     }
@@ -1891,6 +2854,7 @@ def test_hlp_adapter_compat_demo_covers_named_targets_without_external_services(
     assert result["crewai"]["run_id"] == "crew_demo"
     assert result["codex_cli"]["run_id"] == "codex_demo"
     assert result["codex_harness"]["run_id"] == "codex_harness_demo"
+    assert result["pi_harness"]["run_id"] == "pi_harness_demo"
     assert result["claude_code_cli"]["run_id"] == "claude_demo"
     assert result["herms_cli"]["run_id"] == "herms_demo"
 
@@ -1910,6 +2874,119 @@ def test_hlp_harness_wrap_demo_runs_without_external_services():
         "checkpoint-capable",
         "artifact-aware",
     ]
+
+
+def test_pr_review_desk_host_runs_full_offline_lifecycle(tmp_path):
+    db_path = tmp_path / "pr-desk.db"
+    result = run(run_desk_demo(db_path=db_path))
+
+    assert result["mode"] == "offline"
+    assert result["session"]["pr"]["repository"] == "acme/payments-api"
+    assert result["session"]["pr"]["number"] == 1234
+    assert result["session"]["task_id"].startswith("task_")
+    assert result["session"]["run_id"]
+    assert result["checkpoint"]["action"] == "approve"
+    assert result["checkpoint"]["state"] == "resolved"
+    assert result["artifact_id"].startswith("art_")
+    assert result["review_id"].startswith("rev_")
+
+    report = result["report"]
+    assert report["pr_ref"] == "acme/payments-api#1234"
+    assert report["task_state"] == "completed"
+    assert report["review_verdict"] == "approved"
+    assert report["steered"] is True
+    assert report["inbox_remaining"] == []
+    assert report["ledger_status"]["verdict"] == "approved"
+    assert "task.amended" in report["audit_actions"]
+    assert "review.submitted" in report["audit_actions"]
+    assert "task.completed" in report["audit_actions"]
+    assert result["host_events"][0] == "task.created"
+    assert "review.submitted" in result["host_events"]
+    assert db_path.exists()
+
+
+def test_pr_review_desk_live_command_and_adapter_error_report():
+    assert live_codex_command()[:3] == ("codex", "exec", "--json")
+    assert "--skip-git-repo-check" in live_codex_command()
+    assert live_codex_command(model="gpt-5.4")[-2:] == ("-m", "gpt-5.4")
+
+    exc = AgentAdapterError(
+        "codex-harness",
+        "delegate",
+        "process command failed",
+        details={
+            "exit_code": 1,
+            "command": ("codex", "exec", "--json"),
+            "stdout": json.dumps(
+                {
+                    "type": "error",
+                    "message": json.dumps(
+                        {
+                            "type": "error",
+                            "status": 400,
+                            "error": {
+                                "type": "invalid_request_error",
+                                "message": (
+                                    "The 'gpt-5.6-sol' model requires a newer version of Codex. "
+                                    "Please upgrade to the latest app or CLI and try again."
+                                ),
+                            },
+                        }
+                    ),
+                }
+            ),
+            "stderr": "Reading additional input from stdin...\n",
+        },
+    )
+    report = adapter_error_report(exc, live=True)
+    assert report["status"] == "error"
+    assert report["mode"] == "live"
+    assert "newer version of Codex" in (report["codex_message"] or "")
+    assert any("Upgrade Codex CLI" in hint for hint in report["hints"])
+    assert any("offline" in hint for hint in report["hints"])
+
+
+def test_pr_review_desk_maps_domain_inbox_and_rejects_side_effects():
+    desk = build_desk(principal="user_alice", reviewer="user_carol")
+    pr = PullRequest(
+        repository="acme/web",
+        number=9,
+        title="Tighten CORS",
+        author="dev_dave",
+    )
+    session = run(desk.open_review(pr))
+    session = run(desk.dispatch(session))
+    projected = run(desk.sync_harness(session))
+    assert len(projected) == 1
+
+    cards = run(desk.list_inbox())
+    assert len(cards) == 1
+    assert cards[0].pr_ref == "acme/web#9"
+    assert cards[0].action == "resolve_checkpoint"
+    assert "post findings" in cards[0].title.lower() or "PR comments" in cards[0].title
+
+    checkpoint = run(
+        desk.decide_checkpoint(
+            cards[0],
+            decision="reject",
+            comment="No external comments without security lead",
+        )
+    )
+    assert checkpoint.resolution is not None
+    assert checkpoint.resolution.action == "reject"
+
+    # Rejected side effects: no deliverable artifact projection expected.
+    more = run(desk.sync_harness(session))
+    assert more == []
+    remaining = run(desk.list_inbox())
+    assert remaining == []
+
+    report = run(desk.report(session))
+    assert report.checkpoint_decision == "reject"
+    assert report.artifact_id is None
+    assert report.review_id is None
+    # HLP: rejecting a checkpoint completes the task (abort path).
+    assert report.task_state == "completed"
 
 
 def test_hlp_codex_harness_demo_runs_without_external_services():
@@ -1938,36 +3015,42 @@ def test_hlp_local_cli_demo_runs_selected_adapters_full_lifecycle_with_injected_
 
     def make_runner(name):
         async def runner(command, request, timeout):
-            captured.setdefault(name, []).append({
-                "command": command,
-                "request": request,
-                "timeout": timeout,
-            })
+            captured.setdefault(name, []).append(
+                {
+                    "command": command,
+                    "request": request,
+                    "timeout": timeout,
+                }
+            )
             run_id = request.get("run_id") or f"{name}_{request['operation']}_run"
             if request["operation"] == "handoff":
                 run_id = f"{name}_handoff_run"
             return ProcessResult(
                 exit_code=0,
-                stdout=json.dumps({
-                    "run_id": run_id,
-                    "correlation_id": request["correlation_id"],
-                    "status": "ok",
-                    "summary": f"{name} {request['operation']} passed",
-                }),
+                stdout=json.dumps(
+                    {
+                        "run_id": run_id,
+                        "correlation_id": request["correlation_id"],
+                        "status": "ok",
+                        "summary": f"{name} {request['operation']} passed",
+                    }
+                ),
                 stderr="",
             )
 
         return runner
 
-    result = run(run_local_cli_demo(
-        adapters=("codex", "kimi", "claude"),
-        runners={
-            "codex": make_runner("codex"),
-            "kimi": make_runner("kimi"),
-            "claude": make_runner("claude"),
-        },
-        timeout=7.0,
-    ))
+    result = run(
+        run_local_cli_demo(
+            adapters=("codex", "kimi", "claude"),
+            runners={
+                "codex": make_runner("codex"),
+                "kimi": make_runner("kimi"),
+                "claude": make_runner("claude"),
+            },
+            timeout=7.0,
+        )
+    )
 
     assert set(result) == {"codex", "kimi", "claude"}
     for name, entry in result.items():
@@ -1990,7 +3073,9 @@ def test_hlp_local_cli_demo_runs_selected_adapters_full_lifecycle_with_injected_
         assert entry["ledger_status"] == "approved", name
         assert entry["control_final_task_state"] == "completed", name
         assert entry["handoff_run_id"] == f"{name}_handoff_run", name
-        assert [call["request"]["operation"] for call in captured[name]] == entry["adapter_operations"]
+        assert [call["request"]["operation"] for call in captured[name]] == entry[
+            "adapter_operations"
+        ]
         assert all(call["timeout"] == 7.0 for call in captured[name])
 
     assert captured["codex"][0]["command"][:2] == ("codex", "exec")
@@ -2012,7 +3097,7 @@ def test_examples_and_site_quickstarts_do_not_use_fake_adapters():
         str(path.relative_to(root)): text
         for path in checked
         if (
-            (text := path.read_text())
+            (text := path.read_text(encoding="utf-8"))
             and ("FakeAgentAdapter" in text or "FakeHarnessAdapter" in text)
         )
     }
@@ -2040,20 +3125,24 @@ providers:
         captured["config_text"] = open(config_path).read()
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": "kimi_run",
-                "correlation_id": request["correlation_id"],
-                "status": "ok",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": "kimi_run",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
             stderr="",
         )
 
-    result = run(run_local_cli_demo(
-        adapters=("kimi",),
-        runners={"kimi": runner},
-        metaworker_config=metaworker_config,
-        timeout=7.0,
-    ))
+    result = run(
+        run_local_cli_demo(
+            adapters=("kimi",),
+            runners={"kimi": runner},
+            metaworker_config=metaworker_config,
+            timeout=7.0,
+        )
+    )
 
     assert result["kimi"]["status"] == "ok"
     assert result["kimi"]["returned_correlation_id"] == result["kimi"]["task_id"]

@@ -34,9 +34,15 @@ loops/hlp/
   store.py             # HumanLoopStore：内存存储
   sqlite_store.py      # SQLiteHumanLoopStore：本地 snapshot store（非生产并发后端）
   sdk.py               # HLPClient：稳定 SDK facade
-  adapters.py          # AgentAdapter + HarnessAdapter + fake/process/framework adapter entry points
+  adapters/            # AgentAdapter + HarnessAdapter 包
+    protocol.py        # 契约与 handle / harness event
+    fake.py            # testing adapters
+    process.py         # process / prompt CLI base
+    codex.py           # Codex CLI + harness projection
+    cli.py             # Pi / Claude / Kimi CLI + harness, Hermes
+    frameworks.py      # shape-compatible framework shims
   events.py            # HLPEvent + InMemoryEventBus
-  operations.py        # 23 个操作 (spec §4)
+  operations/          # 23 个操作 (spec §4)，按域 mixin 包
   audit.py             # AuditEvent + AuditLog (append-only)
 ```
 
@@ -118,6 +124,9 @@ Adapter capability baseline:
 | `PromptCLIAdapter` | one-shot prompt + parsed JSON result | one-shot prompt wrapper | one-shot prompt wrapper | prompt requires returned `correlation_id`; validates when present |
 | `CodexCLIAdapter` / `KimiCLIAdapter` / `ClaudeCodeCLIAdapter` | local CLI prompt mode | local CLI prompt mode | local CLI prompt mode | HLP `task_id` kept as run correlation |
 | `CodexHarnessAdapter` | `codex exec --json` prompt mode | local CLI prompt mode | local CLI prompt mode | validates returned and projected event `correlation_id` when present |
+| `PiHarnessAdapter` | `pi --mode json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared JSONL projection + peek/ack |
+| `ClaudeCodeHarnessAdapter` | `claude -p --output-format stream-json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared projection; transport-level duplicate events（result envelope 重复 assistant 文本）按签名入队去重 |
+| `KimiHarnessAdapter` | `kimi -p --output-format stream-json` prompt mode | local CLI prompt mode | local CLI prompt mode | same shared projection（HLP payload 嵌在 assistant content 文本内） |
 | `OpenAIPythonSDKAdapter` | `client.responses.create(...)` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
 | `OpenAIAgentsSDKAdapter` | injected `runner.run/run_sync` | local contract recording, not real runtime pause yet | local contract recording | local handle |
 | `LangGraphAdapter` | `ainvoke/invoke` with `configurable.thread_id` | local contract recording, not real runtime pause yet | local contract recording | metadata + local handle |
@@ -181,7 +190,7 @@ HLP 参考实现刻意不依赖任何自研下层 runtime。这证明协议层�
 - vendor package 直接依赖 — 当前通过对象注入提供框架级契约，不强依赖第三方包
 - 服务端数据库后端 — 当前提供内存 store + SQLite 本地 snapshot store；生产级对象表、CAS、schema migration、audit hash chain 和 outbox/recovery 是后续 hardening 项
 - HLP server/CLI 管理面 — 当前只提供 SDK 和 demo console script
-- HLP→channel 通知 — 当前只提供 `human_inbox` 语义，不定义 UI/channel
+- HLP→channel 通知 — 当前只提供 `human_inbox` 语义，不定义 UI/channel；BCI/语音等传感器输入走附录 C 的 channel/sensor plane（参考切片：`examples/hlp_bci_channel_demo.py`，协议零改动，D3 高风险 fail-closed）
 - 开放议题定论（checkpoint 超时、委派深度、Ledger 并发等）— 实现后待收敛
 
 ## 验证
