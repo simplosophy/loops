@@ -41,6 +41,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/check_release_metadata.py`.
 - Toolchain: ruff (lint + format), mypy, and pytest-cov configuration in
   `pyproject.toml`, plus a `.pre-commit-config.yaml`.
+- Full HLP spec review (`docs/reviews/2026-07-19-hlp-spec-review.md`): the
+  spec's audit-mapping, state-definition, and adapter-mapping tables were
+  completed (`review.commented`, `artifact.referenced`, `task.completed`
+  side-effect row; `rejected` state; `ownership.transfer → handoff` and
+  `task.cancel → cancel` adapter rows). No semantic changes.
+- Docs site: four-CLI harness adapter matrix, BCI compatibility note,
+  adapter-level conformance evidence, and a reference demo index.
+
+### Changed
+
+- `loops/hlp/operations.py` (1.6k-line god class) split into the
+  `loops/hlp/operations/` package: per-domain mixins (task / checkpoint /
+  ownership / review / artifact / ledger / audit) composed in
+  `HumanLoopOperations`. Pure code motion; the public import path and
+  behavior are unchanged.
+
+### Removed
+
+- `docs/intro.html`, an orphaned pre-HLP marketing page with no references.
 
 ### Fixed
 
