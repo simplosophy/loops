@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "python-ulid>=3.1.0",
+    "python-ulid>=3.2.1",
     "typing-extensions>=4.15.0",
 ]
 
