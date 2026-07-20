@@ -121,7 +121,69 @@ async def run_demo(*, adapters: tuple[str, ...] = ("codex", "claude", "kimi", "p
     result = {}
     for name in adapters:
         result[name] = await probe_one(name, available[name])
+        result[name]["handoff"] = await probe_handoff(name, available[name])
     return result
+
+
+async def probe_handoff(name: str, adapter: Any, *, codeword: str = CODEWORD) -> dict[str, Any]:
+    """Handoff fork probe: delegate codeword -> handoff -> steer the NEW run.
+
+    pi/claude fork the native session, so the receiving run must recite the
+    codeword from inherited context. codex/kimi have no native fork; only the
+    one-shot envelope with structured context is asserted.
+    """
+    commands: list[tuple[str, ...]] = []
+    adapter = adapter.__class__(
+        runner=_spy(commands),
+        timeout=getattr(adapter, "timeout", 150.0),
+    )
+    entry: dict[str, Any] = {"status": "ok"}
+    try:
+        run_id = await adapter.delegate(
+            f"task_live_{name}_fork",
+            f"agent_{name}_a",
+            "fork-probe",
+            input={
+                "goal": (
+                    f"记住暗号 {codeword}。只回 HLP JSON 信封"
+                    "（run_id/correlation_id/status/summary/error），summary 写 ack。"
+                ),
+            },
+        )
+        src_session = adapter.session_of_run(run_id)
+        # The codeword must NOT ride the envelope — inheritance is only proven
+        # when the receiving run knows it without being told here.
+        new_run_id = await adapter.handoff(run_id, f"agent_{name}_b", {"note": "接手继续"})
+        new_session = adapter.session_of_run(new_run_id)
+        await adapter.steer(
+            new_run_id,
+            {"text": ("复述你之前记住的暗号。仍回 JSON 信封，summary 里只写暗号本身。")},
+        )
+        payload = adapter.process_results.get(new_run_id, {})
+        summary = str(payload.get("summary") or "")
+        found = codeword in summary or codeword in json.dumps(payload, ensure_ascii=False)
+        fork_capable = name in ("pi", "claude")
+        entry.update(
+            {
+                "src_session": src_session,
+                "new_run_id": new_run_id,
+                "new_session": new_session,
+                "codeword_found": found,
+                "summary": summary[:200],
+            }
+        )
+        if fork_capable:
+            if not found:
+                entry["status"] = "error"
+                entry["error"] = "forked session did not inherit the codeword"
+            elif not new_session or new_session == src_session:
+                entry["status"] = "error"
+                entry["error"] = "fork did not produce a new session id"
+        # codex/kimi: no native fork — one-shot envelope is the documented path.
+    except Exception as exc:  # noqa: BLE001 - probe reports instead of raising
+        entry["status"] = "error"
+        entry["error"] = f"{exc.__class__.__name__}: {exc}"
+    return entry
 
 
 def main() -> None:

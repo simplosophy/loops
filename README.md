@@ -225,6 +225,14 @@ Proven live with the codeword probe (`uv run loops-hlp-continuity-e2e`):
 the model recites a fact it was told before the checkpoint cycle — only
 possible in a truly resumed session.
 
+**Handoff (ownership.transfer) goes one step further**: on CLIs with native
+session forking, the receiving agent inherits the full session context —
+`pi --fork` and `claude --resume --fork-session` branch the source session
+into a new one (verified live: the receiving run recites the pre-handoff
+codeword without being told again). Codex and Kimi have no native fork yet;
+handoff there stays a one-shot envelope carrying the structured context
+(verified live as the documented fallback).
+
 ## Industrial Profile (Reference)
 
 `HLP-industrial` in this repository is a **reference profile**: per-task CAS /

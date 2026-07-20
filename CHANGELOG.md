@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Session forking for handoff: on CLIs with native fork support the
+  receiving agent inherits the full session context — `pi --fork` and
+  `claude --resume --fork-session` (new session id bound from the wire).
+  Codex/Kimi have no native fork; handoff there stays a one-shot envelope
+  with the structured context (documented fallback, live-verified both ways).
 - Session-resume continuity for all four CLI harness adapters: delegate binds
   the CLI-native session id from the wire (`thread.started`, `session_id`,
   meta line, `type=session` event) and follow-up ops (`block` / `resume` /

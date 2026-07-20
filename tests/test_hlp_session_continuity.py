@@ -228,3 +228,124 @@ def test_codex_resume_command_keeps_json_and_schema_file():
     assert "--output-schema" in resume
     assert "thread_abc" in resume
     assert resume.index("thread_abc") > resume.index("--json")
+
+
+def _pi_fork_stdout(request):
+    sid = "pi_sess_2" if request["operation"] == "handoff" else "pi_sess_1"
+    run_id = "run_2" if request["operation"] == "handoff" else "run_1"
+    return "\n".join(
+        (
+            json.dumps({"type": "session", "version": 3, "id": sid}),
+            json.dumps({"type": "agent_start"}),
+            json.dumps(
+                {
+                    "type": "turn.completed",
+                    "run_id": run_id,
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
+        )
+    )
+
+
+def _claude_fork_stdout(request):
+    sid = "sess_claude_2" if request["operation"] == "handoff" else "sess_claude_1"
+    run_id = "run_2" if request["operation"] == "handoff" else "run_1"
+    return "\n".join(
+        (
+            json.dumps({"type": "system", "subtype": "init", "session_id": sid}),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": False,
+                    "result": "ack",
+                    "session_id": sid,
+                    "structured_output": json.loads(_envelope(request, run_id=run_id)),
+                }
+            ),
+        )
+    )
+
+
+def test_handoff_forks_native_session_for_pi():
+    commands = []
+
+    async def runner(command, request, timeout):
+        commands.append(command)
+        return ProcessResult(exit_code=0, stdout=_pi_fork_stdout(request), stderr="")
+
+    adapter = PiHarnessAdapter(runner=runner)
+    run_id = run(adapter.delegate("task_1", "agent_a", "probe", input={"goal": "g"}))
+    new_run_id = run(adapter.handoff(run_id, "agent_b", {"note": "take it"}))
+
+    assert new_run_id == "run_2"
+    handoff_command = commands[1]
+    assert handoff_command[:4] == ("pi", "--mode", "json", "--fork")
+    assert "pi_sess_1" in handoff_command
+    # The forked run binds the NEW session id from the wire.
+    assert adapter.session_of_run(new_run_id) == "pi_sess_2"
+
+
+def test_handoff_forks_native_session_for_claude():
+    commands = []
+
+    async def runner(command, request, timeout):
+        commands.append(command)
+        return ProcessResult(exit_code=0, stdout=_claude_fork_stdout(request), stderr="")
+
+    adapter = ClaudeCodeHarnessAdapter(runner=runner)
+    run_id = run(adapter.delegate("task_1", "agent_a", "probe", input={"goal": "g"}))
+    new_run_id = run(adapter.handoff(run_id, "agent_b", {"note": "take it"}))
+
+    assert new_run_id == "run_2"
+    handoff_command = commands[1]
+    assert "--fork-session" in handoff_command
+    assert "sess_claude_1" in handoff_command
+    assert adapter.session_of_run(new_run_id) == "sess_claude_2"
+
+
+def test_handoff_stays_one_shot_for_codex_and_kimi():
+    def drive(adapter_cls, stdout_fn):
+        commands = []
+
+        async def runner(command, request, timeout):
+            commands.append(command)
+            return ProcessResult(exit_code=0, stdout=stdout_fn(request), stderr="")
+
+        adapter = adapter_cls(runner=runner)
+        run_id = run(adapter.delegate("task_1", "agent_a", "probe", input={"goal": "g"}))
+        run(adapter.handoff(run_id, "agent_b", {"note": "take it"}))
+        return commands[1]
+
+    for adapter_cls, stdout_fn in (
+        (CodexHarnessAdapter, CODEX_STDOUT),
+        (KimiHarnessAdapter, KIMI_STDOUT),
+    ):
+        handoff_command = drive(adapter_cls, stdout_fn)
+        # No fork support: one-shot envelope with the structured context.
+        assert "resume" not in handoff_command
+        assert "--fork" not in handoff_command
+        assert "--fork-session" not in handoff_command
+        assert "--session" not in handoff_command
+
+
+def test_handoff_falls_back_to_one_shot_without_session():
+    async def runner(command, request, timeout):
+        return ProcessResult(
+            exit_code=0,
+            stdout=json.dumps({"role": "assistant", "content": _envelope(request)}),
+            stderr="",
+        )
+
+    commands = []
+
+    async def spy(command, request, timeout):
+        commands.append(command)
+        return await runner(command, request, timeout)
+
+    adapter = KimiHarnessAdapter(runner=spy)
+    run_id = run(adapter.delegate("task_1", "agent_a", "probe", input={"goal": "g"}))
+    run(adapter.handoff(run_id, "agent_b", {"note": "take it"}))
+    assert "--session" not in commands[1]
