@@ -1,0 +1,35 @@
+CHANGELOG.md
+  s_1a11b58c4c3557::t_8cf413d007f102 12-16
+README.md
+  s_1a11b58c4c3557::t_7a3a4cae129f76 228-235
+docs/notes/2026-07-20.md
+  s_65123b8183aca9::t_2a415ebd3b6ce2 123-152
+docs/plans/2026-07-20-session-forking-handoff.md
+  s_65123b8183aca9::t_facc937c73d3d9 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "04553767f7a17a1c35138bc3566531983547b8f9",
+  "prompts": {},
+  "sessions": {
+    "s_1a11b58c4c3557": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7f64-c9df-7b42-a00d-cb59f072ebdb",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    },
+    "s_65123b8183aca9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7f65-d4e7-7333-b1a7-9ec667d5e96e",
+        "model": "unknown"
+      },
+      "human_author": "shangyifeng <shangyifeng@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
