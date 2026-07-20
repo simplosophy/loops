@@ -3097,7 +3097,7 @@ def test_examples_and_site_quickstarts_do_not_use_fake_adapters():
         str(path.relative_to(root)): text
         for path in checked
         if (
-            (text := path.read_text())
+            (text := path.read_text(encoding="utf-8"))
             and ("FakeAgentAdapter" in text or "FakeHarnessAdapter" in text)
         )
     }

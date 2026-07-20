@@ -344,7 +344,6 @@ def _kimi_command_from_metaworker(
         "w",
         prefix="hlp-kimi-",
         suffix=".toml",
-        dir="/private/tmp",
         delete=False,
     )
     temp_path = Path(handle.name)

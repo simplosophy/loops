@@ -216,7 +216,8 @@ multi-writer production backend or managed control plane.
 
 For Kimi, the smoke demo can build a temporary `kimi-cli` config from
 `~/.metaworker/config.yaml` when native Kimi Code has no model configured. The
-temporary file is created under `/private/tmp` and deleted after the run.
+temporary file is created in the system temp directory and deleted after the
+run.
 
 ## Python SDK
 
