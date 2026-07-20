@@ -9,6 +9,7 @@ import pytest
 from loops.hlp import (
     HLP_REALTIME_PROFILE,
     HLP_REALTIME_SPEC_VERSION,
+    CheckpointOption,
     ControlSignal,
     HLPClient,
     InteractionRef,
@@ -197,3 +198,97 @@ def test_task_amend_preserves_state_and_records_promotion_provenance():
     assert after["state"] == "in_progress"
     assert after["promotion"]["profile"] == "HLP-realtime"
     assert after["promotion"]["signal_count"] == 1
+
+
+def test_bci_channel_demo_runs_offline():
+    from examples.hlp_bci_channel_demo import run_demo
+
+    result = run(run_demo())
+    assert result["profile"] == "HLP-realtime"
+    assert result["channel"] == "bci"
+
+    # Path 1: soft BCI stream merges into one amendment; D1 holds.
+    assert result["soft_signals_in"] == 3
+    assert result["soft_signals_promoted"] == 2
+    assert result["d1_state_unchanged"] is True
+    assert "先别动 production 配置" in result["steering_text"]
+    assert result["promotion_profile"] == "HLP-realtime"
+    assert result["promotion_source_kinds"] == ["bci"]
+
+    # Path 2: low-risk checkpoint resolves on BCI affirm alone.
+    assert result["low_risk_checkpoint"]["policy_high_risk"] is False
+    assert result["low_risk_checkpoint"]["resolution"] == "approve"
+
+    # Path 3: high-risk checkpoint denies BCI-alone resolve (D3 fail-closed).
+    high_risk = result["high_risk_checkpoint"]
+    assert high_risk["policy_high_risk"] is True
+    assert high_risk["bci_alone_allowed"] is False
+    assert high_risk["bci_alone_error"] and "D3" in high_risk["bci_alone_error"]
+
+    # Path 4: second factor unlocks the same signal.
+    assert high_risk["resolution_with_second_factor"] == "approve"
+
+    assert result["decisions"]["D3_bci_alone_high_risk_denied"] is True
+
+
+def test_bci_risk_policy_flags_high_risk_keywords_and_options():
+    from examples.hlp_bci_channel_demo import checkpoint_is_high_risk
+
+    client = HLPClient()
+    task = run(client.create_task(principal="user_alice", goal="ship safely"))
+    run(client.delegate(task.id, "agent_x", capability="code"))
+    run(client.start(task.id))
+
+    benign = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Apply README wording tweak?",
+            raised_by="agent_x",
+        )
+    )
+    assert checkpoint_is_high_risk(benign) is False
+    run(client.resolve_checkpoint(benign.id, by="user_alice", action="approve"))
+
+    keyword_risky = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="approval",
+            prompt="Push auth refactor to production?",
+            raised_by="agent_x",
+        )
+    )
+    assert checkpoint_is_high_risk(keyword_risky) is True
+    run(client.resolve_checkpoint(keyword_risky.id, by="user_alice", action="approve"))
+
+    option_risky = run(
+        client.raise_checkpoint(
+            task_id=task.id,
+            kind="choice",
+            prompt="Pick an execution path.",
+            options=(CheckpointOption(id="nuke", label="Drop tables", risk="high"),),
+            raised_by="agent_x",
+        )
+    )
+    assert checkpoint_is_high_risk(option_risky) is True
+    run(client.resolve_checkpoint(option_risky.id, by="user_alice", action="choose", choice="nuke"))
+
+
+def test_bci_decoder_produces_principal_bound_signals():
+    from examples.hlp_bci_channel_demo import SyntheticBCIDecoder
+
+    interaction = InteractionRef(channel="bci", session_id="eeg_sess_test", episode_id="ep_t")
+    decoder = SyntheticBCIDecoder(principal="user_alice", interaction=interaction)
+    signal = decoder.decode(
+        "ep_t1",
+        strength="hard",
+        intent="affirm",
+        confidence=0.93,
+        text="同意",
+    )
+    assert signal.source_kind == "bci"
+    assert signal.principal_binding == "user_alice"
+    assert signal.confidence == 0.93
+    assert signal.source_ref == "synthetic-eeg:ep_t1"
+    assert signal.interaction is not None
+    assert signal.interaction.channel == "bci"

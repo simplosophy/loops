@@ -131,6 +131,18 @@ uv run loops-hlp-tui --adapter fake
 Optional profile constants: `HLP_REALTIME_PROFILE` / `HLP_REALTIME_SPEC_VERSION`
 (`0.3.0-draft`). Package version remains `0.2.0`.
 
+Run the offline **BCI (brainwave) channel** demo. HLP is compatible with
+brain-computer-interface input **by design** (spec appendix C): a BCI decoder
+is just a channel/sensor-plane producer of
+`ControlSignal(source_kind="bci")` — HLP receives only promoted
+responsibility events, never raw EEG frames. High-risk hard checkpoints
+cannot be closed by BCI alone (D3, fail-closed; second-factor path shown).
+No protocol changes, no EEG hardware:
+
+```bash
+uv run loops-hlp-bci-demo
+```
+
 Run the **PR Review Desk** host application (real embedding case, offline by
 default):
 

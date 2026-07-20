@@ -190,7 +190,7 @@ HLP 参考实现刻意不依赖任何自研下层 runtime。这证明协议层�
 - vendor package 直接依赖 — 当前通过对象注入提供框架级契约，不强依赖第三方包
 - 服务端数据库后端 — 当前提供内存 store + SQLite 本地 snapshot store；生产级对象表、CAS、schema migration、audit hash chain 和 outbox/recovery 是后续 hardening 项
 - HLP server/CLI 管理面 — 当前只提供 SDK 和 demo console script
-- HLP→channel 通知 — 当前只提供 `human_inbox` 语义，不定义 UI/channel
+- HLP→channel 通知 — 当前只提供 `human_inbox` 语义，不定义 UI/channel；BCI/语音等传感器输入走附录 C 的 channel/sensor plane（参考切片：`examples/hlp_bci_channel_demo.py`，协议零改动，D3 高风险 fail-closed）
 - 开放议题定论（checkpoint 超时、委派深度、Ledger 并发等）— 实现后待收敛
 
 ## 验证

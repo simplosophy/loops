@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Reference BCI (brainwave) channel slice: `examples/hlp_bci_channel_demo.py`
+  (`loops-hlp-bci-demo`) demonstrating appendix-C compatibility of
+  brain-computer-interface input with zero protocol changes — soft BCI stream
+  merge-promotion (D1/D2), low-risk hard resolve, and D3 fail-closed denial
+  of BCI-alone high-risk resolves with a second-factor path; offline tests in
+  `tests/test_hlp_realtime.py`.
 - First-class harness adapters for all four first-party CLIs: new
   `ClaudeCodeHarnessAdapter` (`claude -p --output-format stream-json`) and
   `KimiHarnessAdapter` (`kimi -p --output-format stream-json`) join
