@@ -1,7 +1,7 @@
 # First-Class Harness Adapters for Pi / Claude Code / Kimi
 
 Date: 2026-07-19
-Status: in progress
+Status: done (live E2E 2 passed for codex/kimi/claude/pi; see docs/notes/2026-07-19.md)
 
 ## Goal
 
