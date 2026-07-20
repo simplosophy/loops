@@ -62,14 +62,14 @@ loops/
     state_machine.py   # Task transition table
     store.py           # in-memory reference store
     sqlite_store.py    # local snapshot store
-    operations.py      # protocol operation layer
+    operations/        # protocol operation layer (per-domain mixin package)
     sdk.py             # HLPClient facade
     adapters/          # AgentAdapter / HarnessAdapter package
       protocol.py      # contracts + handles / events
       fake.py          # testing adapters
       process.py       # process / prompt CLI base
       codex.py         # Codex CLI + harness projection
-      cli.py           # Claude / Kimi / Hermes / Pi
+      cli.py           # Pi / Claude / Kimi CLI + harness, Hermes
       frameworks.py    # shape-compatible OpenAI / LangGraph / CrewAI
     events.py          # event bus abstractions
     audit.py           # append-only audit log

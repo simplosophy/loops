@@ -39,10 +39,10 @@ loops/hlp/
     fake.py            # testing adapters
     process.py         # process / prompt CLI base
     codex.py           # Codex CLI + harness projection
-    cli.py             # Claude / Kimi / Hermes / Pi
+    cli.py             # Pi / Claude / Kimi CLI + harness, Hermes
     frameworks.py      # shape-compatible framework shims
   events.py            # HLPEvent + InMemoryEventBus
-  operations.py        # 23 个操作 (spec §4)
+  operations/          # 23 个操作 (spec §4)，按域 mixin 包
   audit.py             # AuditEvent + AuditLog (append-only)
 ```
 
