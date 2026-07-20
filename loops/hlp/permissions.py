@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .types import ProtocolError
-
 
 _SCOPE_RE = re.compile(r"^[a-z][a-z0-9_-]*:[^\s]+$")
 
@@ -53,7 +52,7 @@ def is_permission_scope_pre_authorized(
 
     Active matching denies take precedence over active matching allows.
     """
-    checked_at = at or datetime.now(timezone.utc)
+    checked_at = at or datetime.now(UTC)
     requested = normalize_permission_scope(requested_scope)
     matching = [
         grant

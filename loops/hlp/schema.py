@@ -71,7 +71,15 @@ HLP_JSON_SCHEMAS: dict[str, dict[str, Any]] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Review",
         "type": "object",
-        "required": ["id", "task_id", "artifact_id", "reviewer", "verdict", "schema_version", "profile"],
+        "required": [
+            "id",
+            "task_id",
+            "artifact_id",
+            "reviewer",
+            "verdict",
+            "schema_version",
+            "profile",
+        ],
         "properties": {
             "id": {"type": "string"},
             "task_id": {"type": "string"},
@@ -319,10 +327,7 @@ def to_wire(value: Any) -> Any:
     if isinstance(value, list):
         return [to_wire(item) for item in value]
     if isinstance(value, dict):
-        return {
-            str(key): to_wire(item)
-            for key, item in value.items()
-        }
+        return {str(key): to_wire(item) for key, item in value.items()}
     return value
 
 

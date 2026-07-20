@@ -154,14 +154,19 @@ def format_harness_stream_line(line: str) -> StreamChunk | None:
         return None
 
     # Codex / HLP-style JSONL events
-    if event_type.startswith("hlp.") or event_type.startswith("pi.") or event_type in {
-        "needs_approval",
-        "needs_choice",
-        "needs_input",
-        "artifact",
-        "item.completed",
-        "thread.started",
-    }:
+    if (
+        event_type.startswith("hlp.")
+        or event_type.startswith("pi.")
+        or event_type
+        in {
+            "needs_approval",
+            "needs_choice",
+            "needs_input",
+            "artifact",
+            "item.completed",
+            "thread.started",
+        }
+    ):
         kind = event_type
         prompt = ""
         for key in ("hlp", "pi", "human_loop"):
@@ -349,10 +354,7 @@ def _user_message_from_request(request: dict[str, Any]) -> str:
     raw_input = request.get("input")
     if isinstance(raw_input, dict):
         goal = str(
-            raw_input.get("goal")
-            or raw_input.get("message")
-            or raw_input.get("prompt")
-            or ""
+            raw_input.get("goal") or raw_input.get("message") or raw_input.get("prompt") or ""
         ).strip()
         if goal:
             return goal
@@ -463,22 +465,22 @@ class ProcessAgentAdapter(FakeAgentAdapter):
             parent_run=parent_run,
         )
         self.process_results[run_id] = payload
-        self.calls.append((
-            "delegate",
-            {
-                "run_id": run_id,
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "capability": capability,
-                "input": input,
-                "parent_run": parent_run,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "delegate",
+                {
+                    "run_id": run_id,
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "capability": capability,
+                    "input": input,
+                    "parent_run": parent_run,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return run_id
 
     async def block(
@@ -490,14 +492,17 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         context: AdapterOperationContext | None = None,
     ) -> None:
         handle = self._require_run(run_id, "block", context=context)
-        await self._execute("block", {
-            "operation": "block",
-            "run_id": run_id,
-            "checkpoint_id": checkpoint_id,
-            "reason": reason,
-            "correlation_id": handle.correlation_id,
-            "operation_context": to_wire(context) if context is not None else None,
-        })
+        await self._execute(
+            "block",
+            {
+                "operation": "block",
+                "run_id": run_id,
+                "checkpoint_id": checkpoint_id,
+                "reason": reason,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
         await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason, context=context)
 
     async def resume(
@@ -508,13 +513,16 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         context: AdapterOperationContext | None = None,
     ) -> None:
         handle = self._require_run(run_id, "resume", context=context)
-        await self._execute("resume", {
-            "operation": "resume",
-            "run_id": run_id,
-            "resolution": resolution,
-            "correlation_id": handle.correlation_id,
-            "operation_context": to_wire(context) if context is not None else None,
-        })
+        await self._execute(
+            "resume",
+            {
+                "operation": "resume",
+                "run_id": run_id,
+                "resolution": resolution,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
         await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
 
     async def steer(
@@ -526,13 +534,16 @@ class ProcessAgentAdapter(FakeAgentAdapter):
     ) -> None:
         handle = self._require_run(run_id, "steer", context=context)
         amendment_payload = util.adapter_payload(amendment)
-        payload = await self._execute("steer", {
-            "operation": "steer",
-            "run_id": run_id,
-            "amendment": amendment_payload,
-            "correlation_id": handle.correlation_id,
-            "operation_context": to_wire(context) if context is not None else None,
-        })
+        payload = await self._execute(
+            "steer",
+            {
+                "operation": "steer",
+                "run_id": run_id,
+                "amendment": amendment_payload,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
         # Follow-up chat turns (TUI amend → steer) must refresh process_results so
         # hosts do not keep showing the previous delegate summary.
         if isinstance(payload, dict):
@@ -548,18 +559,21 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         operation_context: AdapterOperationContext | None = None,
     ) -> str:
         current = self._require_run(run_id, "handoff", context=operation_context)
-        payload = await self._execute("handoff", {
-            "operation": "handoff",
-            "run_id": run_id,
-            "to_agent": to_agent,
-            "context": context,
-            "correlation_id": current.correlation_id,
-            **(
-                {"operation_context": to_wire(operation_context)}
-                if operation_context is not None
-                else {}
-            ),
-        })
+        payload = await self._execute(
+            "handoff",
+            {
+                "operation": "handoff",
+                "run_id": run_id,
+                "to_agent": to_agent,
+                "context": context,
+                "correlation_id": current.correlation_id,
+                **(
+                    {"operation_context": to_wire(operation_context)}
+                    if operation_context is not None
+                    else {}
+                ),
+            },
+        )
         util.validate_correlation(payload, current.correlation_id, self.name, "handoff")
         new_run_id = str(payload.get("run_id") or payload.get("to_run") or self._next_run_id())
         self._runs[new_run_id] = AgentRunHandle(
@@ -571,20 +585,20 @@ class ProcessAgentAdapter(FakeAgentAdapter):
             parent_run=run_id,
         )
         self.process_results[new_run_id] = payload
-        self.calls.append((
-            "handoff",
-            {
-                "from_run": run_id,
-                "to_run": new_run_id,
-                "to_agent": to_agent,
-                "context": context,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "handoff",
+                {
+                    "from_run": run_id,
+                    "to_run": new_run_id,
+                    "to_agent": to_agent,
+                    "context": context,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return new_run_id
 
     async def cancel(
@@ -595,17 +609,20 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         operation_context: AdapterOperationContext | None = None,
     ) -> None:
         handle = self._require_run(run_id, "cancel", context=operation_context)
-        await self._execute("cancel", {
-            "operation": "cancel",
-            "run_id": run_id,
-            "reason": reason,
-            "correlation_id": handle.correlation_id,
-            **(
-                {"operation_context": to_wire(operation_context)}
-                if operation_context is not None
-                else {}
-            ),
-        })
+        await self._execute(
+            "cancel",
+            {
+                "operation": "cancel",
+                "run_id": run_id,
+                "reason": reason,
+                "correlation_id": handle.correlation_id,
+                **(
+                    {"operation_context": to_wire(operation_context)}
+                    if operation_context is not None
+                    else {}
+                ),
+            },
+        )
         await FakeAgentAdapter.cancel(
             self,
             run_id,
@@ -765,5 +782,3 @@ class PromptCLIAdapter(ProcessAgentAdapter):
         result["prompt_mode"] = True
         result["prompt_style"] = self.prompt_mode
         return result
-
-

@@ -4,6 +4,7 @@ from .codex import CodexHarnessAdapter
 from .process import ProcessAgentAdapter, PromptCLIAdapter
 from .protocol import HarnessCapabilities, ProcessRunner
 
+
 class PiHarnessAdapter(CodexHarnessAdapter):
     """Pi CLI adapter with HLP harness event projection.
 
@@ -33,7 +34,8 @@ class PiHarnessAdapter(CodexHarnessAdapter):
             command=command,
             runner=runner,
             timeout=timeout,
-            capabilities=capabilities or HarnessCapabilities(
+            capabilities=capabilities
+            or HarnessCapabilities(
                 name="pi",
                 conformance=("checkpoint-capable", "artifact-aware", "event-streaming"),
                 description="Projects Pi harness JSON events into HLP human-loop objects.",

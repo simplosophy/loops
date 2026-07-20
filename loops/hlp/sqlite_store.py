@@ -20,8 +20,8 @@ from .objects import (
     CheckpointResolution,
     Constraints,
     Evidence,
-    InputRef,
     IdempotencyRecord,
+    InputRef,
     Ledger,
     LedgerEntry,
     Ownership,
@@ -35,7 +35,6 @@ from .objects import (
     TaskSpec,
 )
 from .store import HumanLoopStore
-
 
 _DATACLASS_TYPES = {
     cls.__name__: cls
@@ -143,10 +142,7 @@ def _pack(value: Any) -> Any:
     if is_dataclass(value):
         return {
             "__hlp_type__": value.__class__.__name__,
-            "fields": {
-                field.name: _pack(getattr(value, field.name))
-                for field in fields(value)
-            },
+            "fields": {field.name: _pack(getattr(value, field.name)) for field in fields(value)},
         }
     if isinstance(value, tuple):
         return {"__hlp_type__": "tuple", "items": [_pack(item) for item in value]}
@@ -171,12 +167,8 @@ def _unpack(value: Any) -> Any:
     if type_name == "list":
         return [_unpack(item) for item in value["items"]]
     if type_name == "dict":
-        return {
-            _unpack(key): _unpack(item)
-            for key, item in value["items"]
-        }
+        return {_unpack(key): _unpack(item) for key, item in value["items"]}
     cls = _DATACLASS_TYPES[type_name]
-    return cls(**{
-        field_name: _unpack(field_value)
-        for field_name, field_value in value["fields"].items()
-    })
+    return cls(
+        **{field_name: _unpack(field_value) for field_name, field_value in value["fields"].items()}
+    )

@@ -82,49 +82,61 @@ async def _codex_wrap_runner(
     if request["operation"] == "delegate":
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": "codex_wrap_run",
-                    "correlation_id": request["correlation_id"],
-                    "hlp": {
-                        "kind": "needs_approval",
-                        "agent_id": request["agent_id"],
-                        "prompt": "Apply the generated patch?",
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": "codex_wrap_run",
-                    "correlation_id": request["correlation_id"],
-                    "status": "ok",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": "codex_wrap_run",
+                            "correlation_id": request["correlation_id"],
+                            "hlp": {
+                                "kind": "needs_approval",
+                                "agent_id": request["agent_id"],
+                                "prompt": "Apply the generated patch?",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": "codex_wrap_run",
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
     if request["operation"] == "resume":
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": request["run_id"],
-                    "correlation_id": request["correlation_id"],
-                    "hlp": {
-                        "kind": "artifact",
-                        "agent_id": "agent_review_harness",
-                        "artifact_type": "patch",
-                        "artifact_uri": "mem://patch-v1",
-                        "artifact_checksum": "sha256:patch-v1",
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": request["run_id"],
-                    "correlation_id": request["correlation_id"],
-                    "status": "ok",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": request["run_id"],
+                            "correlation_id": request["correlation_id"],
+                            "hlp": {
+                                "kind": "artifact",
+                                "agent_id": "agent_review_harness",
+                                "artifact_type": "patch",
+                                "artifact_uri": "mem://patch-v1",
+                                "artifact_checksum": "sha256:patch-v1",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": request["run_id"],
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
     return ProcessResult(exit_code=0, stdout="{}", stderr="")

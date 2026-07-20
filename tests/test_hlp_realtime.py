@@ -7,10 +7,10 @@ import asyncio
 import pytest
 
 from loops.hlp import (
-    ControlSignal,
-    HLPClient,
     HLP_REALTIME_PROFILE,
     HLP_REALTIME_SPEC_VERSION,
+    ControlSignal,
+    HLPClient,
     InteractionRef,
     ProtocolError,
     assert_soft_does_not_change_task_state,
@@ -104,19 +104,36 @@ def test_d3_bci_alone_cannot_resolve_high_risk_hard_checkpoint():
         source_kind="bci",
         text="同意",
     )
-    assert may_resolve_hard_checkpoint_with_signal(
-        bci, high_risk=True, second_factor_present=False,
-    ) is False
-    assert may_resolve_hard_checkpoint_with_signal(
-        bci, high_risk=True, second_factor_present=True,
-    ) is True
-    assert may_resolve_hard_checkpoint_with_signal(
-        bci, high_risk=False, second_factor_present=False,
-    ) is True
+    assert (
+        may_resolve_hard_checkpoint_with_signal(
+            bci,
+            high_risk=True,
+            second_factor_present=False,
+        )
+        is False
+    )
+    assert (
+        may_resolve_hard_checkpoint_with_signal(
+            bci,
+            high_risk=True,
+            second_factor_present=True,
+        )
+        is True
+    )
+    assert (
+        may_resolve_hard_checkpoint_with_signal(
+            bci,
+            high_risk=False,
+            second_factor_present=False,
+        )
+        is True
+    )
 
     with pytest.raises(ProtocolError) as err:
         require_hard_resolve_allowed(
-            bci, high_risk=True, second_factor_present=False,
+            bci,
+            high_risk=True,
+            second_factor_present=False,
         )
     assert err.value.code == "UNAUTHORIZED"
     assert "D3" in err.value.message
@@ -160,13 +177,15 @@ def test_task_amend_preserves_state_and_records_promotion_provenance():
         ),
     )
     promoted = merge_soft_control_signals(soft, by="user_alice")
-    amended = run(client.amend(
-        task.id,
-        by="user_alice",
-        text=promoted.amendment.text,
-        intent="constrain",
-        promotion_provenance=promoted.provenance,
-    ))
+    amended = run(
+        client.amend(
+            task.id,
+            by="user_alice",
+            text=promoted.amendment.text,
+            intent="constrain",
+            promotion_provenance=promoted.provenance,
+        )
+    )
     assert amended.state == "in_progress"
     assert amended.steering_log[-1].text == "focus on auth"
     assert_soft_does_not_change_task_state(started.state, amended.state)

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 from typing import Any
 
 from loops.hlp import (
     AgentAdapterError,
+    AutonomyTier,
     CheckpointResolutionAction,
     Constraints,
     ControlSignal,
@@ -15,6 +16,7 @@ from loops.hlp import (
     ProtocolError,
     ReviewComment,
     ReviewVerdict,
+    SteeringIntent,
     merge_soft_control_signals,
 )
 
@@ -30,7 +32,7 @@ from .render import (
     render_status,
     render_transcript,
 )
-from .session import SessionStore, TranscriptEvent
+from .session import SessionStore, TranscriptEvent, TUISession
 
 
 @dataclass(frozen=True)
@@ -332,8 +334,7 @@ class TUIController:
             (
                 item
                 for item in inbox
-                if item.kind == "checkpoint"
-                and item.task_id == session.active_task_id
+                if item.kind == "checkpoint" and item.task_id == session.active_task_id
             ),
             None,
         )
@@ -368,12 +369,9 @@ class TUIController:
 
         verdict = _REVIEW_VERDICTS[verdict_arg]
         comment_text = " ".join(intent.args[1:]).strip()
-        comments = (
-            (ReviewComment(anchor="artifact", body=comment_text),)
-            if comment_text
-            else ()
-        )
+        comments = (ReviewComment(anchor="artifact", body=comment_text),) if comment_text else ()
 
+        requested_changes: tuple[str, ...]
         if verdict == "changes_requested":
             if not comment_text:
                 raise TUIUsageError("/review changes_requested requires a comment")
@@ -386,8 +384,7 @@ class TUIController:
             (
                 item
                 for item in inbox
-                if item.kind == "review"
-                and item.task_id == session.active_task_id
+                if item.kind == "review" and item.task_id == session.active_task_id
             ),
             None,
         )
@@ -421,8 +418,7 @@ class TUIController:
             if entry is None:
                 return TUIResult("soft buffer is empty")
             return TUIResult(
-                f"soft popped: {entry.text}\n"
-                f"{render_soft_buffer(updated.soft_buffer)}"
+                f"soft popped: {entry.text}\n{render_soft_buffer(updated.soft_buffer)}"
             )
         # Optional: /soft --intent redirect text...
         intent_name = "constrain"
@@ -451,9 +447,7 @@ class TUIController:
             "constrain",
             "abort_hint",
         }:
-            raise TUIUsageError(
-                "/soft --intent must be redirect|clarify|constrain|abort_hint"
-            )
+            raise TUIUsageError("/soft --intent must be redirect|clarify|constrain|abort_hint")
         if not (0.0 <= confidence <= 1.0):
             raise TUIUsageError("/soft --confidence must be in [0, 1]")
         updated = self.sessions.add_soft(
@@ -484,9 +478,7 @@ class TUIController:
             self.sessions.add_soft(session_id, text=extra, intent="constrain")
             session = self._require_session(session_id)
         if not session.soft_buffer:
-            raise TUIUsageError(
-                "soft buffer empty — use /soft <text> to buffer, then /promote"
-            )
+            raise TUIUsageError("soft buffer empty — use /soft <text> to buffer, then /promote")
 
         signals = tuple(
             ControlSignal(
@@ -568,11 +560,7 @@ class TUIController:
         except (RuntimeError, ProtocolError, AgentAdapterError):
             return ""
         inbox = await self.client.human_inbox(session.principal)
-        active_inbox = [
-            item
-            for item in inbox
-            if item.task_id == session.active_task_id
-        ]
+        active_inbox = [item for item in inbox if item.task_id == session.active_task_id]
         summary = render_human_loop(projected, active_inbox)
         if summary:
             self._append(session_id, kind="human", text=summary)
@@ -594,13 +582,13 @@ class TUIController:
         except KeyError as exc:
             raise TUISessionError(f"unknown session: {session_id}") from exc
 
-    def _require_session(self, session_id: str):
+    def _require_session(self, session_id: str) -> TUISession:
         try:
             return self.sessions.resume(session_id)
         except KeyError as exc:
             raise TUISessionError(f"unknown session: {session_id}") from exc
 
-    def _require_active(self, session_id: str):
+    def _require_active(self, session_id: str) -> TUISession:
         session = self._require_session(session_id)
         if not session.active_task_id:
             raise TUIUsageError("no active task")
@@ -624,13 +612,14 @@ def _joined_args(intent: InputIntent) -> str:
     return " ".join(intent.args).strip()
 
 
-def _autonomy(permission_mode: str) -> str:
-    return {
+def _autonomy(permission_mode: str) -> AutonomyTier:
+    tiers: dict[str, AutonomyTier] = {
         "auto": "autonomous",
         "plan": "plan_then_implement",
         "confirm": "confirm_each_action",
         "read-only": "read_only",
-    }.get(permission_mode, "autonomous")
+    }
+    return tiers.get(permission_mode, "autonomous")
 
 
 def _control_intent(name: str) -> str:
@@ -649,10 +638,16 @@ def _control_intent(name: str) -> str:
     return "constrain"
 
 
-def _steering_intent(name: str) -> str:
-    if name in {"redirect", "clarify", "constrain", "abort_hint"}:
-        return name
-    return "constrain"
+_STEERING_INTENTS: dict[str, SteeringIntent] = {
+    "redirect": "redirect",
+    "clarify": "clarify",
+    "constrain": "constrain",
+    "abort_hint": "abort_hint",
+}
+
+
+def _steering_intent(name: str) -> SteeringIntent:
+    return _STEERING_INTENTS.get(name, "constrain")
 
 
 def _adapter_can_project(adapter: object) -> bool:

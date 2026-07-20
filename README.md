@@ -1,5 +1,12 @@
 # loops
 
+[![CI](https://github.com/simplosophy/loops/actions/workflows/ci.yml/badge.svg)](https://github.com/simplosophy/loops/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/loops.svg)](https://pypi.org/project/loops/)
+[![Python](https://img.shields.io/pypi/pyversions/loops.svg)](https://pypi.org/project/loops/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/simplosophy/loops/blob/main/LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
 Human Loop Protocol (HLP) Python SDK for responsible human-agent workflows.
 
 HLP is the human-interaction control plane for existing agent harnesses. It
@@ -330,6 +337,7 @@ using `pi.event` lines or nested `pi` / `hlp` payloads.
 
 ## Documentation
 
+- Published site: [ontheloops.com](https://ontheloops.com)
 - HLP spec: [docs/specs/HLP.md](docs/specs/HLP.md)
 - Architecture overview: [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md)
 - HLP implementation notes: [docs/architecture/hlp.md](docs/architecture/hlp.md)
@@ -342,6 +350,9 @@ Default offline release verification:
 ```bash
 uv run pytest -q
 uv run pytest tests/conformance -q
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy loops
 uv run python scripts/check_release_metadata.py
 uv run python scripts/check_spec_site_sync.py
 npm run build
@@ -354,3 +365,12 @@ Opt-in CLI lifecycle tests require installed local agent CLIs:
 uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude --strict
 HLP_RUN_EXTERNAL_CLI_E2E=1 uv run pytest tests/external/test_hlp_real_cli_e2e.py -q
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). By contributing, you agree that your
+contributions are licensed under the Apache License 2.0.
+
+## License
+
+[Apache License 2.0](LICENSE)

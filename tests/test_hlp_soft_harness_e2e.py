@@ -17,11 +17,13 @@ def run(coro):
 
 def test_soft_harness_e2e_offline_codex_and_pi_multi_merge():
     adapters = ("codex", "pi")
-    result = run(run_soft_e2e(
-        adapters=adapters,
-        runners=default_offline_runners(adapters),
-        timeout=15.0,
-    ))
+    result = run(
+        run_soft_e2e(
+            adapters=adapters,
+            runners=default_offline_runners(adapters),
+            timeout=15.0,
+        )
+    )
     assert set(result) == {"codex", "pi"}
     for name, entry in result.items():
         assert entry["status"] == "ok", (name, entry)
@@ -47,6 +49,6 @@ def test_soft_harness_e2e_offline_codex_and_pi_multi_merge():
 def test_inventory_harnesses_reports_paths():
     inv = inventory_harnesses()
     assert set(inv) >= {"codex", "pi", "claude", "kimi"}
-    for name, info in inv.items():
+    for _name, info in inv.items():
         assert "available" in info
         assert "path" in info

@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .protocol import AgentAdapterError, AgentRunHandle, HarnessEvent
+from ..types import HarnessEventKind
 from . import _util as util
+from .protocol import AgentAdapterError, AgentRunHandle, HarnessEvent
 
 
 def parse_process_stdout(stdout: str) -> dict[str, Any]:
@@ -24,7 +25,7 @@ def parse_process_stdout(stdout: str) -> dict[str, Any]:
             except json.JSONDecodeError as exc:
                 raise ValueError("stdout line was not valid JSON") from exc
             if not isinstance(event, dict):
-                raise ValueError("stdout JSONL lines must be objects")
+                raise ValueError("stdout JSONL lines must be objects") from None
             events.append(event)
         if not events:
             return {}
@@ -221,16 +222,14 @@ def codex_event_to_harness_event(
 ) -> HarnessEvent | None:
     payload = codex_hlp_payload(event)
     if payload is not None:
-        kind = normalize_codex_hlp_kind(payload.get("kind") or event.get("kind") or event.get("type"))
+        kind = normalize_codex_hlp_kind(
+            payload.get("kind") or event.get("kind") or event.get("type")
+        )
         if kind is None:
             return None
         return HarnessEvent(
             kind=kind,
-            task_id=str(
-                payload.get("task_id")
-                or event.get("correlation_id")
-                or handle.task_id
-            ),
+            task_id=str(payload.get("task_id") or event.get("correlation_id") or handle.task_id),
             run_id=str(payload.get("run_id") or event.get("run_id") or handle.run_id),
             agent_id=str(payload.get("agent_id") or event.get("agent_id") or handle.agent_id),
             prompt=str(payload.get("prompt") or event.get("message") or ""),
@@ -238,15 +237,13 @@ def codex_event_to_harness_event(
             context=util.tuple_value(payload.get("context")),
             artifact_type=str(payload.get("artifact_type") or payload.get("type") or "artifact"),
             artifact_uri=str(payload.get("artifact_uri") or payload.get("uri") or ""),
-            artifact_checksum=str(payload.get("artifact_checksum") or payload.get("checksum") or ""),
+            artifact_checksum=str(
+                payload.get("artifact_checksum") or payload.get("checksum") or ""
+            ),
             artifact_size=util.int_value(payload.get("artifact_size") or payload.get("size")),
         )
 
-    artifact_uri = (
-        event.get("artifact_uri")
-        or event.get("patch_uri")
-        or event.get("diff_uri")
-    )
+    artifact_uri = event.get("artifact_uri") or event.get("patch_uri") or event.get("diff_uri")
     if artifact_uri:
         return HarnessEvent(
             kind="artifact",
@@ -268,11 +265,7 @@ def codex_event_may_project(event: dict[str, Any]) -> bool:
             payload.get("kind") or event.get("kind") or event.get("type")
         )
         return kind is not None
-    return bool(
-        event.get("artifact_uri")
-        or event.get("patch_uri")
-        or event.get("diff_uri")
-    )
+    return bool(event.get("artifact_uri") or event.get("patch_uri") or event.get("diff_uri"))
 
 
 def codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
@@ -308,10 +301,8 @@ def codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def normalize_codex_hlp_kind(value: Any):
-    from ..types import HarnessEventKind
-
-    aliases = {
+def normalize_codex_hlp_kind(value: Any) -> HarnessEventKind | None:
+    aliases: dict[str, HarnessEventKind] = {
         "approval": "needs_approval",
         "approval_required": "needs_approval",
         "needs_approval": "needs_approval",
@@ -327,5 +318,5 @@ def normalize_codex_hlp_kind(value: Any):
     }
     normalized = aliases.get(str(value or ""))
     if normalized in {"needs_approval", "needs_choice", "needs_input", "artifact"}:
-        return normalized  # type: ignore[return-value]
+        return normalized
     return None

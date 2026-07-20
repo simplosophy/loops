@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-
 HLP_SPEC_VERSION = "0.2.0-draft"
 HLP_SCHEMA_VERSION = "0.2"
 HLP_PROFILE = "HLP-industrial"
@@ -11,7 +10,7 @@ HLP_REALTIME_PROFILE = "HLP-realtime"
 HLP_REALTIME_SPEC_VERSION = "0.3.0-draft"
 
 
-# ── 错误码 (HLP spec §6.1) ──
+# ── Error codes (HLP spec §6.1) ──
 ErrorCode = Literal[
     "INVALID_SPEC",
     "PRECONDITION_FAILED",
@@ -28,7 +27,7 @@ _RETRYABLE_ERROR_CODES = frozenset({"CONFLICT", "DEADLINE_EXCEEDED"})
 
 
 class ProtocolError(Exception):
-    """HLP 协议错误。code 对应 spec §6.1 错误码。"""
+    """HLP protocol error. code corresponds to the spec §6.1 error codes."""
 
     def __init__(
         self,
@@ -64,7 +63,7 @@ class ProtocolError(Exception):
         }
 
 
-# ── Literal 类型别名 (spec §3) ──
+# ── Literal type aliases (spec §3) ──
 
 TaskState = Literal[
     "created",

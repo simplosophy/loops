@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from loops.hlp.adapters.process import StreamChunk
@@ -11,7 +12,7 @@ from loops.hlp.adapters.process import StreamChunk
 class StreamPrinter:
     """Print harness StreamChunks to a TUI terminal with text-delta coalescing."""
 
-    printer: object = print
+    printer: Callable[..., None] = print
     _open_text: bool = field(default=False, init=False, repr=False)
 
     def __call__(self, chunk: StreamChunk) -> None:

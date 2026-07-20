@@ -8,7 +8,6 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_SPEC = ROOT / "docs/specs/HLP.md"
 SITE_SPEC = ROOT / "docs/site/specs/hlp.md"

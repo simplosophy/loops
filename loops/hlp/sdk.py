@@ -90,7 +90,7 @@ class HLPClient:
             idempotency_key=idempotency_key,
         )
         if self.operations.last_operation_replayed:
-            run_id = self._adapter_result_run_id()
+            run_id: str | None = self._adapter_result_run_id()
         else:
             run_id = self.store.run_of_task(task_id)
         if run_id is None:
@@ -349,11 +349,10 @@ class HLPClient:
         peek_events = getattr(self.adapter, "peek_events", None)
         ack_events = getattr(self.adapter, "ack_events", None)
         reliable_delivery = callable(peek_events) and callable(ack_events)
-        events = (
-            await peek_events(run_id)
-            if reliable_delivery
-            else await observe(run_id)
-        )
+        if callable(peek_events) and callable(ack_events):
+            events = await peek_events(run_id)
+        else:
+            events = await observe(run_id)
 
         projected: list[Any] = []
         for delivery in events:
@@ -371,27 +370,31 @@ class HLPClient:
                     "needs_choice": "choice",
                     "needs_input": "input",
                 }[event.kind]
-                projected.append(await self.raise_checkpoint(
-                    task_id=event.task_id,
-                    kind=checkpoint_kind,  # type: ignore[arg-type]
-                    prompt=event.prompt,
-                    options=event.options,  # type: ignore[arg-type]
-                    context=event.context,  # type: ignore[arg-type]
-                    raised_by=event.agent_id,
-                ))
+                projected.append(
+                    await self.raise_checkpoint(
+                        task_id=event.task_id,
+                        kind=checkpoint_kind,  # type: ignore[arg-type]
+                        prompt=event.prompt,
+                        options=event.options,
+                        context=event.context,
+                        raised_by=event.agent_id,
+                    )
+                )
             elif event.kind == "artifact":
-                projected.append(await self.commit_artifact(
-                    task_id=event.task_id,
-                    type=event.artifact_type or "artifact",
-                    payload=ArtifactPayload(
-                        kind="ref",
-                        uri=event.artifact_uri,
-                        checksum=event.artifact_checksum,
-                        size=event.artifact_size,
-                    ),
-                    produced_by=event.agent_id,
-                ))
-            if reliable_delivery:
+                projected.append(
+                    await self.commit_artifact(
+                        task_id=event.task_id,
+                        type=event.artifact_type or "artifact",
+                        payload=ArtifactPayload(
+                            kind="ref",
+                            uri=event.artifact_uri,
+                            checksum=event.artifact_checksum,
+                            size=event.artifact_size,
+                        ),
+                        produced_by=event.agent_id,
+                    )
+                )
+            if reliable_delivery and callable(ack_events):
                 await ack_events(run_id, through=cursor)
         return projected
 
@@ -404,15 +407,17 @@ class HLPClient:
             task = self.store.get_task(checkpoint.task_id)
             if task.ownership.principal != principal:
                 continue
-            items.append(HumanInboxItem(
-                kind="checkpoint",
-                action="resolve_checkpoint",
-                task_id=task.id,
-                subject_id=checkpoint.id,
-                title=checkpoint.prompt,
-                principal=principal,
-                created_at=checkpoint.raised_at,
-            ))
+            items.append(
+                HumanInboxItem(
+                    kind="checkpoint",
+                    action="resolve_checkpoint",
+                    task_id=task.id,
+                    subject_id=checkpoint.id,
+                    title=checkpoint.prompt,
+                    principal=principal,
+                    created_at=checkpoint.raised_at,
+                )
+            )
 
         for task in self.store.list_tasks():
             if task.ownership.principal != principal:
@@ -423,19 +428,21 @@ class HLPClient:
                 if self.store.reviews_of_artifact(artifact_id):
                     continue
                 artifact = self.store.get_artifact(artifact_id)
-                items.append(HumanInboxItem(
-                    kind="review",
-                    action="submit_review",
-                    task_id=task.id,
-                    subject_id=artifact.id,
-                    title=f"Review {artifact.type} {artifact.version}",
-                    principal=principal,
-                    created_at=(
-                        artifact.provenance.produced_at
-                        if artifact.provenance is not None
-                        else task.created_at
-                    ),
-                ))
+                items.append(
+                    HumanInboxItem(
+                        kind="review",
+                        action="submit_review",
+                        task_id=task.id,
+                        subject_id=artifact.id,
+                        title=f"Review {artifact.type} {artifact.version}",
+                        principal=principal,
+                        created_at=(
+                            artifact.provenance.produced_at
+                            if artifact.provenance is not None
+                            else task.created_at
+                        ),
+                    )
+                )
 
         return sorted(items, key=lambda item: item.created_at)
 
@@ -506,9 +513,7 @@ class HLPClient:
             raise RuntimeError("replayed adapter operation id was not recorded")
         record = self.store.get_adapter_outbox_record(operation_id)
         if not isinstance(record.result, str):
-            raise RuntimeError(
-                "replayed adapter operation did not record a run id result"
-            )
+            raise RuntimeError("replayed adapter operation did not record a run id result")
         return record.result
 
     async def _publish_event(

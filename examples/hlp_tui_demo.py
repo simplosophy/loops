@@ -53,9 +53,7 @@ async def run_demo() -> dict[str, Any]:
         "session_id": session.id,
         "task_id": active.active_task_id,
         "run_id": active.active_run_id,
-        "process_summary": str(
-            adapter.process_results[active.active_run_id]["summary"]
-        ),
+        "process_summary": str(adapter.process_results[active.active_run_id]["summary"]),
         "checkpoint_id": checkpoint.id,
         "checkpoint_decision": (
             resolved_checkpoint.resolution.action
@@ -78,12 +76,14 @@ async def _tui_demo_runner(
     run_id = str(request.get("run_id") or "codex_tui_demo_run")
     return ProcessResult(
         exit_code=0,
-        stdout=json.dumps({
-            "run_id": run_id,
-            "correlation_id": request["correlation_id"],
-            "status": "ok",
-            "summary": f"TUI demo {request['operation']} accepted",
-        }),
+        stdout=json.dumps(
+            {
+                "run_id": run_id,
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+                "summary": f"TUI demo {request['operation']} accepted",
+            }
+        ),
         stderr="",
     )
 

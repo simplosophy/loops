@@ -36,7 +36,6 @@ from loops.hlp import (
 )
 from loops.hlp.adapters import AgentAdapterError, ProcessRunner
 
-
 Decision = Literal["approve", "reject", "request_change"]
 
 
@@ -217,16 +216,18 @@ class PRReviewDesk:
         cards: list[DeskCard] = []
         for item in items:
             pr = self._pr_by_task.get(item.task_id)
-            cards.append(DeskCard(
-                card_id=f"{item.kind}:{item.subject_id}",
-                kind=item.kind,
-                action=item.action,
-                task_id=item.task_id,
-                subject_id=item.subject_id,
-                title=item.title,
-                pr_ref=pr.ref if pr is not None else item.task_id,
-                principal=item.principal,
-            ))
+            cards.append(
+                DeskCard(
+                    card_id=f"{item.kind}:{item.subject_id}",
+                    kind=item.kind,
+                    action=item.action,
+                    task_id=item.task_id,
+                    subject_id=item.subject_id,
+                    title=item.title,
+                    pr_ref=pr.ref if pr is not None else item.task_id,
+                    principal=item.principal,
+                )
+            )
         return cards
 
     async def decide_checkpoint(
@@ -299,11 +300,7 @@ class PRReviewDesk:
         inbox = await self.list_inbox()
         checkpoint = self._latest_checkpoint(session.task_id)
         artifact = self._latest_artifact(task)
-        reviews = (
-            self.client.store.reviews_of_artifact(artifact.id)
-            if artifact is not None
-            else []
-        )
+        reviews = self.client.store.reviews_of_artifact(artifact.id) if artifact is not None else []
         review = reviews[-1] if reviews else None
         return DeskReport(
             pr_ref=session.pr.ref,
@@ -336,9 +333,7 @@ class PRReviewDesk:
 
     def _latest_checkpoint(self, task_id: str) -> Checkpoint | None:
         matches = [
-            ckpt
-            for ckpt in self.client.store.checkpoints.values()
-            if ckpt.task_id == task_id
+            ckpt for ckpt in self.client.store.checkpoints.values() if ckpt.task_id == task_id
         ]
         if not matches:
             return None
@@ -366,28 +361,34 @@ def offline_review_harness_runner(
         # First turn: ask human before posting comments / applying side effects.
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "hlp": {
-                        "kind": "needs_approval",
-                        "agent_id": agent_id,
-                        "prompt": (
-                            "Allow the review agent to post findings as PR comments "
-                            "and open follow-up issues for high severity findings?"
-                        ),
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "status": "blocked",
-                    "summary": "Waiting for human approval of external side effects",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": run_id,
+                            "correlation_id": correlation,
+                            "hlp": {
+                                "kind": "needs_approval",
+                                "agent_id": agent_id,
+                                "prompt": (
+                                    "Allow the review agent to post findings as PR comments "
+                                    "and open follow-up issues for high severity findings?"
+                                ),
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": run_id,
+                            "correlation_id": correlation,
+                            "status": "blocked",
+                            "summary": "Waiting for human approval of external side effects",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
 
@@ -397,69 +398,81 @@ def offline_review_harness_runner(
         if isinstance(resolution, dict):
             action = str(resolution.get("action") or "")
         elif hasattr(resolution, "action"):
-            action = str(getattr(resolution, "action") or "")
+            action = str(resolution.action or "")
         # Rejected checkpoints end the HLP task; harness must not emit deliverables.
         if action in {"reject", "rejected"}:
             return ProcessResult(
                 exit_code=0,
-                stdout=json.dumps({
-                    "type": "turn.completed",
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "status": "cancelled",
-                    "summary": "Harness stopped after human rejected side effects",
-                }),
+                stdout=json.dumps(
+                    {
+                        "type": "turn.completed",
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        "status": "cancelled",
+                        "summary": "Harness stopped after human rejected side effects",
+                    }
+                ),
                 stderr="",
             )
         # After approval: produce the review report artifact.
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "hlp": {
-                        "kind": "artifact",
-                        "agent_id": agent_id,
-                        "artifact_type": "review-report",
-                        "artifact_uri": "mem://pr-review-report",
-                        "artifact_checksum": "sha256:pr-review-report-v1",
-                        "artifact_size": 2048,
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "status": "ok",
-                    "summary": "Review report ready for human acceptance",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": run_id,
+                            "correlation_id": correlation,
+                            "hlp": {
+                                "kind": "artifact",
+                                "agent_id": agent_id,
+                                "artifact_type": "review-report",
+                                "artifact_uri": "mem://pr-review-report",
+                                "artifact_checksum": "sha256:pr-review-report-v1",
+                                "artifact_size": 2048,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": run_id,
+                            "correlation_id": correlation,
+                            "status": "ok",
+                            "summary": "Review report ready for human acceptance",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
 
     if op == "steer":
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "type": "turn.completed",
-                "run_id": run_id,
-                "correlation_id": correlation,
-                "status": "ok",
-                "summary": "Steering applied without restart",
-            }),
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "run_id": run_id,
+                    "correlation_id": correlation,
+                    "status": "ok",
+                    "summary": "Steering applied without restart",
+                }
+            ),
             stderr="",
         )
 
     return ProcessResult(
         exit_code=0,
-        stdout=json.dumps({
-            "type": "turn.completed",
-            "run_id": run_id,
-            "correlation_id": correlation,
-            "status": "ok",
-        }),
+        stdout=json.dumps(
+            {
+                "type": "turn.completed",
+                "run_id": run_id,
+                "correlation_id": correlation,
+                "status": "ok",
+            }
+        ),
         stderr="",
     )
 
@@ -561,9 +574,7 @@ def adapter_error_report(exc: AgentAdapterError, *, live: bool) -> dict[str, Any
     codex_message = _extract_codex_failure_message(stdout, stderr)
     hints: list[str] = []
     if live:
-        hints.append(
-            "Default demo path is offline and deterministic: `uv run loops-hlp-pr-desk`."
-        )
+        hints.append("Default demo path is offline and deterministic: `uv run loops-hlp-pr-desk`.")
         if codex_message and "newer version" in codex_message.lower():
             hints.append(
                 "Upgrade Codex CLI, or override the model: "
@@ -715,9 +726,7 @@ async def run_desk_demo(
                 review_cards[0],
                 decision="approve" if accept_report else "request_change",
                 comments=(
-                    ()
-                    if accept_report
-                    else ("Expand auth boundary analysis for partner scopes",)
+                    () if accept_report else ("Expand auth boundary analysis for partner scopes",)
                 ),
             )
 
@@ -736,11 +745,7 @@ async def run_desk_demo(
         "checkpoint": {
             "id": checkpoint.id,
             "state": checkpoint.state,
-            "action": (
-                checkpoint.resolution.action
-                if checkpoint.resolution is not None
-                else None
-            ),
+            "action": (checkpoint.resolution.action if checkpoint.resolution is not None else None),
         },
         "artifact_id": artifact.id if artifact is not None else report.artifact_id,
         "review_id": review.id if review is not None else report.review_id,
@@ -811,32 +816,40 @@ def main() -> None:
         parser.error("--model requires --live")
 
     try:
-        result = asyncio.run(run_desk_demo(
-            live=args.live,
-            db_path=args.db or None,
-            principal=args.principal,
-            reviewer=args.reviewer,
-            approve_side_effects=not args.reject_side_effects,
-            accept_report=not args.request_changes,
-            steer_text="" if args.no_steer else (
-                "Focus on authentication, authorization, and secret handling."
-            ),
-            model=args.model or None,
-            timeout=args.timeout,
-        ))
+        result = asyncio.run(
+            run_desk_demo(
+                live=args.live,
+                db_path=args.db or None,
+                principal=args.principal,
+                reviewer=args.reviewer,
+                approve_side_effects=not args.reject_side_effects,
+                accept_report=not args.request_changes,
+                steer_text=""
+                if args.no_steer
+                else ("Focus on authentication, authorization, and secret handling."),
+                model=args.model or None,
+                timeout=args.timeout,
+            )
+        )
     except AgentAdapterError as exc:
         report = adapter_error_report(exc, live=args.live)
         print(json.dumps(report, indent=2, sort_keys=True))
         sys.exit(1)
     except RuntimeError as exc:
-        print(json.dumps({
-            "status": "error",
-            "mode": "live" if args.live else "offline",
-            "error": str(exc),
-            "hints": [
-                "Default demo path is offline: `uv run loops-hlp-pr-desk`.",
-            ],
-        }, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "mode": "live" if args.live else "offline",
+                    "error": str(exc),
+                    "hints": [
+                        "Default demo path is offline: `uv run loops-hlp-pr-desk`.",
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
         sys.exit(1)
 
     print(json.dumps(result, indent=2, sort_keys=True))

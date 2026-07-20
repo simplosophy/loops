@@ -18,7 +18,6 @@ import asyncio
 import json
 import shutil
 import sys
-from pathlib import Path
 from typing import Any
 
 from loops.hlp import (
@@ -255,8 +254,7 @@ async def _run_soft_lifecycle(
                 state_before == amended.state and amended.state == "in_progress"
             ),
             "D2_host_merge": (
-                len(promoted.signals) == 2
-                and "uh-huh" not in promoted.amendment.text
+                len(promoted.signals) == 2 and "uh-huh" not in promoted.amendment.text
             ),
             "D3_bci_alone_denied": bci_alone_denied,
             "correlation_preserved": correlation == task.id,
@@ -272,11 +270,15 @@ def _error_entry(
     details: dict[str, Any],
     mode: str,
 ) -> dict[str, Any]:
-    ops = [
-        op
-        for op, _payload in getattr(adapter, "calls", ())
-        if op in {"delegate", "steer", "block", "resume", "handoff", "cancel"}
-    ] if adapter is not None else []
+    ops = (
+        [
+            op
+            for op, _payload in getattr(adapter, "calls", ())
+            if op in {"delegate", "steer", "block", "resume", "handoff", "cancel"}
+        ]
+        if adapter is not None
+        else []
+    )
     return {
         "status": "error",
         "mode": mode,
@@ -343,38 +345,49 @@ def _soft_injected_runner(name: str):
         if op == "delegate":
             return ProcessResult(
                 exit_code=0,
-                stdout=json.dumps({
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "status": "ok",
-                    "summary": f"{name} soft e2e delegate accepted",
-                }),
+                stdout=json.dumps(
+                    {
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        "status": "ok",
+                        "summary": f"{name} soft e2e delegate accepted",
+                    }
+                ),
                 stderr="",
             )
         if op == "steer":
             # Chat-mode steer should carry merged soft text in the prompt arg.
             prompt = command[-1] if command else ""
-            assert "Keep the answer JSON-only" in prompt or "JSON-only" in prompt or (
-                isinstance(request.get("amendment"), dict)
-                and "JSON-only" in str(request.get("amendment"))
-            ) or "correlation_id" in prompt
+            assert (
+                "Keep the answer JSON-only" in prompt
+                or "JSON-only" in prompt
+                or (
+                    isinstance(request.get("amendment"), dict)
+                    and "JSON-only" in str(request.get("amendment"))
+                )
+                or "correlation_id" in prompt
+            )
             return ProcessResult(
                 exit_code=0,
-                stdout=json.dumps({
-                    "run_id": run_id,
-                    "correlation_id": correlation,
-                    "status": "ok",
-                    "summary": f"{name} soft steer applied",
-                }),
+                stdout=json.dumps(
+                    {
+                        "run_id": run_id,
+                        "correlation_id": correlation,
+                        "status": "ok",
+                        "summary": f"{name} soft steer applied",
+                    }
+                ),
                 stderr="",
             )
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": run_id,
-                "correlation_id": correlation,
-                "status": "ok",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": run_id,
+                    "correlation_id": correlation,
+                    "status": "ok",
+                }
+            ),
             stderr="",
         )
 
@@ -421,24 +434,18 @@ def main() -> None:
         print(json.dumps(inventory_harnesses(), indent=2, sort_keys=True))
         return
 
-    selected = tuple(
-        item.strip()
-        for item in args.adapters.split(",")
-        if item.strip()
-    )
+    selected = tuple(item.strip() for item in args.adapters.split(",") if item.strip())
     runners = None if args.live else default_offline_runners(selected)
-    result = asyncio.run(run_soft_e2e(
-        adapters=selected,
-        runners=runners,
-        timeout=args.timeout,
-    ))
+    result = asyncio.run(
+        run_soft_e2e(
+            adapters=selected,
+            runners=runners,
+            timeout=args.timeout,
+        )
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.strict:
-        bad = {
-            name: entry
-            for name, entry in result.items()
-            if entry.get("status") != "ok"
-        }
+        bad = {name: entry for name, entry in result.items() if entry.get("status") != "ok"}
         if bad:
             sys.exit(1)
 

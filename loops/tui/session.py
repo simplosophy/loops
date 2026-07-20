@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
 import tempfile
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass(frozen=True)
@@ -188,8 +188,7 @@ class SessionStore:
                         TranscriptEvent(**event) for event in item.get("transcript", ())
                     ),
                     "soft_buffer": tuple(
-                        SoftBufferEntry(**entry)
-                        for entry in item.get("soft_buffer", ())
+                        SoftBufferEntry(**entry) for entry in item.get("soft_buffer", ())
                     ),
                 }
             )
@@ -231,15 +230,11 @@ class SessionStore:
         values = asdict(session)
         values.update(changes)
         values["transcript"] = tuple(
-            event
-            if isinstance(event, TranscriptEvent)
-            else TranscriptEvent(**event)
+            event if isinstance(event, TranscriptEvent) else TranscriptEvent(**event)
             for event in values["transcript"]
         )
         values["soft_buffer"] = tuple(
-            entry
-            if isinstance(entry, SoftBufferEntry)
-            else SoftBufferEntry(**entry)
+            entry if isinstance(entry, SoftBufferEntry) else SoftBufferEntry(**entry)
             for entry in values["soft_buffer"]
         )
         return TUISession(**values)

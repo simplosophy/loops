@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -35,18 +34,22 @@ def test_real_harness_soft_multi_merge_e2e():
 
     # Prefer a short list for live: codex + pi when both present.
     live = tuple(name for name in ("codex", "pi") if name in adapters) or adapters[:1]
-    result = run(run_soft_e2e(
-        adapters=live,
-        runners=None,  # live PATH binaries
-        timeout=float(os.environ.get("HLP_SOFT_E2E_TIMEOUT", "120")),
-        prompt_mode="chat",
-    ))
+    result = run(
+        run_soft_e2e(
+            adapters=live,
+            runners=None,  # live PATH binaries
+            timeout=float(os.environ.get("HLP_SOFT_E2E_TIMEOUT", "120")),
+            prompt_mode="chat",
+        )
+    )
 
     # Persist raw result for operators (and goal SCRATCH via CI/local copy).
-    out = Path(os.environ.get(
-        "HLP_SOFT_E2E_RESULT_PATH",
-        "hlp-soft-live-e2e-result.json",
-    ))
+    out = Path(
+        os.environ.get(
+            "HLP_SOFT_E2E_RESULT_PATH",
+            "hlp-soft-live-e2e-result.json",
+        )
+    )
     out.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
 
     # Fail-honest: at least one adapter must complete ok OR we assert structured errors.

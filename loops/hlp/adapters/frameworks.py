@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ..objects import AdapterOperationContext
 from ..schema import to_wire
 from . import _util as util
 from .callable import PythonCallableAgentAdapter
 from .protocol import AgentAdapterError, AgentRunHandle
+
 
 class OpenAIAgentsSDKAdapter(PythonCallableAgentAdapter):
     def __init__(
@@ -148,22 +150,22 @@ class OpenAIPythonSDKAdapter(PythonCallableAgentAdapter):
             parent_run=parent_run,
         )
         self.results[run_id] = result
-        self.calls.append((
-            "delegate",
-            {
-                "run_id": run_id,
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "capability": capability,
-                "input": input,
-                "parent_run": parent_run,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "delegate",
+                {
+                    "run_id": run_id,
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "capability": capability,
+                    "input": input,
+                    "parent_run": parent_run,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return run_id
 
     def _next_response_run_id(self) -> str:
@@ -308,4 +310,3 @@ class CrewAIAdapter(PythonCallableAgentAdapter):
             parent_run=parent_run,
             operation_context=operation_context,
         )
-

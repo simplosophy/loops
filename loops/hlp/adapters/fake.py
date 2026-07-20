@@ -14,6 +14,7 @@ from .protocol import (
     HarnessEventDelivery,
 )
 
+
 @dataclass
 class FakeAgentAdapter:
     """Deterministic adapter for tests and demos.
@@ -46,22 +47,22 @@ class FakeAgentAdapter:
             capability=capability,
             parent_run=parent_run,
         )
-        self.calls.append((
-            "delegate",
-            {
-                "run_id": run_id,
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "capability": capability,
-                "input": input,
-                "parent_run": parent_run,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "delegate",
+                {
+                    "run_id": run_id,
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "capability": capability,
+                    "input": input,
+                    "parent_run": parent_run,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return run_id
 
     async def block(
@@ -73,15 +74,17 @@ class FakeAgentAdapter:
         context: AdapterOperationContext | None = None,
     ) -> None:
         self._require_run(run_id, "block", context=context)
-        self.calls.append((
-            "block",
-            {
-                "run_id": run_id,
-                "checkpoint_id": checkpoint_id,
-                "reason": reason,
-                "operation_context": to_wire(context) if context is not None else None,
-            },
-        ))
+        self.calls.append(
+            (
+                "block",
+                {
+                    "run_id": run_id,
+                    "checkpoint_id": checkpoint_id,
+                    "reason": reason,
+                    "operation_context": to_wire(context) if context is not None else None,
+                },
+            )
+        )
 
     async def resume(
         self,
@@ -91,14 +94,16 @@ class FakeAgentAdapter:
         context: AdapterOperationContext | None = None,
     ) -> None:
         self._require_run(run_id, "resume", context=context)
-        self.calls.append((
-            "resume",
-            {
-                "run_id": run_id,
-                "resolution": resolution,
-                "operation_context": to_wire(context) if context is not None else None,
-            },
-        ))
+        self.calls.append(
+            (
+                "resume",
+                {
+                    "run_id": run_id,
+                    "resolution": resolution,
+                    "operation_context": to_wire(context) if context is not None else None,
+                },
+            )
+        )
 
     async def steer(
         self,
@@ -108,14 +113,16 @@ class FakeAgentAdapter:
         context: AdapterOperationContext | None = None,
     ) -> None:
         self._require_run(run_id, "steer", context=context)
-        self.calls.append((
-            "steer",
-            {
-                "run_id": run_id,
-                "amendment": util.adapter_payload(amendment),
-                "operation_context": to_wire(context) if context is not None else None,
-            },
-        ))
+        self.calls.append(
+            (
+                "steer",
+                {
+                    "run_id": run_id,
+                    "amendment": util.adapter_payload(amendment),
+                    "operation_context": to_wire(context) if context is not None else None,
+                },
+            )
+        )
 
     async def handoff(
         self,
@@ -136,20 +143,20 @@ class FakeAgentAdapter:
             capability=current.capability,
             parent_run=run_id,
         )
-        self.calls.append((
-            "handoff",
-            {
-                "from_run": run_id,
-                "to_run": new_run_id,
-                "to_agent": to_agent,
-                "context": context,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "handoff",
+                {
+                    "from_run": run_id,
+                    "to_run": new_run_id,
+                    "to_agent": to_agent,
+                    "context": context,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return new_run_id
 
     async def cancel(
@@ -160,18 +167,18 @@ class FakeAgentAdapter:
         operation_context: AdapterOperationContext | None = None,
     ) -> None:
         self._require_run(run_id, "cancel", context=operation_context)
-        self.calls.append((
-            "cancel",
-            {
-                "run_id": run_id,
-                "reason": reason,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "cancel",
+                {
+                    "run_id": run_id,
+                    "reason": reason,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
 
     async def healthcheck(self) -> dict[str, Any]:
         result = {"status": "ok", "adapter": "fake", "runs": len(self._runs)}
@@ -280,7 +287,7 @@ class FakeHarnessAdapter(FakeAgentAdapter):
         deliveries = self._events.get(run_id, [])
         for index, delivery in enumerate(deliveries):
             if delivery.cursor == through:
-                del deliveries[:index + 1]
+                del deliveries[: index + 1]
                 if not deliveries:
                     self._events.pop(run_id, None)
                 self.calls.append(("ack_events", {"run_id": run_id, "through": through}))
@@ -294,4 +301,3 @@ class FakeHarnessAdapter(FakeAgentAdapter):
 
 
 InMemoryAgentAdapter = FakeAgentAdapter
-

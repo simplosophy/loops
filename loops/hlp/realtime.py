@@ -9,17 +9,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from .objects import ControlSignal, InteractionRef, SteeringAmendment
+from .objects import ControlSignal, SteeringAmendment
 from .types import (
     HLP_REALTIME_PROFILE,
     ProtocolError,
     SteeringIntent,
     TaskState,
 )
-
 
 # Default confidence floor for promoting soft signals to steering (profile MAY override).
 DEFAULT_SOFT_CONFIDENCE_THRESHOLD = 0.5
@@ -200,7 +199,7 @@ def promotion_audit_payload(
             }
             for s in signals
         ],
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
     }
 
 

@@ -36,7 +36,7 @@ class HLPHost:
         cls,
         *,
         adapter: AgentAdapter | None = None,
-    ) -> "HLPHost":
+    ) -> HLPHost:
         return cls(adapter=adapter or FakeAgentAdapter())
 
     @classmethod
@@ -45,7 +45,7 @@ class HLPHost:
         path: str | Path,
         *,
         adapter: AgentAdapter | None = None,
-    ) -> "HLPHost":
+    ) -> HLPHost:
         return cls(
             store=SQLiteHumanLoopStore(path),
             adapter=adapter or FakeAgentAdapter(),

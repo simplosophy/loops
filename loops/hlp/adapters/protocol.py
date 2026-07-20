@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ..objects import AdapterOperationContext
 from ..types import HarnessConformance, HarnessEventKind
+
 
 class AgentAdapterError(RuntimeError):
     """Structured adapter failure raised before HLP state is advanced."""
@@ -197,4 +199,3 @@ class ReliableHarnessEventAdapter(Protocol):
     async def ack_events(self, run_id: str, *, through: str) -> None:
         """Acknowledge projected harness events up to and including `through`."""
         ...
-

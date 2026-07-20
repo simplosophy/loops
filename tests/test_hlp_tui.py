@@ -1,14 +1,11 @@
 from __future__ import annotations
-import json
+
 import asyncio
+import json
 import sys
 
-from loops.tui import session as session_module
-from loops.tui.commands import (
-    CommandParseError,
-    InputIntent,
-    parse_user_input,
-)
+import pytest
+
 from loops.hlp import (
     AgentAdapterError,
     ArtifactPayload,
@@ -19,11 +16,16 @@ from loops.hlp import (
     PiHarnessAdapter,
     ProcessResult,
 )
-from loops.tui.render import render_help, render_status, render_transcript
+from loops.tui import session as session_module
+from loops.tui.commands import (
+    CommandParseError,
+    InputIntent,
+    parse_user_input,
+)
 from loops.tui.compat import compatibility_report
-from loops.tui.session import SessionStore, TranscriptEvent
 from loops.tui.controller import TUIController
-import pytest
+from loops.tui.render import render_help, render_status, render_transcript
+from loops.tui.session import SessionStore, TranscriptEvent
 
 
 def run(coro):
@@ -424,12 +426,14 @@ def _start_hlp_tui_session(store, controller):
 def test_hlp_inbox_approve_interrupt_and_audit_commands(tmp_path):
     _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
     active = store.resume(session.id)
-    checkpoint = run(client.raise_checkpoint(
-        task_id=active.active_task_id,
-        kind="approval",
-        prompt="Apply patch?",
-        raised_by="agent_tui",
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=active.active_task_id,
+            kind="approval",
+            prompt="Apply patch?",
+            raised_by="agent_tui",
+        )
+    )
 
     inbox = run(controller.handle(session.id, "/inbox"))
     approved = run(controller.handle(session.id, "/approve proceed with patch"))
@@ -477,20 +481,24 @@ def test_hlp_checkpoint_commands_scope_to_current_active_task(
     controller = TUIController(client=client, sessions=store)
     _older_session, older_active = _start_hlp_tui_session(store, controller)
     target_session, target_active = _start_hlp_tui_session(store, controller)
-    older = run(client.raise_checkpoint(
-        task_id=older_active.active_task_id,
-        kind=kind,
-        prompt="Older checkpoint",
-        options=options,
-        raised_by="agent_tui",
-    ))
-    target = run(client.raise_checkpoint(
-        task_id=target_active.active_task_id,
-        kind=kind,
-        prompt="Target checkpoint",
-        options=options,
-        raised_by="agent_tui",
-    ))
+    older = run(
+        client.raise_checkpoint(
+            task_id=older_active.active_task_id,
+            kind=kind,
+            prompt="Older checkpoint",
+            options=options,
+            raised_by="agent_tui",
+        )
+    )
+    target = run(
+        client.raise_checkpoint(
+            task_id=target_active.active_task_id,
+            kind=kind,
+            prompt="Target checkpoint",
+            options=options,
+            raised_by="agent_tui",
+        )
+    )
 
     result = run(controller.handle(target_session.id, command))
     older_after = client.store.get_checkpoint(older.id)
@@ -508,12 +516,14 @@ def test_hlp_checkpoint_commands_scope_to_current_active_task(
 def test_hlp_reject_current_checkpoint_with_reason(tmp_path):
     _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
     active = store.resume(session.id)
-    checkpoint = run(client.raise_checkpoint(
-        task_id=active.active_task_id,
-        kind="approval",
-        prompt="Apply patch?",
-        raised_by="agent_tui",
-    ))
+    checkpoint = run(
+        client.raise_checkpoint(
+            task_id=active.active_task_id,
+            kind="approval",
+            prompt="Apply patch?",
+            raised_by="agent_tui",
+        )
+    )
 
     rejected = run(controller.handle(session.id, "/reject unsafe state"))
     resolved = client.store.get_checkpoint(checkpoint.id)
@@ -527,21 +537,25 @@ def test_hlp_reject_current_checkpoint_with_reason(tmp_path):
 def test_hlp_choose_and_input_resolve_current_checkpoint(tmp_path):
     _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
     active = store.resume(session.id)
-    choice = run(client.raise_checkpoint(
-        task_id=active.active_task_id,
-        kind="choice",
-        prompt="Pick path",
-        options=(CheckpointOption(id="safe", label="Safe path", risk="low"),),
-        raised_by="agent_tui",
-    ))
+    choice = run(
+        client.raise_checkpoint(
+            task_id=active.active_task_id,
+            kind="choice",
+            prompt="Pick path",
+            options=(CheckpointOption(id="safe", label="Safe path", risk="low"),),
+            raised_by="agent_tui",
+        )
+    )
 
     chosen = run(controller.handle(session.id, "/choose safe"))
-    input_checkpoint = run(client.raise_checkpoint(
-        task_id=active.active_task_id,
-        kind="input",
-        prompt="Need detail",
-        raised_by="agent_tui",
-    ))
+    input_checkpoint = run(
+        client.raise_checkpoint(
+            task_id=active.active_task_id,
+            kind="input",
+            prompt="Need detail",
+            raised_by="agent_tui",
+        )
+    )
     provided = run(controller.handle(session.id, "/input use stricter validation"))
 
     resolved_choice = client.store.get_checkpoint(choice.id)
@@ -607,16 +621,18 @@ def test_hlp_review_commands_submit_protocol_reviews(tmp_path):
             f"{name}.json",
         )
         active = store.resume(session.id)
-        artifact = run(client.commit_artifact(
-            task_id=active.active_task_id,
-            type="patch",
-            payload=ArtifactPayload(
-                kind="inline",
-                uri=f"mem://{name}-patch",
-                checksum=f"sha256:{name}-patch",
-            ),
-            produced_by="agent_tui",
-        ))
+        artifact = run(
+            client.commit_artifact(
+                task_id=active.active_task_id,
+                type="patch",
+                payload=ArtifactPayload(
+                    kind="inline",
+                    uri=f"mem://{name}-patch",
+                    checksum=f"sha256:{name}-patch",
+                ),
+                produced_by="agent_tui",
+            )
+        )
 
         reviewed = run(controller.handle(session.id, command))
         review = client.store.reviews_of_artifact(artifact.id)[0]
@@ -635,26 +651,30 @@ def test_hlp_review_scopes_to_current_active_task(tmp_path):
     controller = TUIController(client=client, sessions=store)
     _older_session, older_active = _start_hlp_tui_session(store, controller)
     target_session, target_active = _start_hlp_tui_session(store, controller)
-    older_artifact = run(client.commit_artifact(
-        task_id=older_active.active_task_id,
-        type="patch",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://older-patch",
-            checksum="sha256:older-patch",
-        ),
-        produced_by="agent_tui",
-    ))
-    target_artifact = run(client.commit_artifact(
-        task_id=target_active.active_task_id,
-        type="patch",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://target-patch",
-            checksum="sha256:target-patch",
-        ),
-        produced_by="agent_tui",
-    ))
+    older_artifact = run(
+        client.commit_artifact(
+            task_id=older_active.active_task_id,
+            type="patch",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://older-patch",
+                checksum="sha256:older-patch",
+            ),
+            produced_by="agent_tui",
+        )
+    )
+    target_artifact = run(
+        client.commit_artifact(
+            task_id=target_active.active_task_id,
+            type="patch",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://target-patch",
+                checksum="sha256:target-patch",
+            ),
+            produced_by="agent_tui",
+        )
+    )
 
     result = run(controller.handle(target_session.id, "/review approved target ok"))
 
@@ -669,16 +689,18 @@ def test_hlp_review_scopes_to_current_active_task(tmp_path):
 def test_hlp_review_commented_is_unsupported_and_does_not_create_review(tmp_path):
     _adapter, client, store, session, controller = _started_hlp_tui(tmp_path)
     active = store.resume(session.id)
-    artifact = run(client.commit_artifact(
-        task_id=active.active_task_id,
-        type="patch",
-        payload=ArtifactPayload(
-            kind="inline",
-            uri="mem://commented-patch",
-            checksum="sha256:commented-patch",
-        ),
-        produced_by="agent_tui",
-    ))
+    artifact = run(
+        client.commit_artifact(
+            task_id=active.active_task_id,
+            type="patch",
+            payload=ArtifactPayload(
+                kind="inline",
+                uri="mem://commented-patch",
+                checksum="sha256:commented-patch",
+            ),
+            produced_by="agent_tui",
+        )
+    )
 
     result = run(controller.handle(session.id, "/review commented FYI only"))
 
@@ -717,10 +739,12 @@ def test_tui_multi_soft_buffer_merge_and_promote(tmp_path):
     assert "soft buffered (1)" in added1.output
     assert "Soft buffer" in added1.output
 
-    added2 = run(controller.handle(
-        session.id,
-        "/soft --intent clarify 重点看 token 过期路径",
-    ))
+    added2 = run(
+        controller.handle(
+            session.id,
+            "/soft --intent clarify 重点看 token 过期路径",
+        )
+    )
     assert "soft buffered (2)" in added2.output
 
     listed = run(controller.handle(session.id, "/soft list"))
@@ -806,13 +830,15 @@ def test_run_lines_executes_line_oriented_tui(tmp_path):
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter)
 
-    outputs = run(run_lines(
-        lines=("Review the patch", "/statusline", "/model gpt-5", "!git status"),
-        client=client,
-        session_path=tmp_path / "sessions.json",
-        cwd="/repo",
-        adapter_name="fake",
-    ))
+    outputs = run(
+        run_lines(
+            lines=("Review the patch", "/statusline", "/model gpt-5", "!git status"),
+            client=client,
+            session_path=tmp_path / "sessions.json",
+            cwd="/repo",
+            adapter_name="fake",
+        )
+    )
 
     joined = "\n".join(outputs)
     assert "started task" in joined
@@ -827,20 +853,24 @@ def test_run_lines_stops_on_archive_or_delete_exit(tmp_path):
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter)
 
-    archive_outputs = run(run_lines(
-        lines=("/archive", "/help"),
-        client=client,
-        session_path=tmp_path / "archive-sessions.json",
-        cwd="/repo",
-        adapter_name="fake",
-    ))
-    delete_outputs = run(run_lines(
-        lines=("/delete confirm", "/help"),
-        client=client,
-        session_path=tmp_path / "delete-sessions.json",
-        cwd="/repo",
-        adapter_name="fake",
-    ))
+    archive_outputs = run(
+        run_lines(
+            lines=("/archive", "/help"),
+            client=client,
+            session_path=tmp_path / "archive-sessions.json",
+            cwd="/repo",
+            adapter_name="fake",
+        )
+    )
+    delete_outputs = run(
+        run_lines(
+            lines=("/delete confirm", "/help"),
+            client=client,
+            session_path=tmp_path / "delete-sessions.json",
+            cwd="/repo",
+            adapter_name="fake",
+        )
+    )
 
     assert archive_outputs == ["archived session"]
     assert delete_outputs == ["deleted session"]
@@ -865,13 +895,15 @@ def test_run_lines_new_switches_following_prompt_to_fresh_session(tmp_path):
     adapter = FakeAgentAdapter()
     client = HLPClient(adapter=adapter)
 
-    outputs = run(run_lines(
-        lines=("Review the patch", "/new", "Review another patch"),
-        client=client,
-        session_path=tmp_path / "sessions.json",
-        cwd="/repo",
-        adapter_name="fake",
-    ))
+    outputs = run(
+        run_lines(
+            lines=("Review the patch", "/new", "Review another patch"),
+            client=client,
+            session_path=tmp_path / "sessions.json",
+            cwd="/repo",
+            adapter_name="fake",
+        )
+    )
 
     assert outputs[0].startswith("started task")
     assert outputs[1].startswith("new session")
@@ -890,13 +922,15 @@ def test_run_lines_resume_switches_following_prompt_to_target_session(tmp_path):
     controller = TUIController(client=client, sessions=store)
     run(controller.handle(target.id, "Review the target patch"))
 
-    outputs = run(run_lines(
-        lines=(f"/resume {target.id}", "Focus on target auth"),
-        client=client,
-        session_path=tmp_path / "sessions.json",
-        cwd="/repo",
-        adapter_name="fake",
-    ))
+    outputs = run(
+        run_lines(
+            lines=(f"/resume {target.id}", "Focus on target auth"),
+            client=client,
+            session_path=tmp_path / "sessions.json",
+            cwd="/repo",
+            adapter_name="fake",
+        )
+    )
 
     assert outputs[0].startswith("session=" + target.id)
     assert outputs[1].startswith("amended task")
@@ -907,13 +941,15 @@ def test_run_lines_rejects_unsupported_adapter_name(tmp_path):
     from loops.tui.app import run_lines
 
     with pytest.raises(ValueError, match="unsupported adapter: mystery"):
-        run(run_lines(
-            lines=("Review the patch",),
-            client=HLPClient(adapter=FakeAgentAdapter()),
-            session_path=tmp_path / "sessions.json",
-            cwd="/repo",
-            adapter_name="mystery",
-        ))
+        run(
+            run_lines(
+                lines=("Review the patch",),
+                client=HLPClient(adapter=FakeAgentAdapter()),
+                session_path=tmp_path / "sessions.json",
+                cwd="/repo",
+                adapter_name="mystery",
+            )
+        )
 
     assert not (tmp_path / "sessions.json").exists()
 
@@ -951,61 +987,75 @@ def _harness_human_loop_runner(*, flavor: str, run_id: str):
         if request["operation"] == "delegate":
             return ProcessResult(
                 exit_code=0,
-                stdout="\n".join((
-                    json.dumps({
-                        "type": event_type,
-                        "run_id": run_id,
-                        "correlation_id": correlation,
-                        event_key: {
-                            "kind": "needs_approval",
-                            "agent_id": "agent_tui",
-                            "prompt": f"Allow {flavor} side effects?",
-                        },
-                    }),
-                    json.dumps({
-                        "type": "turn.completed",
-                        "run_id": run_id,
-                        "correlation_id": correlation,
-                        "status": "ok",
-                        "summary": f"{flavor} delegated",
-                    }),
-                )),
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "type": event_type,
+                                "run_id": run_id,
+                                "correlation_id": correlation,
+                                event_key: {
+                                    "kind": "needs_approval",
+                                    "agent_id": "agent_tui",
+                                    "prompt": f"Allow {flavor} side effects?",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": run_id,
+                                "correlation_id": correlation,
+                                "status": "ok",
+                                "summary": f"{flavor} delegated",
+                            }
+                        ),
+                    )
+                ),
                 stderr="",
             )
         if request["operation"] == "resume":
             return ProcessResult(
                 exit_code=0,
-                stdout="\n".join((
-                    json.dumps({
-                        "type": event_type,
-                        "run_id": run_id,
-                        "correlation_id": correlation,
-                        event_key: {
-                            "kind": "artifact",
-                            "agent_id": "agent_tui",
-                            "artifact_type": "review-report",
-                            "artifact_uri": f"mem://{flavor}-report",
-                            "artifact_checksum": f"sha256:{flavor}",
-                            "artifact_size": 11,
-                        },
-                    }),
-                    json.dumps({
-                        "type": "turn.completed",
-                        "run_id": run_id,
-                        "correlation_id": correlation,
-                        "status": "ok",
-                    }),
-                )),
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "type": event_type,
+                                "run_id": run_id,
+                                "correlation_id": correlation,
+                                event_key: {
+                                    "kind": "artifact",
+                                    "agent_id": "agent_tui",
+                                    "artifact_type": "review-report",
+                                    "artifact_uri": f"mem://{flavor}-report",
+                                    "artifact_checksum": f"sha256:{flavor}",
+                                    "artifact_size": 11,
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": run_id,
+                                "correlation_id": correlation,
+                                "status": "ok",
+                            }
+                        ),
+                    )
+                ),
                 stderr="",
             )
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "type": "turn.completed",
-                "run_id": run_id,
-                "correlation_id": correlation,
-                "status": "ok",
-            }),
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "run_id": run_id,
+                    "correlation_id": correlation,
+                    "status": "ok",
+                }
+            ),
             stderr="",
         )
 
@@ -1074,8 +1124,8 @@ def test_tui_pi_harness_auto_projects_checkpoint_then_artifact_after_approve(tmp
 
 
 def test_render_human_loop_summarizes_projected_checkpoint_and_inbox():
-    from loops.tui.render import render_human_loop
     from loops.hlp import Checkpoint, HumanInboxItem
+    from loops.tui.render import render_human_loop
 
     ckpt = Checkpoint(
         task_id="task_1",
@@ -1102,11 +1152,16 @@ def test_render_human_loop_summarizes_projected_checkpoint_and_inbox():
 def test_render_agent_reply_prefers_summary_text():
     from loops.tui.render import render_agent_reply
 
-    assert render_agent_reply({
-        "status": "success",
-        "summary": "Acknowledged hello request",
-        "run_id": "run_1",
-    }) == "agent: Acknowledged hello request"
+    assert (
+        render_agent_reply(
+            {
+                "status": "success",
+                "summary": "Acknowledged hello request",
+                "run_id": "run_1",
+            }
+        )
+        == "agent: Acknowledged hello request"
+    )
     assert render_agent_reply({"status": "ok"}) == "agent status: ok"
     assert render_agent_reply(None) == ""
 
@@ -1115,12 +1170,14 @@ def test_tui_surfaces_pi_summary_when_no_human_events(tmp_path):
     async def runner(command, request, timeout):
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": "pi_summary_run",
-                "correlation_id": request["correlation_id"],
-                "status": "success",
-                "summary": "Acknowledged hello request",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": "pi_summary_run",
+                    "correlation_id": request["correlation_id"],
+                    "status": "success",
+                    "summary": "Acknowledged hello request",
+                }
+            ),
             stderr="",
         )
 
@@ -1139,7 +1196,11 @@ def test_tui_surfaces_pi_summary_when_no_human_events(tmp_path):
 
 
 def test_chat_mode_prompt_puts_user_message_first():
-    from loops.hlp.adapters import chat_mode_prompt, cli_operation_prompt, prompt_for_adapter_operation
+    from loops.hlp.adapters import (
+        chat_mode_prompt,
+        cli_operation_prompt,
+        prompt_for_adapter_operation,
+    )
 
     request = {
         "operation": "delegate",
@@ -1185,12 +1246,14 @@ def test_tui_follow_up_prompt_reinvokes_chat_and_refreshes_agent_reply(tmp_path)
             assert prompt.startswith("hello\n")
             return ProcessResult(
                 exit_code=0,
-                stdout=json.dumps({
-                    "run_id": "chat_run_mt",
-                    "correlation_id": request["correlation_id"],
-                    "status": "success",
-                    "summary": "Hello! How can I help?",
-                }),
+                stdout=json.dumps(
+                    {
+                        "run_id": "chat_run_mt",
+                        "correlation_id": request["correlation_id"],
+                        "status": "success",
+                        "summary": "Hello! How can I help?",
+                    }
+                ),
                 stderr="",
             )
         if request["operation"] == "steer":
@@ -1198,21 +1261,25 @@ def test_tui_follow_up_prompt_reinvokes_chat_and_refreshes_agent_reply(tmp_path)
             assert "You are executing an HLP adapter operation." not in prompt
             return ProcessResult(
                 exit_code=0,
-                stdout=json.dumps({
-                    "run_id": "chat_run_mt",
-                    "correlation_id": request["correlation_id"],
-                    "status": "success",
-                    "summary": "Loops is an HLP SDK for human-agent responsibility loops.",
-                }),
+                stdout=json.dumps(
+                    {
+                        "run_id": "chat_run_mt",
+                        "correlation_id": request["correlation_id"],
+                        "status": "success",
+                        "summary": "Loops is an HLP SDK for human-agent responsibility loops.",
+                    }
+                ),
                 stderr="",
             )
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": request.get("run_id") or "chat_run_mt",
-                "correlation_id": request["correlation_id"],
-                "status": "ok",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": request.get("run_id") or "chat_run_mt",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
             stderr="",
         )
 
@@ -1239,12 +1306,14 @@ def test_tui_chat_mode_delegate_sends_user_first_prompt_and_shows_reply(tmp_path
         captured.append({"command": command, "request": request})
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": "chat_run_1",
-                "correlation_id": request["correlation_id"],
-                "status": "success",
-                "summary": "Hi there — chat mode works.",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": "chat_run_1",
+                    "correlation_id": request["correlation_id"],
+                    "status": "success",
+                    "summary": "Hi there — chat mode works.",
+                }
+            ),
             stderr="",
         )
 
@@ -1285,35 +1354,43 @@ def test_tui_chat_mode_still_projects_human_events_after_delegate(tmp_path):
             )
             return ProcessResult(
                 exit_code=0,
-                stdout="\n".join((
-                    json.dumps({
-                        "type": "pi.event",
-                        "run_id": "pi_chat_hl",
-                        "correlation_id": correlation,
-                        "pi": {
-                            "kind": "needs_approval",
-                            "agent_id": "agent_tui",
-                            "prompt": "Proceed with chat-mode work?",
-                        },
-                    }),
-                    json.dumps({
-                        "type": "turn.completed",
-                        "run_id": "pi_chat_hl",
-                        "correlation_id": correlation,
-                        "status": "ok",
-                        "summary": "Need approval before continuing",
-                    }),
-                )),
+                stdout="\n".join(
+                    (
+                        json.dumps(
+                            {
+                                "type": "pi.event",
+                                "run_id": "pi_chat_hl",
+                                "correlation_id": correlation,
+                                "pi": {
+                                    "kind": "needs_approval",
+                                    "agent_id": "agent_tui",
+                                    "prompt": "Proceed with chat-mode work?",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "run_id": "pi_chat_hl",
+                                "correlation_id": correlation,
+                                "status": "ok",
+                                "summary": "Need approval before continuing",
+                            }
+                        ),
+                    )
+                ),
                 stderr="",
             )
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "type": "turn.completed",
-                "run_id": request.get("run_id") or "pi_chat_hl",
-                "correlation_id": correlation,
-                "status": "ok",
-            }),
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "run_id": request.get("run_id") or "pi_chat_hl",
+                    "correlation_id": correlation,
+                    "status": "ok",
+                }
+            ),
             stderr="",
         )
 
@@ -1338,13 +1415,15 @@ def test_run_with_progress_emits_heartbeat_until_done():
         await asyncio.sleep(0.05)
         return "ok"
 
-    result = run(run_with_progress(
-        slow(),
-        label="pi adapter",
-        timeout=1.0,
-        every=0.02,
-        printer=lambda *args, **kwargs: lines.append(args[0] if args else ""),
-    ))
+    result = run(
+        run_with_progress(
+            slow(),
+            label="pi adapter",
+            timeout=1.0,
+            every=0.02,
+            printer=lambda *args, **kwargs: lines.append(args[0] if args else ""),
+        )
+    )
 
     assert result == "ok"
     assert lines[0].startswith("… pi adapter (timeout 1s)")
@@ -1357,24 +1436,28 @@ def test_run_lines_accepts_pi_adapter_metadata_with_injected_client(tmp_path):
     async def runner(command, request, timeout):
         return ProcessResult(
             exit_code=0,
-            stdout=json.dumps({
-                "run_id": "pi_tui_run",
-                "correlation_id": request["correlation_id"],
-                "status": "ok",
-            }),
+            stdout=json.dumps(
+                {
+                    "run_id": "pi_tui_run",
+                    "correlation_id": request["correlation_id"],
+                    "status": "ok",
+                }
+            ),
             stderr="",
         )
 
     adapter = PiHarnessAdapter(runner=runner)
     client = HLPClient(adapter=adapter)
 
-    outputs = run(run_lines(
-        lines=("Review through Pi", "/statusline"),
-        client=client,
-        session_path=tmp_path / "sessions.json",
-        cwd="/repo",
-        adapter_name="pi",
-    ))
+    outputs = run(
+        run_lines(
+            lines=("Review through Pi", "/statusline"),
+            client=client,
+            session_path=tmp_path / "sessions.json",
+            cwd="/repo",
+            adapter_name="pi",
+        )
+    )
 
     joined = "\n".join(outputs)
     assert "started task" in joined
@@ -1440,33 +1523,45 @@ def test_format_harness_stream_line_maps_pi_and_status_events():
     start = format_harness_stream_line('{"type":"agent_start"}')
     assert start is not None and start.kind == "status" and "agent start" in start.text
 
-    thinking = format_harness_stream_line(json.dumps({
-        "type": "message_update",
-        "assistantMessageEvent": {"type": "thinking_delta", "delta": "noise"},
-    }))
+    thinking = format_harness_stream_line(
+        json.dumps(
+            {
+                "type": "message_update",
+                "assistantMessageEvent": {"type": "thinking_delta", "delta": "noise"},
+            }
+        )
+    )
     assert thinking is None
 
-    delta = format_harness_stream_line(json.dumps({
-        "type": "message_update",
-        "assistantMessageEvent": {"type": "text_delta", "delta": "Hel"},
-    }))
+    delta = format_harness_stream_line(
+        json.dumps(
+            {
+                "type": "message_update",
+                "assistantMessageEvent": {"type": "text_delta", "delta": "Hel"},
+            }
+        )
+    )
     assert delta is not None
     assert delta.kind == "text"
     assert delta.text == "Hel"
     assert delta.newline is False
 
-    approval = format_harness_stream_line(json.dumps({
-        "type": "hlp.event",
-        "hlp": {"kind": "needs_approval", "prompt": "Ship?"},
-    }))
+    approval = format_harness_stream_line(
+        json.dumps(
+            {
+                "type": "hlp.event",
+                "hlp": {"kind": "needs_approval", "prompt": "Ship?"},
+            }
+        )
+    )
     assert approval is not None
     assert "needs_approval" in approval.text
     assert "Ship?" in approval.text
 
 
 def test_stream_printer_coalesces_text_deltas():
-    from loops.tui.stream import StreamPrinter
     from loops.hlp.adapters import StreamChunk
+    from loops.tui.stream import StreamPrinter
 
     lines: list[str] = []
 
@@ -1483,12 +1578,14 @@ def test_stream_printer_coalesces_text_deltas():
     sp.close()
     joined = "".join(lines)
     assert "⋯ agent start" in joined
-    assert "⋯ agent: Hello" in joined or ("⋯ agent: " in joined and "Hel" in joined and "lo" in joined)
+    assert "⋯ agent: Hello" in joined or (
+        "⋯ agent: " in joined and "Hel" in joined and "lo" in joined
+    )
     assert "⋯ turn end" in joined
 
 
 def test_run_prompt_process_streaming_invokes_chunk_callback():
-    from loops.hlp.adapters import run_prompt_process_streaming, StreamChunk
+    from loops.hlp.adapters import StreamChunk, run_prompt_process_streaming
 
     chunks: list[StreamChunk] = []
 
@@ -1498,16 +1595,18 @@ def test_run_prompt_process_streaming_invokes_chunk_callback():
     # Emit two JSONL events then exit — no network harness required.
     script = (
         "import sys\n"
-        "print('{\"type\":\"agent_start\"}', flush=True)\n"
-        "print('{\"type\":\"message_update\",\"assistantMessageEvent\":"
-        "{\"type\":\"text_delta\",\"delta\":\"Hi\"}}', flush=True)\n"
+        'print(\'{"type":"agent_start"}\', flush=True)\n'
+        'print(\'{"type":"message_update","assistantMessageEvent":'
+        '{"type":"text_delta","delta":"Hi"}}\', flush=True)\n'
     )
-    result = run(run_prompt_process_streaming(
-        (sys.executable, "-c", script),
-        {"operation": "delegate", "correlation_id": "task_x"},
-        5.0,
-        on_chunk=on_chunk,
-    ))
+    result = run(
+        run_prompt_process_streaming(
+            (sys.executable, "-c", script),
+            {"operation": "delegate", "correlation_id": "task_x"},
+            5.0,
+            on_chunk=on_chunk,
+        )
+    )
     assert result.exit_code == 0
     assert any(c.kind == "status" for c in chunks)
     assert any(c.kind == "text" and c.text == "Hi" for c in chunks)

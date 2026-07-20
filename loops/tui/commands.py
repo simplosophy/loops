@@ -5,7 +5,6 @@ import shlex
 from dataclasses import dataclass
 from typing import Literal
 
-
 InputKind = Literal["prompt", "command", "shell"]
 CommandKind = Literal["direct", "hlp", "compat"]
 

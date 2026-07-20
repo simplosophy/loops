@@ -4,9 +4,8 @@ import argparse
 import asyncio
 import sys
 import time
-from collections.abc import Awaitable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
-from typing import TypeVar
 
 from loops.hlp import (
     CodexHarnessAdapter,
@@ -14,17 +13,15 @@ from loops.hlp import (
     HLPClient,
     PiHarnessAdapter,
 )
-from loops.hlp.adapters.process import make_streaming_prompt_runner
+from loops.hlp.adapters.process import StreamChunk, make_streaming_prompt_runner
 
 from .controller import TUIController
 from .session import SessionStore
 from .stream import StreamPrinter
 
-
 _SUPPORTED_ADAPTERS = frozenset({"fake", "codex", "pi"})
 _DEFAULT_TIMEOUT_S = 60.0
 _PROGRESS_EVERY_S = 2.0
-T = TypeVar("T")
 
 
 async def run_lines(
@@ -59,7 +56,7 @@ def build_client(
     *,
     timeout: float = _DEFAULT_TIMEOUT_S,
     stream: bool = True,
-    stream_printer=print,
+    stream_printer: Callable[..., None] = print,
 ) -> HLPClient:
     _validate_adapter_name(adapter_name)
     if timeout <= 0:
@@ -71,45 +68,49 @@ def build_client(
     if stream:
         printer = StreamPrinter(printer=stream_printer)
 
-        def on_chunk(chunk) -> None:
+        def on_chunk(chunk: StreamChunk) -> None:
             printer(chunk)
 
         runner = make_streaming_prompt_runner(on_chunk=on_chunk)
 
     if adapter_name == "codex":
         # Harness-capable path so JSONL human events project into checkpoints/artifacts.
-        return HLPClient(adapter=CodexHarnessAdapter(
-            command=(
-                "codex",
-                "exec",
-                "--json",
-                "--sandbox",
-                "read-only",
-                "--ephemeral",
-                "--skip-git-repo-check",
-            ),
-            runner=runner,
-            timeout=timeout,
-            # TUI free-text is chat-first; block/resume stay protocol-shaped.
-            prompt_mode="chat",
-        ))
+        return HLPClient(
+            adapter=CodexHarnessAdapter(
+                command=(
+                    "codex",
+                    "exec",
+                    "--json",
+                    "--sandbox",
+                    "read-only",
+                    "--ephemeral",
+                    "--skip-git-repo-check",
+                ),
+                runner=runner,
+                timeout=timeout,
+                # TUI free-text is chat-first; block/resume stay protocol-shaped.
+                prompt_mode="chat",
+            )
+        )
     if adapter_name == "pi":
         # Current Pi CLI: `pi --mode json -p --no-session <prompt>`.
         # `--no-tools` keeps the HLP adapter contract non-interactive and avoids
         # long tool loops while the TUI is blocked on one prompt.
-        return HLPClient(adapter=PiHarnessAdapter(
-            command=(
-                "pi",
-                "--mode",
-                "json",
-                "-p",
-                "--no-session",
-                "--no-tools",
-            ),
-            runner=runner,
-            timeout=timeout,
-            prompt_mode="chat",
-        ))
+        return HLPClient(
+            adapter=PiHarnessAdapter(
+                command=(
+                    "pi",
+                    "--mode",
+                    "json",
+                    "-p",
+                    "--no-session",
+                    "--no-tools",
+                ),
+                runner=runner,
+                timeout=timeout,
+                prompt_mode="chat",
+            )
+        )
     raise AssertionError("unreachable adapter branch")
 
 
@@ -118,13 +119,13 @@ def _validate_adapter_name(adapter_name: str) -> None:
         raise ValueError(f"unsupported adapter: {adapter_name}")
 
 
-async def run_with_progress(
+async def run_with_progress[T](
     awaitable: Awaitable[T],
     *,
     label: str,
     timeout: float,
     every: float = _PROGRESS_EVERY_S,
-    printer=print,
+    printer: Callable[..., None] = print,
     quiet_after_stream: bool = True,
 ) -> T:
     """Await work while printing heartbeat lines for interactive TUI use.
@@ -196,11 +197,13 @@ def main(argv: list[str] | None = None) -> None:
             if args.adapter == "fake":
                 result = asyncio.run(controller.handle(active_session_id, line))
             else:
-                result = asyncio.run(run_with_progress(
-                    controller.handle(active_session_id, line),
-                    label=f"{args.adapter} adapter",
-                    timeout=adapter_timeout,
-                ))
+                result = asyncio.run(
+                    run_with_progress(
+                        controller.handle(active_session_id, line),
+                        label=f"{args.adapter} adapter",
+                        timeout=adapter_timeout,
+                    )
+                )
             print(result.output)
             if result.active_session_id:
                 active_session_id = result.active_session_id

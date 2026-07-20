@@ -5,24 +5,24 @@ import inspect
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field, fields, is_dataclass
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 
+from ._ids import gen_review_id
 from .adapters import AgentAdapter, FakeAgentAdapter
 from .objects import (
+    AdapterOperationContext,
+    AdapterOutboxRecord,
     Artifact,
     ArtifactPayload,
     ArtifactProvenance,
     ArtifactRef,
-    AdapterOperationContext,
-    AdapterOutboxRecord,
     Checkpoint,
     CheckpointOption,
     CheckpointResolution,
     Evidence,
     IdempotencyRecord,
     InputRef,
-    Ledger,
     LedgerEntry,
     Ownership,
     ProposedAction,
@@ -43,11 +43,10 @@ from .types import (
     SteeringIntent,
     TaskState,
 )
-from ._ids import gen_review_id
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)
@@ -66,24 +65,24 @@ class _TaskOperationContext:
 
 
 # ════════════════════════════════════════════════════════════
-# HLP 协议操作 (spec §4)
+# HLP protocol operations (spec §4)
 #
-# 每个操作遵循统一结构：
-#   1. 前置条件校验 (spec §4.3) → 失败抛 ProtocolError
-#   2. 状态转移 (spec §3.3)
-#   3. audit 记录 (spec §4.2)
-#   4. 层间契约调用 (spec §5.1, 如涉及 agent adapter)
+# Every operation follows a uniform structure:
+#   1. precondition checks (spec §4.3) → raise ProtocolError on failure
+#   2. state transition (spec §3.3)
+#   3. audit record (spec §4.2)
+#   4. cross-layer contract call (spec §5.1, when an agent adapter is involved)
 #
-# 全部操作都是 async——为未来 transport 留口子 (spec §7.1)。
+# All operations are async — leaving room for a future transport (spec §7.1).
 # ════════════════════════════════════════════════════════════
 
 
 @dataclass
 class HumanLoopOperations:
-    """HLP 协议操作入口 (spec §4.1, 共 23 个)。
+    """Entry point for HLP protocol operations (spec §4.1, 23 in total).
 
-    持有 store + audit + agent adapter，是协议层的 facade。
-    上层 (transport/CLI) 调用这里；本类不感知 transport。
+    Holds store + audit + agent adapter; the facade of the protocol layer.
+    Upper layers (transport/CLI) call into this; this class is transport-agnostic.
     """
 
     store: HumanLoopStore = field(default_factory=HumanLoopStore)
@@ -103,7 +102,7 @@ class HumanLoopOperations:
         inputs: tuple[InputRef, ...] = (),
         constraints: Any = None,
     ) -> Task:
-        """task.create (spec §4.1)。state=created."""
+        """task.create (spec §4.1). state=created."""
         if not principal:
             raise ProtocolError("INVALID_SPEC", "principal is required")
         self._require_human_actor(principal, "principal")
@@ -141,7 +140,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Task:
-        """task.assign (spec §4.1)。created→assigned，ownership 转 agent。"""
+        """task.assign (spec §4.1). created→assigned; ownership transfers to the agent."""
         task = self.store._get_task_for_update(task_id)
         delegate_input = input or {"goal": task.spec.goal}
         idempotency = self._begin_task_operation(
@@ -181,9 +180,9 @@ class HumanLoopOperations:
             input=outbox_request["input"],
         )
 
-        # ownership 转移 (spec §3.5)
+        # ownership transfer (spec §3.5)
         task.ownership = task.ownership.transfer(agent_id, via="assign")
-        # 状态转移
+        # state transition
         check_transition(task.state, "assigned")
         task.state = "assigned"
         self._audit(
@@ -204,7 +203,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Task:
-        """task.start (spec §4.1)：agent 开始执行，assigned→in_progress。"""
+        """task.start (spec §4.1): the agent starts executing; assigned→in_progress."""
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
             task,
@@ -235,7 +234,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Task:
-        """task.cancel (spec §4.1)。→completed (中止)。"""
+        """task.cancel (spec §4.1). →completed (aborted)."""
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
             task,
@@ -297,7 +296,7 @@ class HumanLoopOperations:
         idempotency_key: str | None = None,
         promotion_provenance: dict | None = None,
     ) -> Task:
-        """task.amend (HLP 0.2.0)：append steering without changing spec/state.
+        """task.amend (HLP 0.2.0): append steering without changing spec/state.
 
         ``promotion_provenance`` is optional HLP-realtime intent provenance
         (appendix C) for audit only; it does not alter Task.state.
@@ -368,11 +367,11 @@ class HumanLoopOperations:
         return task
 
     async def task_get(self, task_id: str) -> Task:
-        """task.get (spec §4.1)。"""
+        """task.get (spec §4.1)."""
         return self.store.get_task(task_id)
 
     async def task_list(self) -> list[Task]:
-        """task.list (spec §4.1)。"""
+        """task.list (spec §4.1)."""
         return self.store.list_tasks()
 
     async def task_interrupt(
@@ -384,7 +383,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Checkpoint:
-        """task.interrupt (HLP 0.2.0)：human-initiated pause."""
+        """task.interrupt (HLP 0.2.0): human-initiated pause."""
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
             task,
@@ -470,7 +469,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Checkpoint:
-        """checkpoint.raise (spec §4.1)。in_progress→blocked。"""
+        """checkpoint.raise (spec §4.1). in_progress→blocked."""
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
             task,
@@ -533,13 +532,11 @@ class HumanLoopOperations:
         self.store.put_checkpoint(ckpt)
         task.checkpoints.append(ckpt.id)
 
-        # 状态联动 (spec §3.4)
+        # state coordination (spec §3.4)
         check_transition(task.state, "blocked")
         task.state = "blocked"
-        # ownership 回退到 principal (spec §2.1)
-        task.ownership = task.ownership.transfer(
-            task.ownership.principal, via="checkpoint"
-        )
+        # ownership falls back to principal (spec §2.1)
+        task.ownership = task.ownership.transfer(task.ownership.principal, via="checkpoint")
 
         self._audit(
             actor=ckpt_raised_by,
@@ -567,8 +564,8 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Checkpoint:
-        """checkpoint.resolve (spec §4.1)。blocked→in_progress (approve/provide)
-        或 blocked→completed (reject)。"""
+        """checkpoint.resolve (spec §4.1). blocked→in_progress (approve/provide)
+        or blocked→completed (reject)."""
         ckpt = self.store._get_checkpoint_for_update(ckpt_id)
         task = self.store._get_task_for_update(ckpt.task_id)
         idempotency = self._begin_task_operation(
@@ -648,14 +645,14 @@ class HumanLoopOperations:
         ckpt.resolution = resolution
         ckpt.state = "resolved"
 
-        # action 决定 task 去向 (spec §3.4)
+        # action determines where the task goes (spec §3.4)
         if action == "reject":
             check_transition(task.state, "completed")
             task.state = "completed"
         else:  # approve / choose / provide / reassign
             check_transition(task.state, "in_progress")
             task.state = "in_progress"
-            # ownership 回 agent
+            # ownership returns to the agent
             target_agent = reassign_to or self._last_assignee_before(
                 task,
                 to=task.ownership.principal,
@@ -681,7 +678,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Checkpoint:
-        """checkpoint.expire (spec §4.1, §7.2)。超时自动失效。"""
+        """checkpoint.expire (spec §4.1, §7.2). Automatically expires on timeout."""
         ckpt = self.store._get_checkpoint_for_update(ckpt_id)
         task = self.store._get_task_for_update(ckpt.task_id)
         idempotency = self._begin_task_operation(
@@ -699,7 +696,7 @@ class HumanLoopOperations:
                 f"cannot expire checkpoint in state {ckpt.state!r}",
             )
         ckpt.state = "expired"
-        # 超时后 task 保持 blocked (spec §7.2 开放议题，参考实现选纯挂起)
+        # after timeout the task stays blocked (spec §7.2 open issue; the reference implementation chooses pure suspension)
         self._audit(
             actor="system",
             action="task.checkpoint.expired",
@@ -721,7 +718,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Task:
-        """ownership.transfer (spec §4.1, §3.5)。内部转移 assignee。"""
+        """ownership.transfer (spec §4.1, §3.5). Internal assignee transfer."""
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
             task,
@@ -796,7 +793,7 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Task:
-        """ownership.delegate (spec §4.1, §3.5)。agent 向下委派，需 delegable。"""
+        """ownership.delegate (spec §4.1, §3.5). The agent delegates downward; requires delegable."""
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
             task,
@@ -843,7 +840,7 @@ class HumanLoopOperations:
             input=outbox_request["input"],
             parent_run=outbox_request["parent_run"],
         )
-        # 链式委派：记录到 chain (spec §7.3)
+        # chained delegation: recorded in the chain (spec §7.3)
         task.ownership = task.ownership.transfer(to_agent, via="assign")
         self.store.bind_run(task_id, run_id)
         self._audit(
@@ -871,10 +868,10 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Review:
-        """review.submit (spec §4.1, §3.6)。
+        """review.submit (spec §4.1, §3.6).
 
         - review_ready/under_review → accepted (approved)
-        - review_ready/under_review → in_progress (changes_requested, 返工)
+        - review_ready/under_review → in_progress (changes_requested, rework)
         - review_ready/under_review → rejected (rejected)
         """
         task = self.store._get_task_for_update(task_id)
@@ -910,7 +907,7 @@ class HumanLoopOperations:
                 "PRECONDITION_FAILED",
                 f"artifact {artifact_id} is not an output of task {task_id}",
             )
-        # 确保 artifact 存在
+        # ensure the artifact exists
         self.store.get_artifact(artifact_id)
 
         review = Review(
@@ -925,7 +922,7 @@ class HumanLoopOperations:
         ).seal()
         self.store.put_review(review)
 
-        # 状态联动 (spec §3.6): 先 review_ready→under_review, 再按 verdict 转
+        # state coordination (spec §3.6): first review_ready→under_review, then transition by verdict
         if task.state == "review_ready":
             check_transition(task.state, "under_review")
             task.state = "under_review"
@@ -987,10 +984,11 @@ class HumanLoopOperations:
         *,
         by: str,
     ) -> Review:
-        """review.comment (spec §4.1)。追加批注。
+        """review.comment (spec §4.1). Append a comment.
 
-        注意：spec §2.3 说 Review 提交后不可变——这里"追加批注"指
-        产生新记录而非改原 review。参考实现存新 Review。
+        Note: spec §2.3 says a Review is immutable once submitted — "appending
+        a comment" here means producing a new record, not modifying the original
+        review. The reference implementation stores a new Review.
         """
         original = self.store._get_review_for_update(review_id)
         new_review = Review(
@@ -1025,11 +1023,11 @@ class HumanLoopOperations:
         expected_task_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> Artifact:
-        """artifact.commit (spec §4.1, §3.7)。
+        """artifact.commit (spec §4.1, §3.7).
 
-        in_progress→review_ready (首次交付) 或
-        under_review→in_progress 不在此处理（review 状态机管）。
-        参考：in_progress 状态下 commit 触发 review_ready。
+        in_progress→review_ready (first delivery) or
+        under_review→in_progress is not handled here (governed by the review state machine).
+        Reference: committing in the in_progress state triggers review_ready.
         """
         task = self.store._get_task_for_update(task_id)
         idempotency = self._begin_task_operation(
@@ -1046,14 +1044,14 @@ class HumanLoopOperations:
         )
         if isinstance(idempotency, _TaskOperationReplay):
             return idempotency.result
-        # spec §4.3: artifact.commit 要求 in_progress 或返工态
+        # spec §4.3: artifact.commit requires in_progress or the rework state
         if task.state not in ("in_progress",):
             raise ProtocolError(
                 "PRECONDITION_FAILED",
                 f"cannot commit artifact in task state {task.state!r}",
             )
 
-        # 版本号：该 task 产出的 artifact 数 +1 (spec §3.7)
+        # version number: number of artifacts produced by this task + 1 (spec §3.7)
         version = f"v{len(task.artifacts) + 1}"
 
         art = Artifact(
@@ -1066,7 +1064,7 @@ class HumanLoopOperations:
         self.store.put_artifact(art)
         task.artifacts.append(art.id)
 
-        # 首次交付触发 review_ready (spec §3.3)
+        # first delivery triggers review_ready (spec §3.3)
         check_transition(task.state, "review_ready")
         task.state = "review_ready"
         if task.ownership.assignee != task.ownership.principal:
@@ -1083,7 +1081,7 @@ class HumanLoopOperations:
         return art
 
     async def artifact_get(self, art_id: str, version: str | None = None) -> Artifact:
-        """artifact.get (spec §4.1)。"""
+        """artifact.get (spec §4.1)."""
         return self.store.get_artifact(art_id, version)
 
     async def artifact_reference(
@@ -1091,9 +1089,9 @@ class HumanLoopOperations:
         art_id: str,
         *,
         by_task: str,
-        as_: str = "input",
+        as_: Literal["input", "output"] = "input",
     ) -> Artifact:
-        """artifact.reference (spec §4.1)。被 Task 引用为输入。"""
+        """artifact.reference (spec §4.1). Referenced by a Task as an input."""
         art = self.store.get_artifact(art_id)
         self.store.add_artifact_reference(art.id, ArtifactRef(task_id=by_task, as_=as_))
         self._audit(
@@ -1107,7 +1105,7 @@ class HumanLoopOperations:
     # ────────────────── Ledger (spec §4.1) ──────────────────
 
     async def ledger_read(self, scope: str, key: str) -> Any | None:
-        """ledger.read (spec §4.1, §3.8)。"""
+        """ledger.read (spec §4.1, §3.8)."""
         ledger = self.store._find_ledger_by_scope_for_update(scope)
         if ledger is None:
             return None
@@ -1121,7 +1119,7 @@ class HumanLoopOperations:
         *,
         by: str,
     ) -> LedgerEntry:
-        """ledger.write (spec §4.1, §3.8)。append-only + audit。"""
+        """ledger.write (spec §4.1, §3.8). Append-only + audit."""
         ledger = self.store.get_or_create_ledger(scope)
         entry = ledger.write(key, value, by=by)
         self._audit(
@@ -1134,13 +1132,13 @@ class HumanLoopOperations:
         return entry
 
     async def ledger_history(self, scope: str, key: str) -> list[LedgerEntry]:
-        """ledger.history (spec §4.1)。"""
+        """ledger.history (spec §4.1)."""
         ledger = self.store._find_ledger_by_scope_for_update(scope)
         if ledger is None:
             return []
         return ledger.history(key)
 
-    # ────────────────── Audit (spec §4.1, 无写操作) ──────────────────
+    # ────────────────── Audit (spec §4.1, no write operations) ──────────────────
 
     async def audit_query(
         self,
@@ -1149,14 +1147,14 @@ class HumanLoopOperations:
         actor: str | None = None,
         action: str | None = None,
     ) -> list:
-        """audit.query (spec §4.1)。"""
+        """audit.query (spec §4.1)."""
         return self.store.audit_log.query(task_id=task_id, actor=actor, action=action)
 
     async def audit_replay(self, task_id: str) -> list:
-        """audit.replay (spec §4.1)。回放某 Task 完整历史。"""
+        """audit.replay (spec §4.1). Replay the full history of a Task."""
         return self.store.audit_log.replay(task_id)
 
-    # ────────────────── 内部辅助 ──────────────────
+    # ────────────────── Internal helpers ──────────────────
 
     def _begin_task_operation(
         self,
@@ -1167,19 +1165,18 @@ class HumanLoopOperations:
         expected_task_revision: int | None,
         idempotency_key: str | None,
     ) -> _TaskOperationContext | _TaskOperationReplay:
-        fingerprint = _fingerprint({
-            "operation": operation,
-            "request": request,
-        })
+        fingerprint = _fingerprint(
+            {
+                "operation": operation,
+                "request": request,
+            }
+        )
         self.last_operation_replayed = False
         self.last_operation_id = None
         if idempotency_key is not None:
             record = self.store.get_idempotency_record(task.id, idempotency_key)
             if record is not None:
-                if (
-                    record.operation != operation
-                    or record.request_fingerprint != fingerprint
-                ):
+                if record.operation != operation or record.request_fingerprint != fingerprint:
                     raise ProtocolError(
                         "CONFLICT",
                         "idempotency key was already used for a different request",
@@ -1198,10 +1195,7 @@ class HumanLoopOperations:
                 )
                 return _TaskOperationReplay(result=record.result)
 
-        if (
-            expected_task_revision is not None
-            and task.revision != expected_task_revision
-        ):
+        if expected_task_revision is not None and task.revision != expected_task_revision:
             raise ProtocolError(
                 "CONFLICT",
                 "task revision conflict",
@@ -1240,17 +1234,19 @@ class HumanLoopOperations:
         self.store.bump_task_revision(task)
         should_flush = False
         if context.key is not None:
-            self.store.put_idempotency_record(IdempotencyRecord(
-                task_id=task.id,
-                key=context.key,
-                operation=context.operation,
-                request_fingerprint=context.fingerprint,
-                revision_before=context.revision_before,
-                revision_after=task.revision,
-                result=deepcopy(result),
-                audit_seq_start=context.audit_seq_before + 1,
-                audit_seq_end=self.store.audit_log.count,
-            ))
+            self.store.put_idempotency_record(
+                IdempotencyRecord(
+                    task_id=task.id,
+                    key=context.key,
+                    operation=context.operation,
+                    request_fingerprint=context.fingerprint,
+                    revision_before=context.revision_before,
+                    revision_after=task.revision,
+                    result=deepcopy(result),
+                    audit_seq_start=context.audit_seq_before + 1,
+                    audit_seq_end=self.store.audit_log.count,
+                )
+            )
             should_flush = True
         if self._has_adapter_outbox_record(context.operation_id):
             self.store.mark_adapter_outbox_succeeded(
@@ -1297,14 +1293,16 @@ class HumanLoopOperations:
                     details={"operation_id": adapter_context.operation_id},
                 )
             return deepcopy(existing.request)
-        self.store.put_adapter_outbox_record(AdapterOutboxRecord(
-            operation_id=adapter_context.operation_id,
-            task_id=adapter_context.task_id,
-            operation=adapter_context.operation,
-            request_fingerprint=adapter_context.request_fingerprint,
-            context=adapter_context,
-            request=request,
-        ))
+        self.store.put_adapter_outbox_record(
+            AdapterOutboxRecord(
+                operation_id=adapter_context.operation_id,
+                task_id=adapter_context.task_id,
+                operation=adapter_context.operation,
+                request_fingerprint=adapter_context.request_fingerprint,
+                context=adapter_context,
+                request=request,
+            )
+        )
         self._flush_store_if_available()
         return deepcopy(request)
 
@@ -1346,7 +1344,7 @@ class HumanLoopOperations:
             flush()
 
     def _require_state(self, task: Task, expected: TaskState) -> None:
-        """前置条件：要求 task 处于某状态 (spec §4.3)。"""
+        """Precondition: require the task to be in a given state (spec §4.3)."""
         if task.state != expected:
             raise ProtocolError(
                 "PRECONDITION_FAILED",
@@ -1363,7 +1361,7 @@ class HumanLoopOperations:
         before: Any = None,
         after: Any = None,
     ) -> None:
-        """统一 audit 记录 (spec §4.2)。"""
+        """Uniform audit recording (spec §4.2)."""
         self.store.audit_log.append(
             actor=actor,
             action=action,
@@ -1492,17 +1490,17 @@ class HumanLoopOperations:
                 return transfer.from_
         return None
 
-    # ────────────────── 测试/演示辅助 (非 spec 操作) ──────────────────
+    # ────────────────── Test/demo helpers (non-spec operations) ──────────────────
 
     async def _seed_to_in_progress(self) -> Task:
-        """快速构造一个 in_progress 的 task, 供测试用。"""
+        """Quickly build an in_progress task, for tests."""
         task = await self.task_create(principal="alice", goal="test goal")
         await self.task_assign(task.id, "agent_test")
         await self.task_start(task.id)
         return task
 
     async def _seed_to_review_ready(self) -> Task:
-        """快速构造一个 review_ready 的 task (已交付 artifact v1)。"""
+        """Quickly build a review_ready task (artifact v1 delivered)."""
         task = await self._seed_to_in_progress()
         await self.artifact_commit(
             task_id=task.id,
@@ -1513,7 +1511,7 @@ class HumanLoopOperations:
         return task
 
     async def _seed_full_lifecycle(self) -> Task:
-        """构造一个走完完整闭环的 task (供 audit/版本测试)。"""
+        """Build a task that has gone through the full closed loop (for audit/version tests)."""
         task = await self._seed_to_review_ready()
         await self.review_submit(
             task_id=task.id,
@@ -1587,10 +1585,7 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
     if is_dataclass(value):
-        return {
-            field.name: _jsonable(getattr(value, field.name))
-            for field in fields(value)
-        }
+        return {field.name: _jsonable(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     if isinstance(value, list):

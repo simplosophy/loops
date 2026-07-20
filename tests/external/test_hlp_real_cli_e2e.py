@@ -19,11 +19,7 @@ def run(coro):
 def test_real_local_cli_adapters_run_hlp_e2e():
     result = run(run_demo(adapters=("codex", "kimi", "claude"), strict=True))
 
-    failures = {
-        name: entry
-        for name, entry in result.items()
-        if entry["status"] != "ok"
-    }
+    failures = {name: entry for name, entry in result.items() if entry["status"] != "ok"}
     assert failures == {}
 
     for name, entry in result.items():

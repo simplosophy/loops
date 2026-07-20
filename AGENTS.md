@@ -10,6 +10,13 @@ Loops 是 **Human Loop Protocol (HLP)** 的协议规范与 Python 参考 SDK。
 - HLP 参考实现架构见 `docs/architecture/hlp.md` 与 `docs/architecture/LOOPS_STACK.md`
 - **critical** 较大的修改重构按日期记录在 `docs/notes/yyyy-MM-dd.md`
 - **critical** 较大变更计划记录在 `docs/plans/xxx.md`
+- 用户可见变更在 `CHANGELOG.md` 的 `[Unreleased]` 段记录（Keep a Changelog 格式）
+
+## 开发工作流
+
+- 提交前必须通过：`uv run pytest tests/`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy loops`
+- `pre-commit install` 后，lint/format/类型检查随提交自动执行
+- CI = quality（ruff + mypy）与 tests（多平台 pytest + coverage + 元数据检查）；tag `v*` 触发 PyPI 发布
 
 ## 设计原则
 

@@ -149,15 +149,11 @@ async def run_demo() -> dict[str, Any]:
         "soft_signals_promoted": len(promoted.signals),
         "promotion_profile": (promotion or {}).get("profile"),
         "promotion_signal_count": (promotion or {}).get("signal_count"),
-        "d1_state_unchanged": (
-            state_before == "in_progress" and amended.state == "in_progress"
-        ),
+        "d1_state_unchanged": (state_before == "in_progress" and amended.state == "in_progress"),
         "bci_alone_high_risk_allowed": bci_alone_allowed,
         "bci_alone_error": bci_error,
         "checkpoint_id": checkpoint.id,
-        "checkpoint_resolution": (
-            resolved.resolution.action if resolved.resolution else None
-        ),
+        "checkpoint_resolution": (resolved.resolution.action if resolved.resolution else None),
         "final_task_state": (await client.get_task(task.id)).state,
         "decisions": {
             "D1_soft_no_state_change": True,

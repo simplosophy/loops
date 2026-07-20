@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .commands import COMMANDS
 from .session import TUISession
@@ -152,12 +153,8 @@ def render_human_loop(
         lines.append(f"projected {name}: {item_id}")
 
     pending = [
-        item
-        for item in (inbox or ())
-        if getattr(item, "kind", "") in {"checkpoint", "review"}
+        item for item in (inbox or ()) if getattr(item, "kind", "") in {"checkpoint", "review"}
     ]
     if pending:
-        lines.append(
-            f"inbox: {len(pending)} item(s) — use /inbox, /approve, /reject, /review"
-        )
+        lines.append(f"inbox: {len(pending)} item(s) — use /inbox, /approve, /reject, /review")
     return "\n".join(lines)

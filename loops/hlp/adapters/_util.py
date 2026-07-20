@@ -7,7 +7,7 @@ from .protocol import AgentAdapterError
 
 
 def adapter_payload(value: Any) -> Any:
-    if is_dataclass(value):
+    if is_dataclass(value) and not isinstance(value, type):
         return asdict(value)
     return value
 

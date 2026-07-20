@@ -28,7 +28,9 @@ async def run_demo(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run an HLP lifecycle demo through local CLI adapters.")
+    parser = argparse.ArgumentParser(
+        description="Run an HLP lifecycle demo through local CLI adapters."
+    )
     parser.add_argument(
         "--adapters",
         default="codex",
@@ -42,25 +44,25 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    selected = tuple(
-        item.strip()
-        for item in args.adapters.split(",")
-        if item.strip()
-    )
+    selected = tuple(item.strip() for item in args.adapters.split(",") if item.strip())
     if len(selected) == 1:
-        result = asyncio.run(run_demo(
-            adapter=selected[0],
-            timeout=args.timeout,
-            strict=args.strict,
-        ))
+        result = asyncio.run(
+            run_demo(
+                adapter=selected[0],
+                timeout=args.timeout,
+                strict=args.strict,
+            )
+        )
         failed = result.get("status") != "ok"
     else:
-        result = asyncio.run(run_local_cli_demo(
-            adapters=selected,
-            metaworker_config=None,
-            timeout=args.timeout,
-            strict=args.strict,
-        ))
+        result = asyncio.run(
+            run_local_cli_demo(
+                adapters=selected,
+                metaworker_config=None,
+                timeout=args.timeout,
+                strict=args.strict,
+            )
+        )
         failed = any(entry.get("status") != "ok" for entry in result.values())
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.strict and failed:

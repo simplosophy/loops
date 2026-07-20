@@ -12,8 +12,8 @@ from typing import Any
 from loops.hlp import (
     AgentAdapterError,
     ArtifactPayload,
-    ClaudeCodeCLIAdapter,
     CheckpointOption,
+    ClaudeCodeCLIAdapter,
     CodexCLIAdapter,
     HLPClient,
     KimiCLIAdapter,
@@ -98,22 +98,22 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    selected = tuple(
-        item.strip()
-        for item in args.adapters.split(",")
-        if item.strip()
+    selected = tuple(item.strip() for item in args.adapters.split(",") if item.strip())
+    result = asyncio.run(
+        run_demo(
+            adapters=selected,
+            metaworker_config=None if args.no_metaworker_config else args.metaworker_config,
+            timeout=args.timeout,
+            strict=args.strict,
+        )
     )
-    result = asyncio.run(run_demo(
-        adapters=selected,
-        metaworker_config=None if args.no_metaworker_config else args.metaworker_config,
-        timeout=args.timeout,
-        strict=args.strict,
-    ))
-    print(json.dumps(
-        result,
-        indent=2,
-        sort_keys=True,
-    ))
+    print(
+        json.dumps(
+            result,
+            indent=2,
+            sort_keys=True,
+        )
+    )
     if args.strict and any(entry.get("status") != "ok" for entry in result.values()):
         sys.exit(1)
 

@@ -22,6 +22,7 @@ from .protocol import (
     ProcessRunner,
 )
 
+
 class CodexCLIAdapter(PromptCLIAdapter):
     def __init__(
         self,
@@ -105,7 +106,9 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         payload = await self._execute("delegate", request)
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, task_id, self.name, "delegate")
-        run_id = str(payload.get("run_id") or parsing.codex_run_id_from_events(events) or self._next_run_id())
+        run_id = str(
+            payload.get("run_id") or parsing.codex_run_id_from_events(events) or self._next_run_id()
+        )
         self._runs[run_id] = AgentRunHandle(
             run_id=run_id,
             task_id=task_id,
@@ -116,22 +119,22 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         )
         self.process_results[run_id] = payload
         self._queue_codex_events(run_id, events)
-        self.calls.append((
-            "delegate",
-            {
-                "run_id": run_id,
-                "task_id": task_id,
-                "agent_id": agent_id,
-                "capability": capability,
-                "input": input,
-                "parent_run": parent_run,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "delegate",
+                {
+                    "run_id": run_id,
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "capability": capability,
+                    "input": input,
+                    "parent_run": parent_run,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return run_id
 
     async def block(
@@ -143,14 +146,17 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         context: AdapterOperationContext | None = None,
     ) -> None:
         handle = self._require_run(run_id, "block", context=context)
-        payload = await self._execute("block", {
-            "operation": "block",
-            "run_id": run_id,
-            "checkpoint_id": checkpoint_id,
-            "reason": reason,
-            "correlation_id": handle.correlation_id,
-            "operation_context": to_wire(context) if context is not None else None,
-        })
+        payload = await self._execute(
+            "block",
+            {
+                "operation": "block",
+                "run_id": run_id,
+                "checkpoint_id": checkpoint_id,
+                "reason": reason,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "block")
         self._queue_codex_events(run_id, events)
@@ -164,13 +170,16 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         context: AdapterOperationContext | None = None,
     ) -> None:
         handle = self._require_run(run_id, "resume", context=context)
-        payload = await self._execute("resume", {
-            "operation": "resume",
-            "run_id": run_id,
-            "resolution": resolution,
-            "correlation_id": handle.correlation_id,
-            "operation_context": to_wire(context) if context is not None else None,
-        })
+        payload = await self._execute(
+            "resume",
+            {
+                "operation": "resume",
+                "run_id": run_id,
+                "resolution": resolution,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "resume")
         self._queue_codex_events(run_id, events)
@@ -185,13 +194,16 @@ class CodexHarnessAdapter(PromptCLIAdapter):
     ) -> None:
         handle = self._require_run(run_id, "steer", context=context)
         amendment_payload = util.adapter_payload(amendment)
-        payload = await self._execute("steer", {
-            "operation": "steer",
-            "run_id": run_id,
-            "amendment": amendment_payload,
-            "correlation_id": handle.correlation_id,
-            "operation_context": to_wire(context) if context is not None else None,
-        })
+        payload = await self._execute(
+            "steer",
+            {
+                "operation": "steer",
+                "run_id": run_id,
+                "amendment": amendment_payload,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "steer")
         self.process_results[run_id] = payload
@@ -207,18 +219,21 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         operation_context: AdapterOperationContext | None = None,
     ) -> str:
         current = self._require_run(run_id, "handoff", context=operation_context)
-        payload = await self._execute("handoff", {
-            "operation": "handoff",
-            "run_id": run_id,
-            "to_agent": to_agent,
-            "context": context,
-            "correlation_id": current.correlation_id,
-            **(
-                {"operation_context": to_wire(operation_context)}
-                if operation_context is not None
-                else {}
-            ),
-        })
+        payload = await self._execute(
+            "handoff",
+            {
+                "operation": "handoff",
+                "run_id": run_id,
+                "to_agent": to_agent,
+                "context": context,
+                "correlation_id": current.correlation_id,
+                **(
+                    {"operation_context": to_wire(operation_context)}
+                    if operation_context is not None
+                    else {}
+                ),
+            },
+        )
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, current.correlation_id, self.name, "handoff")
         new_run_id = str(
@@ -237,20 +252,20 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         )
         self.process_results[new_run_id] = payload
         self._queue_codex_events(new_run_id, events)
-        self.calls.append((
-            "handoff",
-            {
-                "from_run": run_id,
-                "to_run": new_run_id,
-                "to_agent": to_agent,
-                "context": context,
-                "operation_context": (
-                    to_wire(operation_context)
-                    if operation_context is not None
-                    else None
-                ),
-            },
-        ))
+        self.calls.append(
+            (
+                "handoff",
+                {
+                    "from_run": run_id,
+                    "to_run": new_run_id,
+                    "to_agent": to_agent,
+                    "context": context,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
         return new_run_id
 
     async def cancel(
@@ -261,17 +276,20 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         operation_context: AdapterOperationContext | None = None,
     ) -> None:
         handle = self._require_run(run_id, "cancel", context=operation_context)
-        payload = await self._execute("cancel", {
-            "operation": "cancel",
-            "run_id": run_id,
-            "reason": reason,
-            "correlation_id": handle.correlation_id,
-            **(
-                {"operation_context": to_wire(operation_context)}
-                if operation_context is not None
-                else {}
-            ),
-        })
+        payload = await self._execute(
+            "cancel",
+            {
+                "operation": "cancel",
+                "run_id": run_id,
+                "reason": reason,
+                "correlation_id": handle.correlation_id,
+                **(
+                    {"operation_context": to_wire(operation_context)}
+                    if operation_context is not None
+                    else {}
+                ),
+            },
+        )
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "cancel")
         self._queue_codex_events(run_id, events)
@@ -287,13 +305,15 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         if deliveries:
             await self.ack_events(run_id, through=deliveries[-1].cursor)
         events = tuple(delivery.event for delivery in deliveries)
-        self.calls.append((
-            "observe",
-            {
-                "run_id": run_id,
-                "events": len(events),
-            },
-        ))
+        self.calls.append(
+            (
+                "observe",
+                {
+                    "run_id": run_id,
+                    "events": len(events),
+                },
+            )
+        )
         return events
 
     async def peek_events(
@@ -323,20 +343,24 @@ class CodexHarnessAdapter(PromptCLIAdapter):
             event = parsing.codex_event_to_harness_event(raw, handle)
             if event is None:
                 continue
-            projected.append(HarnessEventDelivery(
-                cursor=parsing.codex_event_id(raw) or "",
-                event=event,
-            ))
+            projected.append(
+                HarnessEventDelivery(
+                    cursor=parsing.codex_event_id(raw) or "",
+                    event=event,
+                )
+            )
             if limit is not None and len(projected) >= limit:
                 break
-        self.calls.append((
-            "peek_events",
-            {
-                "run_id": run_id,
-                "raw_events": len(raw_events[start:]),
-                "events": len(projected),
-            },
-        ))
+        self.calls.append(
+            (
+                "peek_events",
+                {
+                    "run_id": run_id,
+                    "raw_events": len(raw_events[start:]),
+                    "events": len(projected),
+                },
+            )
+        )
         return tuple(projected)
 
     async def ack_events(self, run_id: str, *, through: str) -> None:
@@ -344,7 +368,7 @@ class CodexHarnessAdapter(PromptCLIAdapter):
         events = self._codex_events.get(run_id, [])
         for index, raw in enumerate(events):
             if parsing.codex_event_id(raw) == through:
-                del events[:index + 1]
+                del events[: index + 1]
                 if not events:
                     self._codex_events.pop(run_id, None)
                 self.calls.append(("ack_events", {"run_id": run_id, "through": through}))
@@ -420,4 +444,3 @@ class CodexHarnessAdapter(PromptCLIAdapter):
                 event["_hlp_event_id"] = f"evt_{self._codex_event_counter:06d}"
             run_id = parsing.codex_event_run_id(event) or fallback_run_id
             self._codex_events.setdefault(run_id, []).append(event)
-

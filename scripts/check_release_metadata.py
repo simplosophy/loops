@@ -9,7 +9,6 @@ import sys
 import tomllib
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSION = "0.2.0"
 EXPECTED_SPEC_VERSION = "0.2.0-draft"
@@ -72,10 +71,16 @@ def main() -> int:
 
     sys.path.insert(0, str(ROOT))
     try:
+        import loops
         from loops.hlp import HLP_PROFILE, HLP_SCHEMA_VERSION, HLP_SPEC_VERSION
     except Exception as exc:  # pragma: no cover - diagnostic path
         fail(errors, f"could not import HLP version constants: {exc}")
     else:
+        if loops.__version__ != EXPECTED_VERSION:
+            fail(
+                errors,
+                f"loops.__version__ is {loops.__version__!r}; expected {EXPECTED_VERSION!r}",
+            )
         if HLP_SPEC_VERSION != EXPECTED_SPEC_VERSION:
             fail(
                 errors,

@@ -4,10 +4,36 @@ version = "0.2.0"
 description = "Human Loop Protocol SDK for wrapping agent harnesses"
 readme = "README.md"
 requires-python = ">=3.13"
+license = "Apache-2.0"
+authors = [
+    { name = "Loops contributors" },
+]
+keywords = [
+    "human-in-the-loop",
+    "agent-harness",
+    "protocol",
+    "checkpoint",
+    "audit",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
 dependencies = [
     "python-ulid>=3.1.0",
     "typing-extensions>=4.15.0",
 ]
+
+[project.urls]
+Homepage = "https://ontheloops.com"
+Repository = "https://github.com/simplosophy/loops"
+Issues = "https://github.com/simplosophy/loops/issues"
+Changelog = "https://github.com/simplosophy/loops/blob/main/CHANGELOG.md"
 
 [project.scripts]
 loops-hlp-demo = "examples.hlp_e2e_demo:main"
@@ -21,13 +47,67 @@ loops-hlp-soft-e2e = "examples.hlp_soft_harness_e2e:main"
 loops-hlp-tui = "loops.tui.app:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["loops*", "examples*"]
 
+[tool.setuptools.package-data]
+loops = ["py.typed"]
+
 [dependency-groups]
 dev = [
+    "mypy>=1.15",
     "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.11",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["loops"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["loops", "tests", "examples", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501", # line length is enforced by the formatter, not the linter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["loops", "examples"]
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["loops"]
+mypy_path = "."
+strict = true
+disallow_any_generics = false
+disallow_subclassing_any = false
+warn_return_any = false
+ignore_missing_imports = true
+exclude = "(^|/)(__pycache__|\\.venv)(/|$)"

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ..objects import AdapterOperationContext
 from ..schema import to_wire
 from . import _util as util
 from .fake import FakeAgentAdapter
 from .protocol import AgentAdapterError, AgentRunHandle
+
 
 class PythonCallableAgentAdapter(FakeAgentAdapter):
     """Adapter for in-process Python agent frameworks.
@@ -139,4 +141,3 @@ class PythonCallableAgentAdapter(FakeAgentAdapter):
     def _next_framework_run_id(self, prefix: str) -> str:
         self._run_counter += 1
         return f"{prefix}_{self._run_counter:06d}"
-

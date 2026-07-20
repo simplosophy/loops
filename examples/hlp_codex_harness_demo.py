@@ -80,51 +80,63 @@ async def _codex_demo_runner(
     if request["operation"] == "delegate":
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({"type": "session.started", "session_id": "codex_demo_session"}),
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": "codex_demo_run",
-                    "correlation_id": request["correlation_id"],
-                    "hlp": {
-                        "kind": "needs_approval",
-                        "agent_id": request["agent_id"],
-                        "prompt": "Apply the Codex patch?",
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": "codex_demo_run",
-                    "correlation_id": request["correlation_id"],
-                    "status": "ok",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps({"type": "session.started", "session_id": "codex_demo_session"}),
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": "codex_demo_run",
+                            "correlation_id": request["correlation_id"],
+                            "hlp": {
+                                "kind": "needs_approval",
+                                "agent_id": request["agent_id"],
+                                "prompt": "Apply the Codex patch?",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": "codex_demo_run",
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
     if request["operation"] == "resume":
         return ProcessResult(
             exit_code=0,
-            stdout="\n".join((
-                json.dumps({
-                    "type": "hlp.event",
-                    "run_id": request["run_id"],
-                    "correlation_id": request["correlation_id"],
-                    "hlp": {
-                        "kind": "artifact",
-                        "agent_id": "agent_codex",
-                        "artifact_type": "patch",
-                        "artifact_uri": "mem://codex-demo.patch",
-                        "artifact_checksum": "sha256:codex-demo.patch",
-                        "artifact_size": 128,
-                    },
-                }),
-                json.dumps({
-                    "type": "turn.completed",
-                    "run_id": request["run_id"],
-                    "correlation_id": request["correlation_id"],
-                    "status": "ok",
-                }),
-            )),
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "hlp.event",
+                            "run_id": request["run_id"],
+                            "correlation_id": request["correlation_id"],
+                            "hlp": {
+                                "kind": "artifact",
+                                "agent_id": "agent_codex",
+                                "artifact_type": "patch",
+                                "artifact_uri": "mem://codex-demo.patch",
+                                "artifact_checksum": "sha256:codex-demo.patch",
+                                "artifact_size": 128,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": request["run_id"],
+                            "correlation_id": request["correlation_id"],
+                            "status": "ok",
+                        }
+                    ),
+                )
+            ),
             stderr="",
         )
     return ProcessResult(exit_code=0, stdout="{}", stderr="")

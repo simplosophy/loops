@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .audit import AuditLog
 from .objects import (
@@ -18,20 +18,20 @@ from .objects import (
 from .types import ProtocolError
 
 
-def _snapshot(value):
+def _snapshot[T](value: T) -> T:
     return deepcopy(value)
 
 
 @dataclass
 class HumanLoopStore:
-    """内存存储：所有 HLP 对象的集合 (spec §3)。
+    """In-memory store: the collection of all HLP objects (spec §3).
 
-    参考实现用纯内存 dict/list，不持久化。生产实现可替换为
-    SQLite/Postgres 后端，接口不变。
+    The reference implementation uses pure in-memory dict/list, no persistence.
+    A production implementation can swap in a SQLite/Postgres backend; the interface is unchanged.
 
-    - tasks/checkpoints/artifacts/ledgers: 按 id 索引
-    - reviews: 按 id 索引，同时按 artifact_id 反向索引
-    - 各 getter 在 not_found 时抛 ProtocolError("NOT_FOUND")
+    - tasks/checkpoints/artifacts/ledgers: indexed by id
+    - reviews: indexed by id, with a reverse index by artifact_id
+    - each getter raises ProtocolError("NOT_FOUND") on not_found
     """
 
     tasks: dict[str, Task] = field(default_factory=dict)
@@ -41,14 +41,18 @@ class HumanLoopStore:
     ledgers: dict[str, Ledger] = field(default_factory=dict)
     audit_log: AuditLog = field(default_factory=AuditLog)
 
-    # artifacts 按 (id, version) 二元组也建索引（spec §3.7）
+    # artifacts are also indexed by the (id, version) pair (spec §3.7)
     _artifact_versions: dict[tuple[str, str], Artifact] = field(default_factory=dict, repr=False)
-    # artifact reference 是消费关系索引，不修改已封印 Artifact 本体
-    _artifact_references: dict[str, tuple[ArtifactRef, ...]] = field(default_factory=dict, repr=False)
-    # task 的 run_id 映射（由 operations 维护，用于 checkpoint 联动）
+    # artifact reference is a consumption-relationship index; it does not modify the sealed Artifact itself
+    _artifact_references: dict[str, tuple[ArtifactRef, ...]] = field(
+        default_factory=dict, repr=False
+    )
+    # task → run_id mapping (maintained by operations, for checkpoint coordination)
     _task_runs: dict[str, str] = field(default_factory=dict, repr=False)
     # task-scoped idempotency records, keyed by (task_id, idempotency_key)
-    _idempotency_records: dict[tuple[str, str], IdempotencyRecord] = field(default_factory=dict, repr=False)
+    _idempotency_records: dict[tuple[str, str], IdempotencyRecord] = field(
+        default_factory=dict, repr=False
+    )
     _adapter_outbox: dict[str, AdapterOutboxRecord] = field(default_factory=dict, repr=False)
 
     # ── Task ──
@@ -105,7 +109,7 @@ class HumanLoopStore:
         record = self._get_adapter_outbox_record_for_update(operation_id)
         record.result = result
         record.state = "succeeded"
-        record.updated_at = datetime.now(timezone.utc)
+        record.updated_at = datetime.now(UTC)
 
     def adapter_outbox_records(self) -> list[AdapterOutboxRecord]:
         return [_snapshot(record) for record in self._adapter_outbox.values()]
@@ -124,7 +128,7 @@ class HumanLoopStore:
         return _snapshot(self._get_checkpoint_for_update(ckpt_id))
 
     def pending_checkpoint_of(self, task_id: str) -> Checkpoint | None:
-        """返回 task 当前 pending 的 checkpoint（参考实现假设单 checkpoint）。"""
+        """Return the task's currently pending checkpoint (reference implementation assumes a single checkpoint)."""
         for ckpt in self.checkpoints.values():
             if ckpt.task_id == task_id and ckpt.state == "pending":
                 return _snapshot(ckpt)
@@ -166,7 +170,7 @@ class HumanLoopStore:
         return _snapshot(self._get_artifact_for_update(art_id, version))
 
     def artifact_versions(self, art_id: str) -> list[Artifact]:
-        """返回某 artifact 的所有版本，按版本时间序。"""
+        """Return all versions of an artifact, ordered by version time."""
         return [_snapshot(a) for (aid, _v), a in self._artifact_versions.items() if aid == art_id]
 
     def add_artifact_reference(self, art_id: str, ref: ArtifactRef) -> None:
@@ -213,7 +217,7 @@ class HumanLoopStore:
         self.put_ledger(ledger)
         return ledger
 
-    # ── Task↔Run 映射 (供 checkpoint 联动) ──
+    # ── Task↔Run mapping (for checkpoint coordination) ──
     def bind_run(self, task_id: str, run_id: str) -> None:
         self._task_runs[task_id] = run_id
 
