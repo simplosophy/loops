@@ -1,8 +1,8 @@
 # loops
 
 [![CI](https://github.com/simplosophy/loops/actions/workflows/ci.yml/badge.svg)](https://github.com/simplosophy/loops/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/loops.svg)](https://pypi.org/project/loops/)
-[![Python](https://img.shields.io/pypi/pyversions/loops.svg)](https://pypi.org/project/loops/)
+[![PyPI](https://img.shields.io/pypi/v/loops-hlp.svg)](https://pypi.org/project/loops-hlp/)
+[![Python](https://img.shields.io/pypi/pyversions/loops-hlp.svg)](https://pypi.org/project/loops-hlp/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/simplosophy/loops/blob/main/LICENSE)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)

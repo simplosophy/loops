@@ -1,5 +1,5 @@
 [project]
-name = "loops"
+name = "loops-hlp"
 version = "0.2.0"
 description = "Human Loop Protocol SDK for wrapping agent harnesses"
 readme = "README.md"

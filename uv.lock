@@ -169,7 +169,7 @@ wheels = [
 ]
 
 [[package]]
-name = "loops"
+name = "loops-hlp"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
