@@ -154,6 +154,9 @@ async def _run_adapter_lifecycle(
         )
         run_id = run.run_id
         correlation_id = adapter.task_of_run(run.run_id) or task.id
+        # Capture the delegate reply now: later ops (steer) refresh
+        # process_results, and the correlation-echo contract targets delegate.
+        delegate_payload = dict(adapter.process_results.get(run.run_id, {}))
         await client.start(task.id)
         await client.amend(
             task.id,
@@ -201,7 +204,7 @@ async def _run_adapter_lifecycle(
         )
         history = await client.replay_audit(task.id)
         final_task = await client.get_task(task.id)
-        payload = dict(adapter.process_results.get(run.run_id, {}))
+        final_payload = dict(adapter.process_results.get(run.run_id, {}))
 
         control_task = await client.create_task(
             principal="user_local",
@@ -238,8 +241,8 @@ async def _run_adapter_lifecycle(
             details=exc.details,
         )
 
-    adapter_status = str(payload.get("status") or "ok")
-    returned_correlation_id = str(payload.get("correlation_id") or "")
+    adapter_status = str(delegate_payload.get("status") or "ok")
+    returned_correlation_id = str(delegate_payload.get("correlation_id") or "")
     entry: dict[str, Any] = {
         "status": adapter_status,
         "adapter": name,
@@ -261,11 +264,12 @@ async def _run_adapter_lifecycle(
         "control_run_id": control_run.run_id,
         "handoff_run_id": handoff_run_id,
         "control_final_task_state": control_task.state,
-        "summary": payload.get("summary", ""),
+        "summary": delegate_payload.get("summary", ""),
+        "steer_summary": final_payload.get("summary", ""),
     }
-    if adapter_status in {"error", "failed", "failure"} or payload.get("error"):
-        entry["error"] = str(payload.get("error") or "adapter returned error status")
-        entry["details"] = payload.get("details") or payload
+    if adapter_status in {"error", "failed", "failure"} or delegate_payload.get("error"):
+        entry["error"] = str(delegate_payload.get("error") or "adapter returned error status")
+        entry["details"] = delegate_payload.get("details") or delegate_payload
     return entry
 
 
