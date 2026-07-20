@@ -22,13 +22,13 @@ from typing import Any
 
 from loops.hlp import (
     AgentAdapterError,
-    ClaudeCodeCLIAdapter,
+    ClaudeCodeHarnessAdapter,
     CodexCLIAdapter,
     CodexHarnessAdapter,
     ControlSignal,
     HLPClient,
     InteractionRef,
-    KimiCLIAdapter,
+    KimiHarnessAdapter,
     PiHarnessAdapter,
     ProcessResult,
     ProtocolError,
@@ -312,9 +312,17 @@ def _build_adapter(
             prompt_mode=prompt_mode,
         )
     if name == "claude":
-        return ClaudeCodeCLIAdapter(runner=runner, timeout=timeout)
+        return ClaudeCodeHarnessAdapter(
+            runner=runner,
+            timeout=timeout,
+            prompt_mode=prompt_mode,
+        )
     if name == "kimi":
-        return KimiCLIAdapter(runner=runner, timeout=timeout)
+        return KimiHarnessAdapter(
+            runner=runner,
+            timeout=timeout,
+            prompt_mode=prompt_mode,
+        )
     # Fallback codex-cli (protocol-only) if explicitly requested as "codex-cli"
     if name == "codex-cli":
         return CodexCLIAdapter(runner=runner, timeout=timeout)
