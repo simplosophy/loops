@@ -7,7 +7,7 @@ from ..objects import AdapterOperationContext
 from ..schema import to_wire
 from . import _parsing as parsing
 from . import _util as util
-from .fake import FakeAgentAdapter
+from ._registry import RunRegistryAdapter
 from .process import (
     PromptCLIAdapter,
     prompt_for_adapter_operation,
@@ -149,7 +149,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "block")
         self._queue_harness_events(run_id, events)
-        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason, context=context)
+        await RunRegistryAdapter.block(self, run_id, checkpoint_id, reason, context=context)
 
     async def resume(
         self,
@@ -172,7 +172,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "resume")
         self._queue_harness_events(run_id, events)
-        await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
+        await RunRegistryAdapter.resume(self, run_id, resolution, context=context)
 
     async def steer(
         self,
@@ -197,7 +197,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         util.validate_correlation(payload, handle.correlation_id, self.name, "steer")
         self.process_results[run_id] = payload
         self._queue_harness_events(run_id, events)
-        await FakeAgentAdapter.steer(self, run_id, amendment_payload, context=context)
+        await RunRegistryAdapter.steer(self, run_id, amendment_payload, context=context)
 
     async def handoff(
         self,
@@ -283,7 +283,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "cancel")
         self._queue_harness_events(run_id, events)
-        await FakeAgentAdapter.cancel(
+        await RunRegistryAdapter.cancel(
             self,
             run_id,
             reason,

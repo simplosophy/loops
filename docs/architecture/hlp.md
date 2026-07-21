@@ -36,6 +36,7 @@ loops/hlp/
   sdk.py               # HLPClient：稳定 SDK facade
   adapters/            # AgentAdapter + HarnessAdapter 包
     protocol.py        # 契约与 handle / harness event
+    _registry.py       # run 注册基类（生产与 fake 共用）
     fake.py            # testing adapters
     process.py         # process / prompt CLI base
     _harness.py        # 共享 CLI harness 基类（投影 + 会话连续/分叉）

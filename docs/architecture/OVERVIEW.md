@@ -66,6 +66,7 @@ loops/
     sdk.py             # HLPClient facade
     adapters/          # AgentAdapter / HarnessAdapter package
       protocol.py      # contracts + handles / events
+      _registry.py     # run-registry base for real adapters and fakes
       fake.py          # testing adapters
       process.py       # process / prompt CLI base
       _harness.py      # shared CLI harness base (projection + continuity)

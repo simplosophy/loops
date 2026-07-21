@@ -118,6 +118,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Adapter testing tier demoted: the run-registry machinery moved from
+  `FakeAgentAdapter` into a production base `RunRegistryAdapter`
+  (`loops/hlp/adapters/_registry.py`), which `ProcessAgentAdapter` now
+  extends — production adapters no longer inherit from a class named Fake.
+  `Fake*`/`InMemory*` stay importable from `loops.hlp` and
+  `loops.hlp.adapters.fake` but are no longer re-exported from the top-level
+  `loops` package. `HLPClient`'s default adapter and TUI `--adapter fake`
+  offline mode are unchanged.
 - Adapters package restructured: the shared CLI harness machinery moved from
   `codex.py` into `HarnessAdapterBase` (`loops/hlp/adapters/_harness.py`,
   now public), and each CLI got a dedicated module — `pi.py`, `claude.py`,

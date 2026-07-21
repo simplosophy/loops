@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from ..objects import AdapterOperationContext
 from ..schema import to_wire
-from . import _util as util
+from ._registry import RunRegistryAdapter
 from .protocol import (
     AgentAdapterError,
     AgentRunHandle,
@@ -16,16 +16,12 @@ from .protocol import (
 
 
 @dataclass
-class FakeAgentAdapter:
+class FakeAgentAdapter(RunRegistryAdapter):
     """Deterministic adapter for tests and demos.
 
     It records contract calls, creates stable run ids, and never reaches network
     or a local agent binary.
     """
-
-    calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
-    _run_counter: int = field(default=0, repr=False)
-    _runs: dict[str, AgentRunHandle] = field(default_factory=dict, repr=False)
 
     async def delegate(
         self,
@@ -37,8 +33,7 @@ class FakeAgentAdapter:
         *,
         operation_context: AdapterOperationContext | None = None,
     ) -> str:
-        self._run_counter += 1
-        run_id = f"run_{self._run_counter:06d}"
+        run_id = self._next_run_id()
         self._runs[run_id] = AgentRunHandle(
             run_id=run_id,
             task_id=task_id,
@@ -65,65 +60,6 @@ class FakeAgentAdapter:
         )
         return run_id
 
-    async def block(
-        self,
-        run_id: str,
-        checkpoint_id: str,
-        reason: str,
-        *,
-        context: AdapterOperationContext | None = None,
-    ) -> None:
-        self._require_run(run_id, "block", context=context)
-        self.calls.append(
-            (
-                "block",
-                {
-                    "run_id": run_id,
-                    "checkpoint_id": checkpoint_id,
-                    "reason": reason,
-                    "operation_context": to_wire(context) if context is not None else None,
-                },
-            )
-        )
-
-    async def resume(
-        self,
-        run_id: str,
-        resolution: Any,
-        *,
-        context: AdapterOperationContext | None = None,
-    ) -> None:
-        self._require_run(run_id, "resume", context=context)
-        self.calls.append(
-            (
-                "resume",
-                {
-                    "run_id": run_id,
-                    "resolution": resolution,
-                    "operation_context": to_wire(context) if context is not None else None,
-                },
-            )
-        )
-
-    async def steer(
-        self,
-        run_id: str,
-        amendment: Any,
-        *,
-        context: AdapterOperationContext | None = None,
-    ) -> None:
-        self._require_run(run_id, "steer", context=context)
-        self.calls.append(
-            (
-                "steer",
-                {
-                    "run_id": run_id,
-                    "amendment": util.adapter_payload(amendment),
-                    "operation_context": to_wire(context) if context is not None else None,
-                },
-            )
-        )
-
     async def handoff(
         self,
         run_id: str,
@@ -133,8 +69,7 @@ class FakeAgentAdapter:
         operation_context: AdapterOperationContext | None = None,
     ) -> str:
         current = self._require_run(run_id, "handoff", context=operation_context)
-        self._run_counter += 1
-        new_run_id = f"run_{self._run_counter:06d}"
+        new_run_id = self._next_run_id()
         self._runs[new_run_id] = AgentRunHandle(
             run_id=new_run_id,
             task_id=current.task_id,
@@ -159,66 +94,10 @@ class FakeAgentAdapter:
         )
         return new_run_id
 
-    async def cancel(
-        self,
-        run_id: str,
-        reason: str,
-        *,
-        operation_context: AdapterOperationContext | None = None,
-    ) -> None:
-        self._require_run(run_id, "cancel", context=operation_context)
-        self.calls.append(
-            (
-                "cancel",
-                {
-                    "run_id": run_id,
-                    "reason": reason,
-                    "operation_context": (
-                        to_wire(operation_context) if operation_context is not None else None
-                    ),
-                },
-            )
-        )
-
     async def healthcheck(self) -> dict[str, Any]:
         result = {"status": "ok", "adapter": "fake", "runs": len(self._runs)}
         self.calls.append(("healthcheck", result))
         return result
-
-    def run_handle(self, run_id: str) -> AgentRunHandle | None:
-        return self._runs.get(run_id)
-
-    def task_of_run(self, run_id: str) -> str | None:
-        handle = self._runs.get(run_id)
-        return handle.task_id if handle is not None else None
-
-    def calls_of(self, method: str) -> list[tuple[str, dict[str, Any]]]:
-        return [call for call in self.calls if call[0] == method]
-
-    def _require_run(
-        self,
-        run_id: str,
-        operation: str,
-        *,
-        context: AdapterOperationContext | None = None,
-    ) -> AgentRunHandle:
-        handle = self._runs.get(run_id)
-        if handle is None and context is not None:
-            handle = AgentRunHandle(
-                run_id=run_id,
-                task_id=context.task_id,
-                agent_id="",
-                correlation_id=context.correlation_id,
-            )
-            self._runs[run_id] = handle
-        if handle is None:
-            raise AgentAdapterError(
-                self.__class__.__name__,
-                operation,
-                "unknown run id",
-                details={"run_id": run_id},
-            )
-        return handle
 
 
 class FakeHarnessAdapter(FakeAgentAdapter):
