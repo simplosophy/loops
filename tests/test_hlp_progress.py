@@ -170,7 +170,11 @@ def test_progress_accumulates_across_operations():
                 json.dumps(
                     {
                         "type": "item.completed",
-                        "item": {"id": "item_0", "type": "agent_message", "text": _envelope(request)},
+                        "item": {
+                            "id": "item_0",
+                            "type": "agent_message",
+                            "text": _envelope(request),
+                        },
                     }
                 ),
             )
@@ -180,7 +184,9 @@ def test_progress_accumulates_across_operations():
     async def runner(command, request, timeout):
         return ProcessResult(
             exit_code=0,
-            stdout=outputs[request["operation"]](request) if request["operation"] in outputs else "{}",
+            stdout=outputs[request["operation"]](request)
+            if request["operation"] in outputs
+            else "{}",
             stderr="",
         )
 
@@ -190,7 +196,9 @@ def test_progress_accumulates_across_operations():
     handle = run(client.delegate(task.id, "agent_codex", capability="probe", input={"goal": "g"}))
     run(client.start(task.id))
     checkpoint = run(
-        client.raise_checkpoint(task_id=task.id, kind="approval", prompt="ok?", raised_by="agent_codex")
+        client.raise_checkpoint(
+            task_id=task.id, kind="approval", prompt="ok?", raised_by="agent_codex"
+        )
     )
     run(client.resolve_checkpoint(checkpoint.id, by="user_alice", action="approve"))
 
