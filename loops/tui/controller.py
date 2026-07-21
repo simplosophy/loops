@@ -24,6 +24,7 @@ from loops.hlp import (
 
 from .commands import CommandParseError, InputIntent, parse_user_input
 from .render import (
+    progress_summary_line,
     render_agent_reply,
     render_artifact_detail,
     render_artifacts,
@@ -32,6 +33,7 @@ from .render import (
     render_help,
     render_human_loop,
     render_inbox,
+    render_progress,
     render_soft_buffer,
     render_status,
     render_tasks,
@@ -347,6 +349,16 @@ class TUIController:
             self._require_active(session_id)
             artifact = await self.client.operations.artifact_get(art_id)
             return TUIResult(render_artifact_detail(artifact))
+        if intent.name == "progress":
+            session = self._require_session(session_id)
+            if not session.active_run_id:
+                return TUIResult("no active run")
+            snapshot = await self.client.run_progress(session.active_run_id)
+            if snapshot is None:
+                return TUIResult(
+                    "no progress events from this adapter (pi/kimi wires carry none yet)"
+                )
+            return TUIResult(render_progress(snapshot))
         if intent.name == "permissions":
             return self._set_permissions(session_id, intent)
         if intent.name == "inbox":
@@ -654,7 +666,20 @@ class TUIController:
         human = await self._sync_harness_human_loop(session_id)
         if human:
             parts.append(human)
+        progress_line = await self._progress_line(session_id)
+        if progress_line:
+            parts.append(progress_line)
         return TUIResult("\n".join(parts))
+
+    async def _progress_line(self, session_id: str) -> str:
+        """Compact progress summary when the adapter projects harness progress."""
+        session = self._require_session(session_id)
+        if not session.active_run_id:
+            return ""
+        snapshot = await self.client.run_progress(session.active_run_id)
+        if snapshot is None:
+            return ""
+        return progress_summary_line(snapshot)
 
     def _adapter_process_payload(self, run_id: str) -> dict[str, Any] | None:
         if not run_id:

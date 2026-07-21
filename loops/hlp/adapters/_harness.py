@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import inspect
+from datetime import UTC, datetime
 from typing import Any
 
-from ..objects import AdapterOperationContext
+from ..objects import (
+    AdapterOperationContext,
+    ProgressItem,
+    RunProgressSnapshot,
+    SubAgentStatus,
+)
 from ..schema import to_wire
 from . import _parsing as parsing
 from . import _util as util
@@ -57,6 +63,83 @@ class HarnessAdapterBase(PromptCLIAdapter):
         # run_id -> CLI-native session id (session-resume continuity).
         self._session_continuity = session_continuity
         self._run_sessions: dict[str, str] = {}
+        # run_id -> latest progress projection (ephemeral, appendix C §C.2).
+        self._run_progress: dict[str, RunProgressSnapshot] = {}
+
+    def run_progress(self, run_id: str) -> RunProgressSnapshot | None:
+        """Latest ephemeral progress projection for a run, when the harness
+        wire carries progress events (codex todo_list, claude TodoWrite/Task).
+        Returns None for harnesses without a progress source (pi, kimi)."""
+        return self._run_progress.get(run_id)
+
+    def _accumulate_progress(
+        self,
+        run_id: str,
+        task_id: str,
+        events: tuple[dict[str, Any], ...],
+    ) -> None:
+        parsed = parsing.progress_from_events(events)
+        if parsed is None:
+            return
+        self._run_progress[run_id] = self._merge_progress(run_id, task_id, parsed)
+
+    def _merge_progress(
+        self,
+        run_id: str,
+        task_id: str,
+        parsed: dict[str, Any],
+    ) -> RunProgressSnapshot:
+        prior = self._run_progress.get(run_id)
+        items: list[ProgressItem]
+        if parsed["items"] is not None:
+            items = [
+                ProgressItem(label=entry["label"], state=entry["state"])
+                for entry in parsed["items"]
+            ]
+            # Promote the first pending entry only when nothing is in progress.
+            if not any(entry.state == "in_progress" for entry in items):
+                for index, entry in enumerate(items):
+                    if entry.state == "pending":
+                        items[index] = ProgressItem(
+                            label=entry.label,
+                            state="in_progress",
+                            note=entry.note,
+                        )
+                        break
+        elif prior is not None:
+            items = list(prior.items)
+        else:
+            items = []
+
+        agents = list(prior.agents) if prior is not None else []
+        for update in parsed["agents"]:
+            label = update["label"] or next(
+                (agent.label for agent in agents if agent.id == update["id"]),
+                "",
+            )
+            parent_id = update["parent_id"] or next(
+                (agent.parent_id for agent in agents if agent.id == update["id"]),
+                None,
+            )
+            agents = [agent for agent in agents if agent.id != update["id"]]
+            agents.append(
+                SubAgentStatus(
+                    id=update["id"],
+                    label=label,
+                    state=update["state"],
+                    parent_id=parent_id,
+                )
+            )
+
+        summary = next((item.label for item in items if item.state == "in_progress"), "")
+        return RunProgressSnapshot(
+            run_id=run_id,
+            task_id=task_id,
+            updated_at=datetime.now(UTC),
+            summary=summary,
+            items=tuple(items),
+            agents=tuple(agents),
+        )
 
     def harness_capabilities(self) -> HarnessCapabilities:
         return self._capabilities
@@ -108,6 +191,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         self.process_results[run_id] = payload
         self._queue_harness_events(run_id, events)
         self._bind_session(run_id, events)
+        self._accumulate_progress(run_id, task_id, events)
         self.calls.append(
             (
                 "delegate",
@@ -149,6 +233,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "block")
         self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
         await RunRegistryAdapter.block(self, run_id, checkpoint_id, reason, context=context)
 
     async def resume(
@@ -172,6 +257,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "resume")
         self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
         await RunRegistryAdapter.resume(self, run_id, resolution, context=context)
 
     async def steer(
@@ -197,6 +283,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         util.validate_correlation(payload, handle.correlation_id, self.name, "steer")
         self.process_results[run_id] = payload
         self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
         await RunRegistryAdapter.steer(self, run_id, amendment_payload, context=context)
 
     async def handoff(
@@ -242,6 +329,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         self.process_results[new_run_id] = payload
         self._queue_harness_events(new_run_id, events)
         self._bind_session(new_run_id, events)
+        self._accumulate_progress(new_run_id, current.task_id, events)
         self.calls.append(
             (
                 "handoff",
@@ -283,6 +371,7 @@ class HarnessAdapterBase(PromptCLIAdapter):
         events = parsing.pop_codex_events(payload)
         util.validate_correlation(payload, handle.correlation_id, self.name, "cancel")
         self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
         await RunRegistryAdapter.cancel(
             self,
             run_id,

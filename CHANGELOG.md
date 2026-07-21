@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Harness progress projection (`RunProgressSnapshot`, appendix C §C.2):
+  adapters accumulate each CLI's aggregate state — codex `todo_list` items,
+  claude `TodoWrite` todos and `Task` sub-agents (with parent links) — into
+  an ephemeral per-run snapshot. `HLPClient.run_progress` facade and TUI
+  `/progress` (checklist + agent tree) plus a compact progress line after
+  each prompt. Ephemeral by design: never audited, never a responsibility
+  record; pi/kimi wires carry no progress events and return None.
 - Runtime adapter and model switching in the TUI: `/adapter` rebuilds the
   client over the shared store (task history survives) and hands the active
   task off to the new adapter; `/model` rebuilds with a different model.

@@ -49,6 +49,45 @@ def render_artifacts(artifacts: Iterable[Any]) -> str:
     return render_lines("artifacts:", rows)
 
 
+_STATE_MARKS = {
+    "done": "✓",
+    "in_progress": "◐",
+    "pending": "○",
+    "blocked": "✗",
+    "skipped": "—",
+}
+
+
+def render_progress(snapshot: Any) -> str:
+    """Render a run's ephemeral progress projection (checklist + agent tree)."""
+    header = f"progress: run {snapshot.run_id}"
+    if snapshot.summary:
+        header += f" — {snapshot.summary}"
+    lines = [header]
+    for item in snapshot.items:
+        lines.append(f"  {_STATE_MARKS.get(item.state, '?')} {item.label}")
+    for agent in snapshot.agents:
+        indent = "    " if agent.parent_id else "  "
+        lines.append(f"{indent}▸ {agent.label or agent.id} ({agent.state})")
+    if not snapshot.items and not snapshot.agents:
+        lines.append("  (no progress events yet)")
+    return "\n".join(lines)
+
+
+def progress_summary_line(snapshot: Any) -> str:
+    """One compact progress line for post-prompt display."""
+    done = sum(1 for item in snapshot.items if item.state == "done")
+    running = sum(1 for agent in snapshot.agents if agent.state == "running")
+    parts = []
+    if snapshot.items:
+        parts.append(f"{done}/{len(snapshot.items)} todos")
+    if snapshot.agents:
+        parts.append(f"{running} agents running")
+    if not parts and snapshot.summary:
+        parts.append(snapshot.summary)
+    return "progress " + " · ".join(parts) if parts else ""
+
+
 def render_artifact_detail(artifact: Any) -> str:
     lines = [f"artifact {artifact.id}  version={artifact.version}"]
     if artifact.parent_version:

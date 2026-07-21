@@ -1914,3 +1914,89 @@ def test_same_adapter_switch_uses_native_session_without_briefing(tmp_path):
 
     assert "native session" in result.output
     assert "transcript briefing" not in result.output
+
+
+def test_progress_command_renders_snapshot_and_none_message(tmp_path):
+    from loops.hlp import RunProgressSnapshot, ProgressItem
+    from loops.hlp.adapters.process import ProcessResult
+
+    todo_stdout = "\n".join(
+        (
+            json.dumps({"type": "thread.started", "thread_id": "t1"}),
+            json.dumps(
+                {
+                    "type": "item.started",
+                    "item": {
+                        "id": "i1",
+                        "type": "todo_list",
+                        "items": [
+                            {"text": "define cases", "completed": True},
+                            {"text": "execute cases", "completed": False},
+                        ],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "i0",
+                        "type": "agent_message",
+                        "text": json.dumps(
+                            {"run_id": "run_1", "correlation_id": "task_x", "status": "ok"}
+                        ),
+                    },
+                }
+            ),
+        )
+    )
+
+    async def runner(command, request, timeout):
+        envelope = json.dumps(
+            {
+                "run_id": "run_1",
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+            }
+        )
+        stdout = "\n".join(
+            (
+                json.dumps({"type": "thread.started", "thread_id": "t1"}),
+                json.dumps(
+                    {
+                        "type": "item.started",
+                        "item": {
+                            "id": "i1",
+                            "type": "todo_list",
+                            "items": [
+                                {"text": "define cases", "completed": True},
+                                {"text": "execute cases", "completed": False},
+                            ],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"id": "i0", "type": "agent_message", "text": envelope},
+                    }
+                ),
+            )
+        )
+        return ProcessResult(exit_code=0, stdout=stdout, stderr="")
+
+    from loops.hlp import CodexHarnessAdapter
+
+    store = SessionStore(tmp_path / "sessions.json")
+    client = HLPClient(adapter=CodexHarnessAdapter(runner=runner))
+    controller = TUIController(client=client, sessions=store)
+    session = store.create(cwd="/repo", adapter="codex", principal="user_local")
+    run(controller.handle(session.id, "plan the work"))
+
+    result = run(controller.handle(session.id, "/progress"))
+    assert "✓ define cases" in result.output
+    assert "◐ execute cases" in result.output
+
+    empty = store.create(cwd="/repo", adapter="fake", principal="user_local")
+    result = run(controller.handle(empty.id, "/progress"))
+    assert "no active run" in result.output

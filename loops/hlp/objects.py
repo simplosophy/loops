@@ -264,6 +264,42 @@ class LedgerEntry:
 
 
 @dataclass(frozen=True)
+class ProgressItem:
+    """One checklist entry in a harness progress projection (ephemeral, §C.2)."""
+
+    label: str
+    state: Literal["pending", "in_progress", "done", "blocked", "skipped"]
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class SubAgentStatus:
+    """One sub-agent node in a harness progress projection (ephemeral, §C.2)."""
+
+    id: str
+    label: str
+    state: Literal["running", "done", "failed"]
+    parent_id: str | None = None
+
+
+@dataclass(frozen=True)
+class RunProgressSnapshot:
+    """Display-oriented projection of a harness run's aggregate progress.
+
+    Ephemeral by design (appendix C §C.2): latest-state only, never audited,
+    never a responsibility record. Adapters may return None when the harness
+    wire carries no progress events.
+    """
+
+    run_id: str
+    task_id: str
+    updated_at: datetime
+    summary: str = ""
+    items: tuple[ProgressItem, ...] = ()
+    agents: tuple[SubAgentStatus, ...] = ()
+
+
+@dataclass(frozen=True)
 class HumanInboxItem:
     """Projected human action item for UI/channel hosts.
 

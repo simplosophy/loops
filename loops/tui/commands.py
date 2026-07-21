@@ -82,6 +82,9 @@ COMMANDS: dict[str, CommandDefinition] = {
     ),
     "review": CommandDefinition("review", "Submit artifact review.", "hlp", group="hlp"),
     "audit": CommandDefinition("audit", "Replay HLP audit.", "hlp", group="hlp"),
+    "progress": CommandDefinition(
+        "progress", "Show harness todo checklist and sub-agent status.", "hlp", group="work"
+    ),
     "diff": CommandDefinition("diff", "Show diff summary.", "direct", group="other"),
     "model": CommandDefinition(
         "model", "Set adapter model (rebuilds client).", "compat", group="session"

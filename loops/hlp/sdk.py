@@ -21,6 +21,7 @@ from .objects import (
     Review,
     ReviewComment,
     ReviewPolicy,
+    RunProgressSnapshot,
     Task,
 )
 from .operations import HumanLoopOperations
@@ -344,6 +345,14 @@ class HLPClient:
 
     async def read_ledger(self, scope: str, key: str) -> Any | None:
         return await self.operations.ledger_read(scope, key)
+
+    async def run_progress(self, run_id: str) -> RunProgressSnapshot | None:
+        """Latest ephemeral progress projection for a run (appendix C §C.2),
+        or None when the adapter has no progress source."""
+        progress = getattr(self.adapter, "run_progress", None)
+        if progress is None:
+            return None
+        return progress(run_id)
 
     async def pending_adapter_outbox(self) -> tuple[AdapterOutboxRecord, ...]:
         """Adapter outbox records still pending; retry them via the original

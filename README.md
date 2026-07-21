@@ -95,6 +95,11 @@ continuity, fork-on-handoff, all live-verified):
   hands the active task off to the new adapter; `/model <name>` rebuilds
   with a different model. Context inheritance on handoff follows the fork
   matrix (pi/claude inherit; codex/kimi resume without history).
+- **Harness progress projection**: `/progress` shows the agent's own todo
+  checklist and sub-agent status for the active run (codex `todo_list`,
+  claude `TodoWrite`/`Task` blocks). Snapshots are ephemeral display
+  projections (appendix C §C.2) — never audited, never responsibility
+  records; pi/kimi wires carry no progress events yet and return none.
 - **Ctrl+C seizes control**: it does not kill the session — it raises
   `task.interrupt`, blocking the task for human resolution.
 - **Session continuity and true handoff**: follow-up ops resume the CLI's
