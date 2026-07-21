@@ -8,16 +8,9 @@ Depth levels:
 
 from __future__ import annotations
 
+from ._harness import HarnessAdapterBase
 from .callable import PythonCallableAgentAdapter
-from .cli import (
-    ClaudeCodeCLIAdapter,
-    ClaudeCodeHarnessAdapter,
-    HermesCLIAdapter,
-    HermsCLIAdapter,
-    KimiCLIAdapter,
-    KimiHarnessAdapter,
-    PiHarnessAdapter,
-)
+from .claude import ClaudeCodeCLIAdapter, ClaudeCodeHarnessAdapter
 from .codex import CodexCLIAdapter, CodexHarnessAdapter
 from .fake import FakeAgentAdapter, FakeHarnessAdapter, InMemoryAgentAdapter
 from .frameworks import (
@@ -26,6 +19,9 @@ from .frameworks import (
     OpenAIAgentsSDKAdapter,
     OpenAIPythonSDKAdapter,
 )
+from .hermes import HermesCLIAdapter, HermsCLIAdapter
+from .kimi import KimiCLIAdapter, KimiHarnessAdapter
+from .pi import PiHarnessAdapter
 from .process import (
     ProcessAgentAdapter,
     PromptCLIAdapter,
@@ -62,6 +58,7 @@ __all__ = [
     "FakeAgentAdapter",
     "FakeHarnessAdapter",
     "HarnessAdapter",
+    "HarnessAdapterBase",
     "HarnessCapabilities",
     "HarnessEvent",
     "HarnessEventDelivery",

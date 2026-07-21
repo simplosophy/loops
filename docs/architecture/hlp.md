@@ -38,8 +38,12 @@ loops/hlp/
     protocol.py        # 契约与 handle / harness event
     fake.py            # testing adapters
     process.py         # process / prompt CLI base
-    codex.py           # Codex CLI + harness projection
-    cli.py             # Pi / Claude / Kimi CLI + harness, Hermes
+    _harness.py        # 共享 CLI harness 基类（投影 + 会话连续/分叉）
+    codex.py           # Codex CLI + harness
+    pi.py              # Pi harness
+    claude.py          # Claude Code CLI + harness
+    kimi.py            # Kimi CLI + harness
+    hermes.py          # Hermes CLI（含兼容别名）
     frameworks.py      # shape-compatible framework shims
   events.py            # HLPEvent + InMemoryEventBus
   operations/          # 23 个操作 (spec §4)，按域 mixin 包

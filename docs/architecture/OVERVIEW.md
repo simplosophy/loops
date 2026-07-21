@@ -68,8 +68,12 @@ loops/
       protocol.py      # contracts + handles / events
       fake.py          # testing adapters
       process.py       # process / prompt CLI base
-      codex.py         # Codex CLI + harness projection
-      cli.py           # Pi / Claude / Kimi CLI + harness, Hermes
+      _harness.py      # shared CLI harness base (projection + continuity)
+      codex.py         # Codex CLI + harness
+      pi.py            # Pi harness
+      claude.py        # Claude Code CLI + harness
+      kimi.py          # Kimi CLI + harness
+      hermes.py        # Hermes CLI (+ legacy alias)
       frameworks.py    # shape-compatible OpenAI / LangGraph / CrewAI
     events.py          # event bus abstractions
     audit.py           # append-only audit log

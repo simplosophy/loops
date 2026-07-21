@@ -107,6 +107,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Adapters package restructured: the shared CLI harness machinery moved from
+  `codex.py` into `HarnessAdapterBase` (`loops/hlp/adapters/_harness.py`,
+  now public), and each CLI got a dedicated module — `pi.py`, `claude.py`,
+  `kimi.py`, `hermes.py` (replacing `cli.py`). Codex's file is now codex-only
+  (553 → 114 lines). Pure code motion; the public API is unchanged.
 - `loops/hlp/operations.py` (1.6k-line god class) split into the
   `loops/hlp/operations/` package: per-domain mixins (task / checkpoint /
   ownership / review / artifact / ledger / audit) composed in
