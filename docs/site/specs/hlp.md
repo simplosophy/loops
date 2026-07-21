@@ -138,6 +138,11 @@ TaskSpec:
   acceptance_criteria: [string]
   inputs: [InputRef]
   constraints: Constraints
+  review_policy: ReviewPolicy | null  # optional, defaults to null (single reviewer)
+
+ReviewPolicy:
+  required_reviewers: [user_]
+  quorum: "all" | "majority" | "any"  # default "all"
 
 SteeringAmendment:
   text: string
@@ -751,7 +756,7 @@ The following topics remain intentionally draft-scoped:
 | Checkpoint expiration default | Implementation-defined; pure suspension plus configuration is recommended. A `kind=interrupt` checkpoint **SHOULD** remain purely suspended, since a human-initiated interrupt means "await human". |
 | Delegation depth | Allowed through `delegable`, but limits are host policy. |
 | Ledger conflict handling | Last-write-wins plus audit is acceptable in this draft. A single pending checkpoint per task is **SHOULD**; use a checkpoint's `proposed_actions` to ask about multiple things at once. |
-| Multi-reviewer verdicts | Not standardized; single reviewer is the baseline. |
+| Multi-reviewer verdicts | Converged (2026-07-20): optional `TaskSpec.review_policy` (required reviewers + quorum) with deterministic aggregation — veto > quorum-approve > changes_requested > pending, evaluated per artifact version (§3.6). |
 | Cross-project artifact references | Require explicit authorization; mechanism is host-defined. |
 | Version compatibility | Expected to follow semantic versioning after implementation feedback. |
 | Soft control / realtime promotion | Converged in source `docs/specs/HLP.md` appendix C (0.3 draft). Soft **MUST NOT** enter the Task state machine; merge on host/profile; BCI **MUST NOT** alone close high-risk hard checkpoints by default. |

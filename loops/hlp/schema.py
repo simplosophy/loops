@@ -33,6 +33,7 @@ from .objects import (
     ProposedAction,
     Review,
     ReviewComment,
+    ReviewPolicy,
     SteeringAmendment,
     Task,
     TaskSpec,
@@ -226,6 +227,18 @@ HLP_JSON_SCHEMAS: dict[str, dict[str, Any]] = {
         "properties": {
             "cursor": {"type": "string"},
             "event": {"type": "object"},
+            "schema_version": {"type": "string", "const": HLP_SCHEMA_VERSION},
+            "profile": {"type": "string", "const": HLP_PROFILE},
+        },
+    },
+    "ReviewPolicy": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ReviewPolicy",
+        "type": "object",
+        "required": ["required_reviewers", "quorum", "schema_version", "profile"],
+        "properties": {
+            "required_reviewers": {"type": "array", "items": {"type": "string"}},
+            "quorum": {"type": "string", "enum": ["all", "majority", "any"]},
             "schema_version": {"type": "string", "const": HLP_SCHEMA_VERSION},
             "profile": {"type": "string", "const": HLP_PROFILE},
         },
@@ -560,8 +573,16 @@ def _constraints_from_wire(wire: dict[str, Any]) -> Constraints:
     )
 
 
+def _review_policy_from_wire(wire: dict[str, Any]) -> ReviewPolicy:
+    return ReviewPolicy(
+        required_reviewers=tuple(str(item) for item in _wire_field(wire, "required_reviewers")),
+        quorum=_wire_field(wire, "quorum", "all"),
+    )
+
+
 def _task_spec_from_wire(wire: dict[str, Any]) -> TaskSpec:
     constraints = _wire_field(wire, "constraints", None)
+    review_policy = _wire_field(wire, "review_policy", None)
     return TaskSpec(
         goal=_wire_field(wire, "goal"),
         acceptance_criteria=tuple(
@@ -569,6 +590,9 @@ def _task_spec_from_wire(wire: dict[str, Any]) -> TaskSpec:
         ),
         inputs=tuple(_input_ref_from_wire(item) for item in _wire_field(wire, "inputs", ())),
         constraints=_constraints_from_wire(constraints) if constraints is not None else None,
+        review_policy=(
+            _review_policy_from_wire(review_policy) if review_policy is not None else None
+        ),
     )
 
 
@@ -810,6 +834,7 @@ def _review_from_wire(wire: dict[str, Any]) -> Review:
         id=_wire_field(wire, "id"),
         task_id=_wire_field(wire, "task_id", ""),
         artifact_id=_wire_field(wire, "artifact_id", ""),
+        artifact_version=_wire_field(wire, "artifact_version", None),
         reviewer=_wire_field(wire, "reviewer", ""),
         kind=_wire_field(wire, "kind", "deliverable"),
         verdict=_wire_field(wire, "verdict"),
@@ -896,6 +921,7 @@ _FROM_WIRE_BUILDERS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "Review": _review_from_wire,
     "ReviewComment": _review_comment_from_wire,
     "SteeringAmendment": _steering_amendment_from_wire,
+    "ReviewPolicy": _review_policy_from_wire,
     "Task": _task_from_wire,
     "TaskSpec": _task_spec_from_wire,
 }

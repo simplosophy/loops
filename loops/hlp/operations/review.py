@@ -1,10 +1,42 @@
 from __future__ import annotations
 
 from .._ids import gen_review_id
-from ..objects import Review, ReviewComment
+from ..objects import Review, ReviewComment, ReviewPolicy
 from ..state_machine import check_transition
 from ..types import ProtocolError, ReviewKind, ReviewVerdict
 from ._base import HumanLoopOperationsBase, _now, _TaskOperationReplay
+
+ReviewOutcome = ReviewVerdict | None  # "approved"/"rejected"/"changes_requested" or None (pending)
+
+
+def evaluate_review_outcome(
+    reviews: list[Review],
+    policy: ReviewPolicy,
+) -> ReviewOutcome:
+    """Deterministic multi-reviewer aggregation (spec §3.6, §7.5).
+
+    Latest verdict per required reviewer, then: veto > quorum-approve >
+    changes_requested > pending (None).
+    """
+    latest: dict[str, Review] = {}
+    for review in reviews:  # store order is submission order; later wins
+        latest[review.reviewer] = review
+    verdicts = [
+        latest[reviewer].verdict for reviewer in policy.required_reviewers if reviewer in latest
+    ]
+    if any(verdict == "rejected" for verdict in verdicts):
+        return "rejected"
+    approved = sum(1 for verdict in verdicts if verdict == "approved")
+    total = len(policy.required_reviewers)
+    if policy.quorum == "all" and approved == total:
+        return "approved"
+    if policy.quorum == "majority" and approved * 2 > total:
+        return "approved"
+    if policy.quorum == "any" and approved >= 1:
+        return "approved"
+    if any(verdict == "changes_requested" for verdict in verdicts):
+        return "changes_requested"
+    return None
 
 
 class ReviewOps(HumanLoopOperationsBase):
@@ -63,12 +95,23 @@ class ReviewOps(HumanLoopOperationsBase):
                 f"artifact {artifact_id} is not an output of task {task_id}",
             )
         # ensure the artifact exists
-        self.store.get_artifact(artifact_id)
+        artifact = self.store.get_artifact(artifact_id)
+
+        policy = task.spec.review_policy if task.spec is not None else None
+        policy_active = policy is not None and kind == "deliverable"
+        if policy_active:
+            assert policy is not None  # narrowing for type checkers
+            if reviewer not in policy.required_reviewers:
+                raise ProtocolError(
+                    "UNAUTHORIZED",
+                    f"reviewer {reviewer!r} is not in review_policy.required_reviewers",
+                )
 
         review = Review(
             id=gen_review_id(),
             task_id=task_id,
             artifact_id=artifact_id,
+            artifact_version=artifact.version if policy_active else None,
             reviewer=reviewer,
             kind=kind,
             verdict=verdict,
@@ -82,7 +125,36 @@ class ReviewOps(HumanLoopOperationsBase):
             check_transition(task.state, "under_review")
             task.state = "under_review"
 
-        if kind == "plan" and verdict in ("approved", "changes_requested"):
+        if policy_active:
+            assert policy is not None
+            outcome = evaluate_review_outcome(
+                [
+                    candidate
+                    for candidate in self.store.reviews_of_artifact(artifact_id)
+                    if candidate.artifact_version == artifact.version
+                ],
+                policy,
+            )
+            if outcome == "approved":
+                check_transition(task.state, "accepted")
+                task.state = "accepted"
+                check_transition(task.state, "completed")
+                task.state = "completed"
+            elif outcome == "changes_requested":
+                check_transition(task.state, "in_progress")
+                task.state = "in_progress"
+                target_agent = self._last_assignee_before(
+                    task,
+                    to=task.ownership.principal,
+                    via="handoff",
+                )
+                if target_agent is not None and task.ownership.assignee != target_agent:
+                    task.ownership = task.ownership.transfer(target_agent, via="reject")
+            elif outcome == "rejected":
+                check_transition(task.state, "rejected")
+                task.state = "rejected"
+            # outcome None (pending): stay under_review, wait for more reviews
+        elif kind == "plan" and verdict in ("approved", "changes_requested"):
             check_transition(task.state, "in_progress")
             task.state = "in_progress"
             target_agent = self._last_assignee_before(
@@ -121,7 +193,7 @@ class ReviewOps(HumanLoopOperationsBase):
             task_id=task_id,
             after={"kind": kind, "verdict": verdict},
         )
-        if kind == "deliverable" and verdict == "approved":
+        if kind == "deliverable" and verdict == "approved" and task.state == "completed":
             self._audit(
                 actor="system",
                 action="task.completed",

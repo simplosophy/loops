@@ -20,6 +20,7 @@ from .objects import (
     ProposedAction,
     Review,
     ReviewComment,
+    ReviewPolicy,
     Task,
 )
 from .operations import HumanLoopOperations
@@ -56,6 +57,7 @@ class HLPClient:
         acceptance_criteria: tuple[str, ...] = (),
         inputs: tuple[InputRef, ...] = (),
         constraints: Constraints | None = None,
+        review_policy: ReviewPolicy | None = None,
     ) -> Task:
         task = await self.operations.task_create(
             principal=principal,
@@ -64,6 +66,7 @@ class HLPClient:
             acceptance_criteria=acceptance_criteria,
             inputs=inputs,
             constraints=constraints,
+            review_policy=review_policy,
         )
         await self._after_mutation(
             "task.created",

@@ -27,7 +27,9 @@ optional host/channel demo, not part of the protocol core.
 
 - `Task`: the bounded unit of human-agent work.
 - `Checkpoint`: the point where an agent needs a human decision.
-- `Artifact` and `Review`: delivery and acceptance records.
+- `Artifact` and `Review`: delivery and acceptance records. Multi-reviewer
+  verdicts aggregate deterministically per artifact version when a task sets a
+  `review_policy` (veto > quorum-approve > changes_requested > pending).
 - `Ledger` and `Audit`: append-only project state and replayable history.
 - Continuous control values: `task.amend`, `task.interrupt`,
   `steering_log`, `PermissionGrant`, and checkpoint `proposed_actions`.

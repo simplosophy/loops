@@ -44,6 +44,25 @@ def _now() -> datetime:
 
 
 @dataclass(frozen=True)
+class ReviewPolicy:
+    """Multi-reviewer aggregation policy (spec §3.2/§3.6, §7.5 converged).
+
+    When present on TaskSpec, deliverable reviews aggregate per artifact
+    version: veto > quorum-approve > changes_requested > pending.
+    """
+
+    required_reviewers: tuple[str, ...]
+    quorum: Literal["all", "majority", "any"] = "all"
+
+    def __post_init__(self) -> None:
+        if not self.required_reviewers:
+            raise ProtocolError(
+                "INVALID_SPEC",
+                "ReviewPolicy.required_reviewers must be non-empty",
+            )
+
+
+@dataclass(frozen=True)
 class TaskSpec:
     """The intent layer of a Task. Immutable after creation (spec §3.2)."""
 
@@ -51,6 +70,7 @@ class TaskSpec:
     acceptance_criteria: tuple[str, ...] = ()
     inputs: tuple[InputRef, ...] = ()
     constraints: Constraints | None = None
+    review_policy: ReviewPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -379,6 +399,7 @@ class Review:
     id: str = field(default_factory=lambda: "")
     task_id: str = ""
     artifact_id: str = ""
+    artifact_version: str | None = None
     reviewer: str = ""
     kind: ReviewKind = "deliverable"
     verdict: ReviewVerdict = "approved"

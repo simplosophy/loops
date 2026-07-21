@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Multi-reviewer aggregation (spec §7.5 converged): optional
+  `TaskSpec.review_policy` (required reviewers + `all`/`majority`/`any`
+  quorum) with deterministic per-artifact-version aggregation — veto >
+  quorum-approve > changes_requested > pending. `Review.artifact_version`
+  pins review rounds; reviewers must be policy members (`UNAUTHORIZED`
+  otherwise). Fully backward-compatible (no policy = single-reviewer
+  semantics unchanged); wire/transport support included
+  (`tests/test_hlp_multi_reviewer.py`).
+
 ## [0.3.0] - 2026-07-20
 
 ### Added

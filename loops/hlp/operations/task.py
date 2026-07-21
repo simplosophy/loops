@@ -33,6 +33,7 @@ class TaskOps(HumanLoopOperationsBase):
         acceptance_criteria: tuple[str, ...] = (),
         inputs: tuple[InputRef, ...] = (),
         constraints: Any = None,
+        review_policy: Any = None,
     ) -> Task:
         """task.create (spec §4.1). state=created."""
         if not principal:
@@ -46,6 +47,7 @@ class TaskOps(HumanLoopOperationsBase):
             acceptance_criteria=acceptance_criteria,
             inputs=inputs,
             constraints=constraints,
+            review_policy=review_policy,
         )
         task = Task(
             type=type,
