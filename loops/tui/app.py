@@ -14,10 +14,12 @@ from loops.hlp import (
     HLPClient,
     KimiHarnessAdapter,
     PiHarnessAdapter,
+    ProtocolError,
 )
 from loops.hlp.adapters.process import StreamChunk, make_streaming_prompt_runner
 
 from .controller import TUIController
+from .render import render_inbox
 from .session import SessionStore
 from .stream import StreamPrinter
 
@@ -59,6 +61,7 @@ def build_client(
     timeout: float = _DEFAULT_TIMEOUT_S,
     stream: bool = True,
     stream_printer: Callable[..., None] = print,
+    model: str = "",
 ) -> HLPClient:
     _validate_adapter_name(adapter_name)
     if timeout <= 0:
@@ -78,16 +81,19 @@ def build_client(
     if adapter_name == "codex":
         # Harness-capable path so JSONL human events project into checkpoints/artifacts.
         # No --ephemeral: sessions must be recorded for resume continuity.
+        command: tuple[str, ...] = (
+            "codex",
+            "exec",
+            "--json",
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+        )
+        if model:
+            command = (*command, "-m", model)
         return HLPClient(
             adapter=CodexHarnessAdapter(
-                command=(
-                    "codex",
-                    "exec",
-                    "--json",
-                    "--sandbox",
-                    "read-only",
-                    "--skip-git-repo-check",
-                ),
+                command=command,
                 runner=runner,
                 timeout=timeout,
                 # TUI free-text is chat-first; block/resume stay protocol-shaped.
@@ -98,16 +104,19 @@ def build_client(
         # Current Pi CLI: `pi --mode json -p --no-session <prompt>`.
         # `--no-tools` keeps the HLP adapter contract non-interactive and avoids
         # long tool loops while the TUI is blocked on one prompt.
+        command = (
+            "pi",
+            "--mode",
+            "json",
+            "-p",
+            "--no-session",
+            "--no-tools",
+        )
+        if model:
+            command = (*command, "--model", model)
         return HLPClient(
             adapter=PiHarnessAdapter(
-                command=(
-                    "pi",
-                    "--mode",
-                    "json",
-                    "-p",
-                    "--no-session",
-                    "--no-tools",
-                ),
+                command=command,
                 runner=runner,
                 timeout=timeout,
                 prompt_mode="chat",
@@ -115,8 +124,20 @@ def build_client(
         )
     if adapter_name == "claude":
         # Claude Code stream-json: system/assistant/result JSONL envelopes.
+        command = (
+            "claude",
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--permission-mode",
+            "dontAsk",
+        )
+        if model:
+            command = (*command, "--model", model)
         return HLPClient(
             adapter=ClaudeCodeHarnessAdapter(
+                command=command,
                 runner=runner,
                 timeout=timeout,
                 prompt_mode="chat",
@@ -124,8 +145,12 @@ def build_client(
         )
     if adapter_name == "kimi":
         # Kimi stream-json: role-shaped assistant/meta lines.
+        command = ("kimi", "--output-format", "stream-json", "-p")
+        if model:
+            command = (*command, "-m", model)
         return HLPClient(
             adapter=KimiHarnessAdapter(
+                command=command,
                 runner=runner,
                 timeout=timeout,
                 prompt_mode="chat",
@@ -181,6 +206,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--session-path", default=".hlp-tui-sessions.json")
     parser.add_argument("--principal", default="user_local")
+    parser.add_argument("--model", default="", help="Model name passed to the CLI harness.")
+    parser.add_argument(
+        "--resume",
+        default="",
+        help="Resume an existing session id instead of starting a new one.",
+    )
     parser.add_argument(
         "--timeout",
         type=float,
@@ -195,18 +226,30 @@ def main(argv: list[str] | None = None) -> None:
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
 
-    client = build_client(args.adapter, timeout=args.timeout)
+    client = build_client(args.adapter, timeout=args.timeout, model=args.model)
     sessions = SessionStore(args.session_path)
-    session = sessions.create(
-        cwd=str(Path.cwd()),
-        adapter=args.adapter,
-        principal=args.principal,
-    )
+    if args.resume:
+        try:
+            session = sessions.resume(args.resume)
+        except KeyError:
+            parser.error(f"unknown session: {args.resume}")
+    else:
+        session = sessions.create(
+            cwd=str(Path.cwd()),
+            adapter=args.adapter,
+            principal=args.principal,
+        )
     controller = TUIController(client=client, sessions=sessions)
     active_session_id = session.id
     adapter_timeout = float(getattr(client.adapter, "timeout", args.timeout) or args.timeout)
 
-    print(f"HLP TUI session {session.id}. Type /help for commands.")
+    inbox_count = len(asyncio.run(client.human_inbox(session.principal)))
+    print(
+        f"HLP TUI session {session.id} | adapter={args.adapter} "
+        f"principal={session.principal} | inbox={inbox_count} open | /help for commands"
+    )
+    if inbox_count:
+        print(asyncio.run(_render_open_inbox(client, session.principal)))
     if args.adapter != "fake":
         print(
             f"Live adapter={args.adapter}; first prompt may take up to "
@@ -218,16 +261,22 @@ def main(argv: list[str] | None = None) -> None:
             line = input("> ")
             if not line.strip():
                 continue
-            if args.adapter == "fake":
-                result = asyncio.run(controller.handle(active_session_id, line))
-            else:
-                result = asyncio.run(
-                    run_with_progress(
-                        controller.handle(active_session_id, line),
-                        label=f"{args.adapter} adapter",
-                        timeout=adapter_timeout,
+            try:
+                if args.adapter == "fake":
+                    result = asyncio.run(controller.handle(active_session_id, line))
+                else:
+                    result = asyncio.run(
+                        run_with_progress(
+                            controller.handle(active_session_id, line),
+                            label=f"{args.adapter} adapter",
+                            timeout=adapter_timeout,
+                        )
                     )
+            except KeyboardInterrupt:
+                print(
+                    asyncio.run(_interrupt_active(controller, active_session_id, session.principal))
                 )
+                continue
             print(result.output)
             if result.active_session_id:
                 active_session_id = result.active_session_id
@@ -236,6 +285,36 @@ def main(argv: list[str] | None = None) -> None:
     except (EOFError, KeyboardInterrupt):
         print()
         return
+
+
+async def _render_open_inbox(client: HLPClient, principal: str) -> str:
+    return render_inbox(await client.human_inbox(principal))
+
+
+async def _interrupt_active(
+    controller: TUIController,
+    session_id: str,
+    principal: str,
+) -> str:
+    """Ctrl+C semantics: seize control — interrupt the active task instead of dying."""
+    try:
+        session = controller.sessions.resume(session_id)
+    except KeyError:
+        return "interrupted (unknown session)"
+    if not session.active_task_id:
+        return "interrupted (no active task to interrupt)"
+    try:
+        checkpoint = await controller.client.interrupt(
+            session.active_task_id,
+            by=principal,
+            prompt="user interrupt (Ctrl+C)",
+        )
+    except ProtocolError as exc:
+        return f"interrupt failed: {exc}"
+    return (
+        f"interrupted: checkpoint {checkpoint.id} raised, task blocked. "
+        "Resolve with /approve, /reject, or free text to steer."
+    )
 
 
 if __name__ == "__main__":

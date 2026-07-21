@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `loops-hlp-tui` is now a full standalone harness host: `/tasks` `/use`
+  `/handoff` `/artifacts` `/show` commands, Ctrl+C seizing control via
+  `task.interrupt` instead of dying, `--resume <session_id>` startup with
+  open-inbox banner, `--model` passthrough for all four CLI adapters, and
+  grouped `/help`. Handoff uses session forking on fork-capable CLIs
+  (pi/claude), proven live end-to-end (codeword probe through the TUI).
 - Multi-reviewer aggregation (spec §7.5 converged): optional
   `TaskSpec.review_policy` (required reviewers + `all`/`majority`/`any`
   quorum) with deterministic per-artifact-version aggregation — veto >

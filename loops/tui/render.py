@@ -6,11 +6,66 @@ from typing import Any
 from .commands import COMMANDS
 from .session import TUISession
 
+_GROUP_ORDER = ("session", "work", "hlp", "control", "other")
+_GROUP_TITLES = {
+    "session": "Session",
+    "work": "Tasks & artifacts",
+    "hlp": "Human-loop decisions",
+    "control": "Continuous control",
+    "other": "Other",
+}
+
 
 def render_help() -> str:
     lines = ["HLP TUI commands:"]
-    for name, command in sorted(COMMANDS.items()):
-        lines.append(f"/{name:<12} {command.kind:<6} {command.summary}")
+    for group in _GROUP_ORDER:
+        members = sorted(
+            (command for command in COMMANDS.values() if command.group == group),
+            key=lambda command: command.name,
+        )
+        if not members:
+            continue
+        lines.append(f"\n{_GROUP_TITLES[group]}:")
+        for command in members:
+            lines.append(f"/{command.name:<12} {command.summary}")
+    return "\n".join(lines)
+
+
+def render_tasks(tasks: Iterable[Any], *, active_task_id: str) -> str:
+    rows = []
+    for task in tasks:
+        marker = "*" if task.id == active_task_id else " "
+        goal = (task.spec.goal or "")[:48]
+        rows.append(f"{marker} {task.id}  {task.state:<12} {goal}")
+    return render_lines("tasks (* = active):", rows)
+
+
+def render_artifacts(artifacts: Iterable[Any]) -> str:
+    rows = []
+    for artifact in artifacts:
+        payload = artifact.payload
+        uri = payload.uri if payload else ""
+        rows.append(f"{artifact.id}  {artifact.version:<5} {artifact.type:<12} {uri}")
+    return render_lines("artifacts:", rows)
+
+
+def render_artifact_detail(artifact: Any) -> str:
+    lines = [f"artifact {artifact.id}  version={artifact.version}"]
+    if artifact.parent_version:
+        lines.append(f"parent_version={artifact.parent_version}")
+    if artifact.provenance is not None:
+        lines.append(
+            f"produced_by={artifact.provenance.produced_by} at={artifact.provenance.produced_at}"
+        )
+    payload = artifact.payload
+    if payload is not None:
+        lines.append(
+            f"payload: kind={payload.kind} uri={payload.uri} "
+            f"checksum={payload.checksum} size={payload.size}"
+        )
+    if artifact.references:
+        refs = ", ".join(f"{ref.task_id}({ref.as_})" for ref in artifact.references)
+        lines.append(f"referenced_by: {refs}")
     return "\n".join(lines)
 
 

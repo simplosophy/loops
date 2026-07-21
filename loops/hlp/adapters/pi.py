@@ -34,7 +34,9 @@ class PiHarnessAdapter(HarnessAdapterBase):
         prompt_mode: str = "protocol",
         session_continuity: bool = True,
     ) -> None:
-        if session_continuity and command is _DEFAULT_PI_HARNESS_COMMAND:
+        if session_continuity:
+            # Sessions must be recorded to be resumable; --no-session contradicts
+            # continuity and is stripped from any command, not just the default.
             command = tuple(part for part in command if part != "--no-session")
         super().__init__(
             command=command,

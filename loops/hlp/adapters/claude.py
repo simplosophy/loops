@@ -84,6 +84,8 @@ class ClaudeCodeHarnessAdapter(HarnessAdapterBase):
                 # Sessions must persist to be resumable.
                 command = tuple(part for part in command if part != "--no-session-persistence")
             command = _with_json_schema(command, prompt_mode)
+        elif session_continuity:
+            command = tuple(part for part in command if part != "--no-session-persistence")
         super().__init__(
             command=command,
             name="claude-code-harness",

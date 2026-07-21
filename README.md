@@ -72,13 +72,33 @@ Run the full local CLI lifecycle test against installed Codex, Kimi, and Claude 
 uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
 ```
 
-Run the line-oriented HLP TUI channel:
+Run the standalone HLP harness host (line-oriented TUI):
 
 ```bash
 uv run loops-hlp-tui --adapter codex
-uv run loops-hlp-tui --adapter pi
+uv run loops-hlp-tui --adapter pi --model <model-name>
+uv run loops-hlp-tui --adapter claude
+uv run loops-hlp-tui --adapter kimi
 uv run loops-hlp-tui --adapter fake   # offline, no external CLI
+uv run loops-hlp-tui --resume <session_id>
 ```
+
+The TUI is a complete harness host over all four first-class CLI adapters
+(codex/pi/claude/kimi — projection, native structured output, session-resume
+continuity, fork-on-handoff, all live-verified):
+
+- **Full decision surface**: `/inbox` `/approve` `/reject` `/choose` `/input`
+  `/review` `/audit`, plus `/tasks` `/use` `/handoff` `/artifacts` `/show`
+  for multi-task and delivery work.
+- **Ctrl+C seizes control**: it does not kill the session — it raises
+  `task.interrupt`, blocking the task for human resolution.
+- **Session continuity and true handoff**: follow-up ops resume the CLI's
+  native session; `/handoff <agent>` forks it (pi/claude), so the receiving
+  agent inherits full context — proven live by the codeword probe.
+- **Streaming chat mode**: live `⋯ agent: …` text deltas and status
+  milestones while the CLI runs; `--timeout` bounds each wait.
+- **Resume where you left off**: startup shows the open inbox;
+  `--resume <id>` jumps straight into a saved session.
 
 Live adapters (`codex` / `pi`) use **harness-capable** adapters
 (`CodexHarnessAdapter` / `PiHarnessAdapter`) in **chat prompt mode**: free-text

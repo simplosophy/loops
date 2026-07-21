@@ -150,9 +150,7 @@ class HlpMcpServer:
             task = await ops.task_start(arguments["task_id"])
             return {"task_id": task.id, "state": task.state}
         if name == "hlp_checkpoint_raise":
-            options = tuple(
-                CheckpointOption(**option) for option in arguments.get("options") or ()
-            )
+            options = tuple(CheckpointOption(**option) for option in arguments.get("options") or ())
             checkpoint = await ops.checkpoint_raise(
                 task_id=arguments["task_id"],
                 kind=arguments["kind"],
@@ -248,7 +246,6 @@ async def _serve(operations: HumanLoopOperations) -> None:
 
 
 def main() -> None:
-    from .store import HumanLoopStore
 
     operations = HumanLoopOperations(store=HumanLoopStore())
     asyncio.run(_serve(operations))
