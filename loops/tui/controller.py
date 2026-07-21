@@ -252,15 +252,37 @@ class TUIController:
 
         note = ""
         if session.active_task_id:
+            # Hand off to the TARGET adapter's agent identity. Handing off to the
+            # current assignee is a silent no-op (no adapter call, no new run).
             task = await self.client.operations.ownership_transfer(
                 session.active_task_id,
-                to=self.agent_id,
+                to=f"agent_{target}",
                 via="handoff",
                 actor=session.principal,
             )
             new_run_id = self.client.store.run_of_task(task.id) or ""
             self.sessions.set_active(session_id, task_id=task.id, run_id=new_run_id)
-            note = f"; active task handed off (run {new_run_id or 'n/a'})"
+            if old_adapter != target:
+                # Cross-CLI: no shared session history exists, so brief the new
+                # agent through the existing steer channel (steering_log + audit).
+                await self.client.amend(
+                    session.active_task_id,
+                    by=session.principal,
+                    text=(
+                        f"HOST NOTE: the host switched harness adapter {old_adapter} -> "
+                        f"{target}. There is no shared session history across CLIs, so "
+                        "the briefing below is your ONLY source of prior context — treat "
+                        "the user's earlier messages in it as authoritative facts and use "
+                        "them when answering.\n\n" + _transcript_briefing(session)
+                    ),
+                    intent="constrain",
+                )
+                note = (
+                    f"; active task handed off with a transcript briefing "
+                    f"(no shared session history {old_adapter} -> {target})"
+                )
+            else:
+                note = "; active task handed off via the native session"
         self._append(
             session_id,
             kind="task",
@@ -299,6 +321,9 @@ class TUIController:
         if intent.name == "handoff":
             to_agent = _required_arg(intent, "/handoff requires an agent id")
             session = self._require_active(session_id)
+            current = await self.client.get_task(session.active_task_id)
+            if current.ownership.assignee == to_agent:
+                raise TUIUsageError(f"task is already assigned to {to_agent}")
             task = await self.client.operations.ownership_transfer(
                 session.active_task_id,
                 to=to_agent,
@@ -712,6 +737,18 @@ def _autonomy(permission_mode: str) -> AutonomyTier:
         "read-only": "read_only",
     }
     return tiers.get(permission_mode, "autonomous")
+
+
+def _transcript_briefing(session: TUISession, *, max_events: int = 8, max_chars: int = 80) -> str:
+    """Compact recent transcript lines for cross-CLI handoff briefings."""
+    events = session.transcript[-max_events:]
+    if not events:
+        return "(no prior conversation)"
+    lines = []
+    for event in events:
+        text = event.text if len(event.text) <= max_chars else event.text[: max_chars - 1] + "…"
+        lines.append(f"{event.kind}: {text}")
+    return "\n".join(lines)
 
 
 def _control_intent(name: str) -> str:

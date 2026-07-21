@@ -106,7 +106,7 @@ def build_client(
                 timeout=timeout,
                 # TUI free-text is chat-first; block/resume stay protocol-shaped.
                 prompt_mode="chat",
-            )
+            ),
         )
     if adapter_name == "pi":
         # Current Pi CLI: `pi --mode json -p --no-session <prompt>`.
@@ -129,7 +129,7 @@ def build_client(
                 runner=runner,
                 timeout=timeout,
                 prompt_mode="chat",
-            )
+            ),
         )
     if adapter_name == "claude":
         # Claude Code stream-json: system/assistant/result JSONL envelopes.
@@ -151,7 +151,7 @@ def build_client(
                 runner=runner,
                 timeout=timeout,
                 prompt_mode="chat",
-            )
+            ),
         )
     if adapter_name == "kimi":
         # Kimi stream-json: role-shaped assistant/meta lines.
@@ -165,7 +165,7 @@ def build_client(
                 runner=runner,
                 timeout=timeout,
                 prompt_mode="chat",
-            )
+            ),
         )
     raise AssertionError("unreachable adapter branch")
 
@@ -282,13 +282,14 @@ def main(argv: list[str] | None = None) -> None:
             if not line.strip():
                 continue
             try:
+                current_adapter = sessions.resume(active_session_id).adapter
                 if args.adapter == "fake":
                     result = asyncio.run(controller.handle(active_session_id, line))
                 else:
                     result = asyncio.run(
                         run_with_progress(
                             controller.handle(active_session_id, line),
-                            label=f"{args.adapter} adapter",
+                            label=f"{current_adapter} adapter",
                             timeout=adapter_timeout,
                         )
                     )

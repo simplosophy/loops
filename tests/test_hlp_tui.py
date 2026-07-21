@@ -1872,3 +1872,45 @@ def test_model_command_rebuilds_live_adapter_and_records_for_fake(tmp_path):
     result = run(controller.handle(fake_session.id, "/model none"))
     assert "client rebuilt" not in result.output
     assert builds == []
+
+
+def test_cross_adapter_switch_briefs_new_agent_via_steer(tmp_path):
+    def builder(name, model, store):
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(
+        client=HLPClient(adapter=FakeAgentAdapter()),
+        sessions=store,
+        adapter_builder=builder,
+    )
+    run(controller.handle(session.id, "remember code 123bcd"))
+
+    result = run(controller.handle(session.id, "/adapter codex"))
+
+    assert "transcript briefing" in result.output
+    assert "pi -> codex" in result.output or "pi" in result.output
+    task = run(controller.client.get_task(store.resume(session.id).active_task_id))
+    briefings = [entry.text for entry in task.steering_log]
+    assert any("no shared session history" in text for text in briefings)
+    assert any("remember code 123bcd" in text for text in briefings)
+
+
+def test_same_adapter_switch_uses_native_session_without_briefing(tmp_path):
+    def builder(name, model, store):
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(
+        client=HLPClient(adapter=FakeAgentAdapter()),
+        sessions=store,
+        adapter_builder=builder,
+    )
+    run(controller.handle(session.id, "some work"))
+
+    result = run(controller.handle(session.id, "/adapter pi"))
+
+    assert "native session" in result.output
+    assert "transcript briefing" not in result.output
