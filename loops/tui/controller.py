@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from loops.hlp import (
     Constraints,
     ControlSignal,
     HLPClient,
+    HumanLoopStore,
     InteractionRef,
     ProtocolError,
     ReviewComment,
@@ -69,6 +71,7 @@ _REVIEW_VERDICTS: dict[str, ReviewVerdict] = {
     "rejected": "rejected",
     "reject": "rejected",
 }
+_SWITCHABLE_ADAPTERS = frozenset({"fake", "codex", "pi", "claude", "kimi"})
 
 
 class TUIController:
@@ -79,11 +82,13 @@ class TUIController:
         sessions: SessionStore,
         agent_id: str = "agent_tui",
         capability: str = "coding-agent",
+        adapter_builder: Callable[[str, str, HumanLoopStore], HLPClient] | None = None,
     ) -> None:
         self.client = client
         self.sessions = sessions
         self.agent_id = agent_id
         self.capability = capability
+        self._adapter_builder = adapter_builder
 
     async def handle(self, session_id: str, raw: str) -> TUIResult:
         try:
@@ -188,10 +193,20 @@ class TUIController:
             resumed = self._require_session(target)
             return TUIResult(render_status(resumed), active_session_id=resumed.id)
         if name == "model":
-            self._require_session(session_id)
+            session = self._require_session(session_id)
             value = _required_arg(intent, "/model requires a model name")
             updated = self.sessions.set_preference(session_id, field="model", value=value)
-            return TUIResult(f"model={updated.model}")
+            rebuilt = ""
+            if self._adapter_builder is not None and session.adapter != "fake":
+                self.client = self._adapter_builder(
+                    session.adapter,
+                    value,
+                    self.client.store,
+                )
+                rebuilt = " (client rebuilt; next prompts use it)"
+            return TUIResult(f"model={updated.model}{rebuilt}")
+        if name == "adapter":
+            return await self._switch_adapter(session_id, intent)
         if name == "theme":
             self._require_session(session_id)
             value = _required_arg(intent, "/theme requires a theme name")
@@ -221,6 +236,37 @@ class TUIController:
             session = self._require_session(session_id)
             return TUIResult(_diff_summary(Path(session.cwd)))
         return await self._handle_hlp_command(session_id, intent)
+
+    async def _switch_adapter(self, session_id: str, intent: InputIntent) -> TUIResult:
+        """Runtime adapter switch: rebuild the client over the shared store and
+        hand the active task off so its run lands on the new adapter."""
+        target = _required_arg(intent, "/adapter requires a name")
+        if target not in _SWITCHABLE_ADAPTERS:
+            raise TUIUsageError(f"unsupported adapter: {target}")
+        if self._adapter_builder is None:
+            raise TUIUsageError("adapter switching is not configured for this host")
+        session = self._require_session(session_id)
+        old_adapter = session.adapter
+        self.client = self._adapter_builder(target, session.model, self.client.store)
+        updated = self.sessions.set_preference(session_id, field="adapter", value=target)
+
+        note = ""
+        if session.active_task_id:
+            task = await self.client.operations.ownership_transfer(
+                session.active_task_id,
+                to=self.agent_id,
+                via="handoff",
+                actor=session.principal,
+            )
+            new_run_id = self.client.store.run_of_task(task.id) or ""
+            self.sessions.set_active(session_id, task_id=task.id, run_id=new_run_id)
+            note = f"; active task handed off (run {new_run_id or 'n/a'})"
+        self._append(
+            session_id,
+            kind="task",
+            text=f"adapter {old_adapter} → {target}{note}",
+        )
+        return TUIResult(f"adapter={updated.adapter}{note}")
 
     async def _status(self, session_id: str) -> TUIResult:
         session = self._require_session(session_id)

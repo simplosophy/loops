@@ -90,6 +90,11 @@ continuity, fork-on-handoff, all live-verified):
 - **Full decision surface**: `/inbox` `/approve` `/reject` `/choose` `/input`
   `/review` `/audit`, plus `/tasks` `/use` `/handoff` `/artifacts` `/show`
   for multi-task and delivery work.
+- **Runtime adapter switching**: `/adapter <codex|pi|claude|kimi|fake>`
+  rebuilds the client over the shared store (task history survives) and
+  hands the active task off to the new adapter; `/model <name>` rebuilds
+  with a different model. Context inheritance on handoff follows the fork
+  matrix (pi/claude inherit; codex/kimi resume without history).
 - **Ctrl+C seizes control**: it does not kill the session — it raises
   `task.interrupt`, blocking the task for human resolution.
 - **Session continuity and true handoff**: follow-up ops resume the CLI's

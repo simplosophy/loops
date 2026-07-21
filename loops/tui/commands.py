@@ -84,7 +84,13 @@ COMMANDS: dict[str, CommandDefinition] = {
     "audit": CommandDefinition("audit", "Replay HLP audit.", "hlp", group="hlp"),
     "diff": CommandDefinition("diff", "Show diff summary.", "direct", group="other"),
     "model": CommandDefinition(
-        "model", "Record preferred model metadata.", "compat", group="other"
+        "model", "Set adapter model (rebuilds client).", "compat", group="session"
+    ),
+    "adapter": CommandDefinition(
+        "adapter",
+        "Switch harness adapter at runtime: /adapter <codex|pi|claude|kimi|fake>.",
+        "hlp",
+        group="session",
     ),
     "mcp": CommandDefinition("mcp", "Explain harness-owned MCP surface.", "compat", group="other"),
     "statusline": CommandDefinition(

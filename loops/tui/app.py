@@ -12,6 +12,7 @@ from loops.hlp import (
     CodexHarnessAdapter,
     FakeAgentAdapter,
     HLPClient,
+    HumanLoopStore,
     KimiHarnessAdapter,
     PiHarnessAdapter,
     ProtocolError,
@@ -41,7 +42,11 @@ async def run_lines(
     sessions = SessionStore(session_path)
     session = sessions.create(cwd=cwd, adapter=adapter_name, principal=principal)
     active_session_id = session.id
-    controller = TUIController(client=client, sessions=sessions)
+    controller = TUIController(
+        client=client,
+        sessions=sessions,
+        adapter_builder=lambda name, model, store: build_client(name, model=model, store=store),
+    )
     outputs: list[str] = []
 
     for line in lines:
@@ -62,12 +67,14 @@ def build_client(
     stream: bool = True,
     stream_printer: Callable[..., None] = print,
     model: str = "",
+    store: HumanLoopStore | None = None,
 ) -> HLPClient:
     _validate_adapter_name(adapter_name)
     if timeout <= 0:
         raise ValueError("timeout must be positive")
+    store = store or HumanLoopStore()
     if adapter_name == "fake":
-        return HLPClient(adapter=FakeAgentAdapter())
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
 
     runner = None
     if stream:
@@ -92,6 +99,7 @@ def build_client(
         if model:
             command = (*command, "-m", model)
         return HLPClient(
+            store=store,
             adapter=CodexHarnessAdapter(
                 command=command,
                 runner=runner,
@@ -115,6 +123,7 @@ def build_client(
         if model:
             command = (*command, "--model", model)
         return HLPClient(
+            store=store,
             adapter=PiHarnessAdapter(
                 command=command,
                 runner=runner,
@@ -136,6 +145,7 @@ def build_client(
         if model:
             command = (*command, "--model", model)
         return HLPClient(
+            store=store,
             adapter=ClaudeCodeHarnessAdapter(
                 command=command,
                 runner=runner,
@@ -149,6 +159,7 @@ def build_client(
         if model:
             command = (*command, "-m", model)
         return HLPClient(
+            store=store,
             adapter=KimiHarnessAdapter(
                 command=command,
                 runner=runner,
@@ -239,7 +250,16 @@ def main(argv: list[str] | None = None) -> None:
             adapter=args.adapter,
             principal=args.principal,
         )
-    controller = TUIController(client=client, sessions=sessions)
+    controller = TUIController(
+        client=client,
+        sessions=sessions,
+        adapter_builder=lambda name, model, store: build_client(
+            name,
+            timeout=args.timeout,
+            model=model,
+            store=store,
+        ),
+    )
     active_session_id = session.id
     adapter_timeout = float(getattr(client.adapter, "timeout", args.timeout) or args.timeout)
 

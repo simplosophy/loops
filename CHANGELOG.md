@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Runtime adapter and model switching in the TUI: `/adapter` rebuilds the
+  client over the shared store (task history survives) and hands the active
+  task off to the new adapter; `/model` rebuilds with a different model.
+  `build_client` accepts a shared `store`; `set_preference` supports the
+  `adapter` field. Live-verified (pi → kimi switch with handoff).
 - `loops-hlp-tui` is now a full standalone harness host: `/tasks` `/use`
   `/handoff` `/artifacts` `/show` commands, Ctrl+C seizing control via
   `task.interrupt` instead of dying, `--resume <session_id>` startup with

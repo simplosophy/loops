@@ -1806,3 +1806,69 @@ def test_build_client_passes_model_to_cli_commands():
     assert claude_cmd[-2:] == ("--model", "sonnet")
     assert build_client("kimi", stream=False, model="k2").adapter.command[-2:] == ("-m", "k2")
     assert "--model" not in build_client("pi", stream=False).adapter.command
+
+
+def test_adapter_switch_rebuilds_client_and_hands_off_active_task(tmp_path):
+    builds = []
+
+    def builder(name, model, store):
+        builds.append((name, model, store))
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store, adapter_builder=builder)
+    session, active = _start_hlp_tui_session(store, controller)
+    original_store = client.store
+
+    result = run(controller.handle(session.id, "/adapter codex"))
+
+    assert result.output.startswith("adapter=codex")
+    assert "handed off" in result.output
+    assert builds and builds[-1][0] == "codex"
+    # Shared store: task history survives the switch.
+    assert builds[-1][2] is original_store
+    assert store.resume(session.id).adapter == "codex"
+    # Active task got a fresh run on the new adapter.
+    assert store.resume(session.id).active_run_id
+
+
+def test_adapter_switch_validation_and_missing_builder(tmp_path):
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    session, _active = _start_hlp_tui_session(store, controller)
+
+    result = run(controller.handle(session.id, "/adapter nope"))
+    assert "unsupported adapter" in result.output
+    result = run(controller.handle(session.id, "/adapter codex"))
+    assert "not configured" in result.output
+
+
+def test_model_command_rebuilds_live_adapter_and_records_for_fake(tmp_path):
+    builds = []
+
+    def builder(name, model, store):
+        builds.append((name, model, store))
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(
+        client=HLPClient(adapter=FakeAgentAdapter()),
+        sessions=store,
+        adapter_builder=builder,
+    )
+
+    result = run(controller.handle(session.id, "/model kimi-k2"))
+    assert "model=kimi-k2" in result.output
+    assert "client rebuilt" in result.output
+    assert builds == [("pi", "kimi-k2", controller.client.store)]
+    assert store.resume(session.id).model == "kimi-k2"
+
+    fake_session = store.create(cwd="/repo", adapter="fake", principal="user_local")
+    builds.clear()
+    result = run(controller.handle(fake_session.id, "/model none"))
+    assert "client rebuilt" not in result.output
+    assert builds == []
