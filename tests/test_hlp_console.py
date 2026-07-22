@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from loops.hlp import FakeAgentAdapter, HLPClient
 from loops.tui.app import _status_snapshot
 from loops.tui.console import Console, adapter_completions
