@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import re
 import shlex
 from dataclasses import dataclass
@@ -135,7 +136,11 @@ def _parse_command(value: str) -> InputIntent:
     command_token = parts[0]
     name = command_token[1:]
     if not name or name not in COMMANDS:
-        raise CommandParseError(f"unknown command: {command_token}")
+        message = f"unknown command: {command_token}"
+        suggestions = difflib.get_close_matches(name, COMMANDS.keys(), n=1, cutoff=0.6)
+        if suggestions:
+            message += f" (did you mean /{suggestions[0]}?)"
+        raise CommandParseError(message)
     args = parts[1:]
     return InputIntent(
         kind="command",

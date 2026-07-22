@@ -100,6 +100,13 @@ continuity, fork-on-handoff, all live-verified):
   claude `TodoWrite`/`Task` blocks). Snapshots are ephemeral display
   projections (appendix C §C.2) — never audited, never responsibility
   records; pi/kimi wires carry no progress events yet and return none.
+- **Industrial input layer**: readline editing and persistent history, tab
+  completion for commands and adapter names, minimal role-colored output
+  (`--no-color` / `NO_COLOR` / non-TTY aware), and a per-turn status line
+  (adapter, task state, open inbox).
+- **Actionable error UX**: unknown commands get did-you-mean suggestions,
+  and every error family (adapter, timeout, NOT_FOUND, precondition,
+  unauthorized, usage) renders a concrete recovery hint.
 - **Ctrl+C seizes control**: it does not kill the session — it raises
   `task.interrupt`, blocking the task for human resolution.
 - **Session continuity and true handoff**: follow-up ops resume the CLI's

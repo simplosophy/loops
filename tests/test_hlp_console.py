@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from loops.hlp import FakeAgentAdapter, HLPClient
 from loops.tui.app import _status_snapshot
 from loops.tui.console import Console, adapter_completions
@@ -90,3 +92,27 @@ def test_status_snapshot_shape(tmp_path):
     assert "adapter=fake" in line
     assert "state=in_progress" in line
     assert "inbox=0" in line
+
+
+def test_unknown_command_gets_did_you_mean_suggestion():
+    from loops.tui.commands import CommandParseError, parse_user_input
+
+    with pytest.raises(CommandParseError, match="did you mean /progress"):
+        parse_user_input("/progres")
+    with pytest.raises(CommandParseError, match="unknown command"):
+        parse_user_input("/zzz-unknown")
+
+
+def test_render_error_includes_actionable_hints():
+    from loops.hlp import AgentAdapterError, ProtocolError
+    from loops.tui.render import render_error
+
+    text = render_error(AgentAdapterError("codex", "delegate", "process command failed"))
+    assert "/adapter" in text
+    assert "hint:" in text
+
+    text = render_error(ProtocolError("NOT_FOUND", "task not found"))
+    assert "/tasks" in text
+
+    text = render_error(ProtocolError("PRECONDITION_FAILED", "illegal transition"))
+    assert "/statusline" in text

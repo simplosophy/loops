@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TUI industrial hardening: readline input with persistent history and tab
+  completion (`loops/tui/console.py`), role-colored output with
+  `--no-color`/`NO_COLOR`/non-TTY handling, per-turn status line, and an
+  actionable error UX (did-you-mean suggestions for unknown commands plus
+  recovery hints per error family).
 - Harness progress projection (`RunProgressSnapshot`, appendix C §C.2):
   adapters accumulate each CLI's aggregate state — codex `todo_list` items,
   claude `TodoWrite` todos and `Task` sub-agents (with parent links) — into
@@ -125,6 +130,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `loops/tui/controller.py` (833 lines) split into a 23-line composition
+  over `_base.py` plus four domain mixins (`_session_cmds`, `_work_cmds`,
+  `_hlp_cmds`, `_control_cmds`), mirroring the operations package structure.
 - Adapter testing tier demoted: the run-registry machinery moved from
   `FakeAgentAdapter` into a production base `RunRegistryAdapter`
   (`loops/hlp/adapters/_registry.py`), which `ProcessAgentAdapter` now

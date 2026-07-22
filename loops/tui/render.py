@@ -134,6 +134,32 @@ def render_lines(title: str, rows: Iterable[str]) -> str:
     return "\n".join((title, *body))
 
 
+def _error_hint(error: Exception) -> str:
+    """One actionable recovery line per error family (industrial UX)."""
+    name = error.__class__.__name__
+    if name == "AgentAdapterError":
+        return (
+            "hint: check the CLI binary on PATH and its auth, or /adapter to "
+            "switch harness; /interrupt pauses the task instead"
+        )
+    if name in {"TimeoutError", "TimeoutExpiredError"}:
+        return "hint: the harness is slow — raise --timeout, or /interrupt to pause"
+    code = getattr(error, "code", "")
+    if code == "DEADLINE_EXCEEDED":
+        return "hint: the harness is slow — raise --timeout, or /interrupt to pause"
+    if code == "NOT_FOUND":
+        return "hint: unknown object — list tasks with /tasks, sessions with /resume <id>"
+    if code == "PRECONDITION_FAILED":
+        return "hint: state conflict — /statusline and /inbox show what is actionable now"
+    if code == "UNAUTHORIZED":
+        return "hint: this action needs the task principal or a policy member"
+    if name == "TUIUsageError":
+        return "hint: usage — /help lists commands with forms"
+    if name == "CommandParseError":
+        return "hint: /help lists commands; typos get did-you-mean suggestions"
+    return ""
+
+
 def render_error(error: Exception) -> str:
     lines = [f"error: {error.__class__.__name__}: {error}"]
     details = getattr(error, "details", None)
@@ -158,6 +184,9 @@ def render_error(error: Exception) -> str:
         if stdout and not stderr:
             tail = stdout if len(stdout) <= 400 else stdout[-400:]
             lines.append(f"stdout: {tail}")
+    hint = _error_hint(error)
+    if hint:
+        lines.append(hint)
     return "\n".join(lines)
 
 
