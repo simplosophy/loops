@@ -1917,39 +1917,7 @@ def test_same_adapter_switch_uses_native_session_without_briefing(tmp_path):
 
 
 def test_progress_command_renders_snapshot_and_none_message(tmp_path):
-    from loops.hlp import RunProgressSnapshot, ProgressItem
     from loops.hlp.adapters.process import ProcessResult
-
-    todo_stdout = "\n".join(
-        (
-            json.dumps({"type": "thread.started", "thread_id": "t1"}),
-            json.dumps(
-                {
-                    "type": "item.started",
-                    "item": {
-                        "id": "i1",
-                        "type": "todo_list",
-                        "items": [
-                            {"text": "define cases", "completed": True},
-                            {"text": "execute cases", "completed": False},
-                        ],
-                    },
-                }
-            ),
-            json.dumps(
-                {
-                    "type": "item.completed",
-                    "item": {
-                        "id": "i0",
-                        "type": "agent_message",
-                        "text": json.dumps(
-                            {"run_id": "run_1", "correlation_id": "task_x", "status": "ok"}
-                        ),
-                    },
-                }
-            ),
-        )
-    )
 
     async def runner(command, request, timeout):
         envelope = json.dumps(

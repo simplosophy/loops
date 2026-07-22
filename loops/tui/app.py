@@ -19,8 +19,9 @@ from loops.hlp import (
 )
 from loops.hlp.adapters.process import StreamChunk, make_streaming_prompt_runner
 
+from .console import Console, adapter_completions
 from .controller import TUIController
-from .render import render_inbox
+from .render import render_inbox, render_status
 from .session import SessionStore
 from .stream import StreamPrinter
 
@@ -219,6 +220,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--principal", default="user_local")
     parser.add_argument("--model", default="", help="Model name passed to the CLI harness.")
     parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI colors (also honored: NO_COLOR env and non-TTY output).",
+    )
+    parser.add_argument(
         "--resume",
         default="",
         help="Resume an existing session id instead of starting a new one.",
@@ -262,23 +268,29 @@ def main(argv: list[str] | None = None) -> None:
     )
     active_session_id = session.id
     adapter_timeout = float(getattr(client.adapter, "timeout", args.timeout) or args.timeout)
+    console = Console(
+        history_path=f"{args.session_path}.history",
+        color=not args.no_color,
+        completer_extra=lambda command: adapter_completions() if command == "adapter" else [],
+    )
 
     inbox_count = len(asyncio.run(client.human_inbox(session.principal)))
-    print(
+    console.print(
         f"HLP TUI session {session.id} | adapter={args.adapter} "
-        f"principal={session.principal} | inbox={inbox_count} open | /help for commands"
+        f"principal={session.principal} | inbox={inbox_count} open | /help for commands",
+        role="dim",
     )
     if inbox_count:
-        print(asyncio.run(_render_open_inbox(client, session.principal)))
+        console.print(asyncio.run(_render_open_inbox(client, session.principal)), role="warn")
     if args.adapter != "fake":
-        print(
+        console.print(
             f"Live adapter={args.adapter}; first prompt may take up to "
             f"{adapter_timeout:.0f}s while the external CLI runs.",
-            flush=True,
+            role="dim",
         )
     try:
         while True:
-            line = input("> ")
+            line = console.input(console.style("> ", "accent"))
             if not line.strip():
                 continue
             try:
@@ -294,13 +306,20 @@ def main(argv: list[str] | None = None) -> None:
                         )
                     )
             except KeyboardInterrupt:
-                print(
-                    asyncio.run(_interrupt_active(controller, active_session_id, session.principal))
+                console.print(
+                    asyncio.run(
+                        _interrupt_active(controller, active_session_id, session.principal)
+                    ),
+                    role="warn",
                 )
                 continue
             print(result.output)
             if result.active_session_id:
                 active_session_id = result.active_session_id
+            console.print(
+                asyncio.run(_status_snapshot(controller, active_session_id)),
+                role="dim",
+            )
             if result.should_exit:
                 return
     except (EOFError, KeyboardInterrupt):
@@ -310,6 +329,16 @@ def main(argv: list[str] | None = None) -> None:
 
 async def _render_open_inbox(client: HLPClient, principal: str) -> str:
     return render_inbox(await client.human_inbox(principal))
+
+
+async def _status_snapshot(controller: TUIController, session_id: str) -> str:
+    """Dim per-turn status line: adapter, active task state, open inbox."""
+    session = controller.sessions.resume(session_id)
+    task_state = "none"
+    if session.active_task_id:
+        task_state = (await controller.client.get_task(session.active_task_id)).state
+    inbox = await controller.client.human_inbox(session.principal)
+    return render_status(session, task_state=task_state, inbox_count=len(inbox))
 
 
 async def _interrupt_active(
