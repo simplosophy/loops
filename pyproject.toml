@@ -1,6 +1,6 @@
 [project]
 name = "loops-hlp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Human Loop Protocol SDK for wrapping agent harnesses"
 readme = "README.md"
 requires-python = ">=3.13"
