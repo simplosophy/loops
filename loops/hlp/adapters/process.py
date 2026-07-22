@@ -11,7 +11,7 @@ from ..objects import AdapterOperationContext
 from ..schema import to_wire
 from . import _parsing as parsing
 from . import _util as util
-from .fake import FakeAgentAdapter
+from ._registry import RunRegistryAdapter
 from .protocol import (
     AgentAdapterError,
     AgentRunHandle,
@@ -451,7 +451,7 @@ def prompt_for_adapter_operation(
     return cli_operation_prompt(request)
 
 
-class ProcessAgentAdapter(FakeAgentAdapter):
+class ProcessAgentAdapter(RunRegistryAdapter):
     """Generic JSON-over-stdin/stdout adapter for CLI agents."""
 
     def __init__(
@@ -547,7 +547,7 @@ class ProcessAgentAdapter(FakeAgentAdapter):
                 "operation_context": to_wire(context) if context is not None else None,
             },
         )
-        await FakeAgentAdapter.block(self, run_id, checkpoint_id, reason, context=context)
+        await RunRegistryAdapter.block(self, run_id, checkpoint_id, reason, context=context)
 
     async def resume(
         self,
@@ -567,7 +567,7 @@ class ProcessAgentAdapter(FakeAgentAdapter):
                 "operation_context": to_wire(context) if context is not None else None,
             },
         )
-        await FakeAgentAdapter.resume(self, run_id, resolution, context=context)
+        await RunRegistryAdapter.resume(self, run_id, resolution, context=context)
 
     async def steer(
         self,
@@ -592,7 +592,7 @@ class ProcessAgentAdapter(FakeAgentAdapter):
         # hosts do not keep showing the previous delegate summary.
         if isinstance(payload, dict):
             self.process_results[run_id] = payload
-        await FakeAgentAdapter.steer(self, run_id, amendment_payload, context=context)
+        await RunRegistryAdapter.steer(self, run_id, amendment_payload, context=context)
 
     async def handoff(
         self,
@@ -667,7 +667,7 @@ class ProcessAgentAdapter(FakeAgentAdapter):
                 ),
             },
         )
-        await FakeAgentAdapter.cancel(
+        await RunRegistryAdapter.cancel(
             self,
             run_id,
             reason,
@@ -733,10 +733,6 @@ class ProcessAgentAdapter(FakeAgentAdapter):
                 details={"stdout": result.stdout},
             )
         return payload
-
-    def _next_run_id(self) -> str:
-        self._run_counter += 1
-        return f"run_{self._run_counter:06d}"
 
 
 class PromptCLIAdapter(ProcessAgentAdapter):

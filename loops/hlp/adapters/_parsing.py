@@ -367,6 +367,83 @@ def codex_hlp_payload(event: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _claude_todo_state(value: Any) -> str:
+    status = str(value or "pending")
+    if status in {"in_progress", "blocked"}:
+        return status
+    if status == "completed":
+        return "done"
+    if status == "cancelled":
+        return "skipped"
+    return "pending"
+
+
+def progress_from_events(events: tuple[dict[str, Any], ...]) -> dict[str, Any] | None:
+    """Extract progress signals from one op's stdout events.
+
+    Sources (ephemeral §C.2): codex `todo_list` items and Claude Code
+    `TodoWrite`/`Task` tool_use blocks. Returns a partial dict for
+    merge_progress, or None when the batch carries no progress signal.
+    """
+    items: list[dict[str, Any]] | None = None
+    agents: list[dict[str, Any]] = []
+    for event in events:
+        # Codex todo_list item events.
+        item = event.get("item")
+        if isinstance(item, dict) and item.get("type") == "todo_list":
+            items = [
+                {
+                    "label": str(todo.get("text") or ""),
+                    "state": "done" if todo.get("completed") else "pending",
+                }
+                for todo in item.get("items") or ()
+                if isinstance(todo, dict)
+            ]
+
+        # Claude Code tool_use / tool_result blocks inside assistant messages.
+        message = event.get("message")
+        if not isinstance(message, dict):
+            continue
+        for block in message.get("content") or ():
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type == "tool_use" and block.get("name") == "TodoWrite":
+                todos = (block.get("input") or {}).get("todos") or ()
+                items = [
+                    {
+                        "label": str(todo.get("content") or ""),
+                        "state": _claude_todo_state(todo.get("status")),
+                    }
+                    for todo in todos
+                    if isinstance(todo, dict)
+                ]
+            elif block_type == "tool_use" and block.get("name") == "Task":
+                block_input = block.get("input") or {}
+                label = str(block_input.get("description") or block_input.get("prompt") or "")[:80]
+                agents.append(
+                    {
+                        "id": str(block.get("id") or ""),
+                        "label": label,
+                        "state": "running",
+                        "parent_id": event.get("parent_tool_use_id"),
+                    }
+                )
+            elif block_type == "tool_result" and block.get("tool_use_id"):
+                agents.append(
+                    {
+                        "id": str(block["tool_use_id"]),
+                        "label": "",
+                        "state": "done",
+                        "parent_id": None,
+                    }
+                )
+
+    if items is None and not agents:
+        return None
+    return {"items": items, "agents": agents}
+
+
 def normalize_codex_hlp_kind(value: Any) -> HarnessEventKind | None:
     aliases: dict[str, HarnessEventKind] = {
         "approval": "needs_approval",

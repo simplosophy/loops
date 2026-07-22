@@ -132,6 +132,11 @@ TaskSpec:
   acceptance_criteria: [string]  # RECOMMENDED
   inputs: [InputRef]           # OPTIONAL
   constraints: Constraints     # OPTIONAL
+  review_policy: ReviewPolicy | null  # OPTIONAL, 多人评审聚合规则 (§3.6)，默认 null=单 reviewer
+
+ReviewPolicy:
+  required_reviewers: [user_]    # REQUIRED, 非空
+  quorum: "all" | "majority" | "any"  # 默认 "all"
 
 SteeringAmendment:
   text: string                 # REQUIRED, 自然语言方向修正
@@ -342,6 +347,7 @@ Review:
   id: rev_
   task_id: task_
   artifact_id: art_            # REQUIRED
+  artifact_version: string | null  # OPTIONAL, 提交时被评审 artifact 的当前版本（多人聚合按版本分轮）
   reviewer: user_              # MUST 是人
   kind: ReviewKind             # "plan" | "deliverable"，默认 deliverable
   verdict: ReviewVerdict       # REQUIRED
@@ -364,7 +370,17 @@ ReviewComment:
   `in_progress` 继续；`changes_requested` 同样回 `in_progress` 等待返工。
 - `kind="deliverable"` 的 Review 针对终态交付物：`approved` 推向 `accepted`；
   `rejected` 推向 `rejected` 终态。
-- 多人 review 语义未定（§7.5）；本版本假设单 reviewer。
+- **多人评审（§7.5 已收敛）**：当 `Task.spec.review_policy` 非空且 `kind="deliverable"`
+  时，实现 **MUST** 按下列确定性规则聚合，取每位 required reviewer 对 artifact
+  **当前版本**的最新 verdict（改意见 = 追加新 Review）：
+  1. **veto**：任一 required reviewer 最新 verdict 为 `rejected` → Task → `rejected`；
+  2. **quorum-approve**：`all` = 全员 `approved`；`majority` = 严格过半 `approved`；
+     `any` = ≥1 `approved` → Task → `accepted` → `completed`；
+  3. **changes_requested**：任一 required reviewer 最新 verdict 为
+     `changes_requested` → 立即返工（→ `in_progress`，不等齐）；
+  4. 否则为 **pending**：Task 停留 `under_review`，不产生终态副作用。
+- 多人聚合下 `reviewer` **MUST** 属于 `review_policy.required_reviewers`（§4.3）。
+- 无 `review_policy` 时维持单 reviewer 语义不变。
 
 ### 3.7 Artifact
 
@@ -547,7 +563,7 @@ context 覆盖 `task.assign`、`task.cancel`、`task.amend`、`task.interrupt`�
 | `checkpoint.resolve` | 存在 pending Checkpoint 且调用方为授权人 |
 | `ownership.delegate` | ownership.delegable == true |
 | `artifact.commit` | Task.state ∈ {in_progress, under_review-changes} |
-| `review.submit` | Task.state ∈ {review_ready, under_review}；`kind=deliverable` 的 approved 仅当 Task.state == under_review 时推向 accepted |
+| `review.submit` | Task.state ∈ {review_ready, under_review}；`kind=deliverable` 的 approved 仅当 Task.state == under_review 时推向 accepted；启用 `review_policy` 时 reviewer ∈ required_reviewers（§3.6） |
 
 ---
 
@@ -748,7 +764,9 @@ Checkpoint 的并发 pending 仍 **SHOULD** 单一（§3.4）；一次需问多�
 Checkpoint 的 `proposed_actions` 批量提议。
 
 ### 7.5 多人 Review
-一个 Artifact 多人 review 时的 verdict 合成规则未定。本版本假设单 reviewer。
+**已收敛**（2026-07-20）：`TaskSpec.review_policy`（required_reviewers + quorum）
++ §3.6 确定性聚合规则（veto > quorum-approve > changes_requested > pending，
+按 artifact 当前版本分轮）。详见 §3.2 / §3.6。
 
 ### 7.6 跨 project Artifact 引用
 是否允许、如何授权未定。本版本要求显式跨域授权但未规定机制。
@@ -842,6 +860,7 @@ state_patch resume）；ownership 流转全部入 audit；HLP→harness adapter 
 | 0.2.0-draft | 2026-07-13 | 附录 C：Soft/Hard control、Channel→HLP 晋级（promotion）、InteractionRef、`HLP-realtime` profile 草案。**不** 新增一等对象或 media 绑定。设计全文见 `docs/plans/2026-07-13-hlp-realtime-control-plane.md` |
 | 0.2.0-draft | 2026-07-13 | 附录 C **决策收敛**：Soft 不进状态机；合并在 host/profile、HLP 只收结果；BCI 默认不得单独 hard-resolve 高风险 checkpoint。作为 0.3 规范草案收口，仍不改 0.2.0 操作集。 |
 | 0.3.0-draft | 2026-07-13 | **可选 profile 版本标签**（不替换 0.2.0 核心版本号）：`HLP_REALTIME_SPEC_VERSION` / 附录 C；reference：`ControlSignal`、`merge_soft_control_signals`、TUI `/promote`、`loops-hlp-realtime-demo`。Package 版本仍为 0.2.0。 |
+| 0.2.0-draft | 2026-07-20 | §7.5 **多人评审收敛**：`TaskSpec.review_policy`（required_reviewers + quorum ∈ all/majority/any）、§3.6 聚合规则（veto > quorum-approve > changes_requested > pending）、`Review.artifact_version` 按版本分轮、§4.3 reviewer 成员前置。后向兼容可选字段，不改操作集。 |
 
 ## 附录 C：Soft / Hard Control 与准实时晋级（0.3 规范草案）
 

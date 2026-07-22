@@ -95,7 +95,7 @@ class SessionStore:
 
     def set_preference(self, session_id: str, *, field: str, value: str) -> TUISession:
         session = self.resume(session_id)
-        allowed = {"permission_mode", "model", "theme", "composer_mode"}
+        allowed = {"permission_mode", "model", "theme", "composer_mode", "adapter"}
         if field not in allowed:
             raise ValueError(f"unsupported preference: {field}")
         updated = self._replace(session, **{field: value, "updated_at": _now()})

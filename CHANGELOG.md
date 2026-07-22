@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-21
+
+### Added
+
+- TUI industrial hardening: readline input with persistent history and tab
+  completion (`loops/tui/console.py`), role-colored output with
+  `--no-color`/`NO_COLOR`/non-TTY handling, per-turn status line, and an
+  actionable error UX (did-you-mean suggestions for unknown commands plus
+  recovery hints per error family).
+- Harness progress projection (`RunProgressSnapshot`, appendix C §C.2):
+  adapters accumulate each CLI's aggregate state — codex `todo_list` items,
+  claude `TodoWrite` todos and `Task` sub-agents (with parent links) — into
+  an ephemeral per-run snapshot. `HLPClient.run_progress` facade and TUI
+  `/progress` (checklist + agent tree) plus a compact progress line after
+  each prompt. Ephemeral by design: never audited, never a responsibility
+  record; pi/kimi wires carry no progress events and return None.
+- Runtime adapter and model switching in the TUI: `/adapter` rebuilds the
+  client over the shared store (task history survives) and hands the active
+  task off to the new adapter; `/model` rebuilds with a different model.
+  `build_client` accepts a shared `store`; `set_preference` supports the
+  `adapter` field. Live-verified (pi → kimi switch with handoff).
+- `loops-hlp-tui` is now a full standalone harness host: `/tasks` `/use`
+  `/handoff` `/artifacts` `/show` commands, Ctrl+C seizing control via
+  `task.interrupt` instead of dying, `--resume <session_id>` startup with
+  open-inbox banner, `--model` passthrough for all four CLI adapters, and
+  grouped `/help`. Handoff uses session forking on fork-capable CLIs
+  (pi/claude), proven live end-to-end (codeword probe through the TUI).
+- Multi-reviewer aggregation (spec §7.5 converged): optional
+  `TaskSpec.review_policy` (required reviewers + `all`/`majority`/`any`
+  quorum) with deterministic per-artifact-version aggregation — veto >
+  quorum-approve > changes_requested > pending. `Review.artifact_version`
+  pins review rounds; reviewers must be policy members (`UNAUTHORIZED`
+  otherwise). Fully backward-compatible (no policy = single-reviewer
+  semantics unchanged); wire/transport support included
+  (`tests/test_hlp_multi_reviewer.py`).
+
 ## [0.3.0] - 2026-07-20
 
 ### Added
@@ -96,6 +132,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `loops/tui/controller.py` (833 lines) split into a 23-line composition
+  over `_base.py` plus four domain mixins (`_session_cmds`, `_work_cmds`,
+  `_hlp_cmds`, `_control_cmds`), mirroring the operations package structure.
+- Adapter testing tier demoted: the run-registry machinery moved from
+  `FakeAgentAdapter` into a production base `RunRegistryAdapter`
+  (`loops/hlp/adapters/_registry.py`), which `ProcessAgentAdapter` now
+  extends — production adapters no longer inherit from a class named Fake.
+  `Fake*`/`InMemory*` stay importable from `loops.hlp` and
+  `loops.hlp.adapters.fake` but are no longer re-exported from the top-level
+  `loops` package. `HLPClient`'s default adapter and TUI `--adapter fake`
+  offline mode are unchanged.
+- Adapters package restructured: the shared CLI harness machinery moved from
+  `codex.py` into `HarnessAdapterBase` (`loops/hlp/adapters/_harness.py`,
+  now public), and each CLI got a dedicated module — `pi.py`, `claude.py`,
+  `kimi.py`, `hermes.py` (replacing `cli.py`). Codex's file is now codex-only
+  (553 → 114 lines). Pure code motion; the public API is unchanged.
 - `loops/hlp/operations.py` (1.6k-line god class) split into the
   `loops/hlp/operations/` package: per-domain mixins (task / checkpoint /
   ownership / review / artifact / ledger / audit) composed in
@@ -144,6 +196,7 @@ Protocol SDK, with execution harnesses external behind adapter contracts.
 - VitePress documentation site (`docs/site`, published at
   https://ontheloops.com) with the HLP/AAP/CAP specs.
 
-[Unreleased]: https://github.com/simplosophy/loops/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/simplosophy/loops/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/simplosophy/loops/releases/tag/v0.4.0
 [0.3.0]: https://github.com/simplosophy/loops/releases/tag/v0.3.0
 [0.2.0]: https://github.com/simplosophy/loops/releases/tag/v0.2.0

@@ -500,7 +500,7 @@ def test_codex_harness_peek_ack_replays_until_ack():
     run(adapter.ack_events(run_id, through=first_peek[0].cursor))
 
     assert run(adapter.peek_events(run_id)) == ()
-    assert adapter._codex_events == {}
+    assert adapter._harness_events == {}
 
 
 class LegacyObserveHarness(FakeAgentAdapter):

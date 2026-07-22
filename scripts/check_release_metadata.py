@@ -10,7 +10,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "0.3.0"
+EXPECTED_VERSION = "0.4.0"
 EXPECTED_SPEC_VERSION = "0.2.0-draft"
 EXPECTED_SCHEMA_VERSION = "0.2"
 EXPECTED_PROFILE = "HLP-industrial"

@@ -1,0 +1,572 @@
+from __future__ import annotations
+
+import inspect
+from datetime import UTC, datetime
+from typing import Any
+
+from ..objects import (
+    AdapterOperationContext,
+    ProgressItem,
+    RunProgressSnapshot,
+    SubAgentStatus,
+)
+from ..schema import to_wire
+from . import _parsing as parsing
+from . import _util as util
+from ._registry import RunRegistryAdapter
+from .process import (
+    PromptCLIAdapter,
+    prompt_for_adapter_operation,
+    run_prompt_process,
+)
+from .protocol import (
+    AgentAdapterError,
+    AgentRunHandle,
+    HarnessCapabilities,
+    HarnessEvent,
+    HarnessEventDelivery,
+    ProcessRunner,
+)
+
+
+class HarnessAdapterBase(PromptCLIAdapter):
+    """Shared machinery for CLI harness adapters with HLP event projection.
+
+    Each CLI keeps its own execution model. This base only provides the HLP
+    boundary: prompt-mode command execution plus projection of explicit
+    human-loop events from the CLI's JSONL stdout, with optional native
+    session continuity. Each CLI subclass defines its own default command
+    and ``_resume_command``.
+    """
+
+    def __init__(
+        self,
+        command: tuple[str, ...],
+        *,
+        name: str,
+        runner: ProcessRunner | None = None,
+        timeout: float = 120.0,
+        capabilities: HarnessCapabilities | None = None,
+        prompt_mode: str = "protocol",
+        session_continuity: bool = True,
+    ) -> None:
+        super().__init__(
+            command,
+            name=name,
+            runner=runner or run_prompt_process,
+            timeout=timeout,
+            prompt_mode=prompt_mode,
+        )
+        self._capabilities = capabilities or HarnessCapabilities(name=name)
+        self._harness_events: dict[str, list[dict[str, Any]]] = {}
+        self._codex_event_counter = 0
+        # run_id -> CLI-native session id (session-resume continuity).
+        self._session_continuity = session_continuity
+        self._run_sessions: dict[str, str] = {}
+        # run_id -> latest progress projection (ephemeral, appendix C §C.2).
+        self._run_progress: dict[str, RunProgressSnapshot] = {}
+
+    def run_progress(self, run_id: str) -> RunProgressSnapshot | None:
+        """Latest ephemeral progress projection for a run, when the harness
+        wire carries progress events (codex todo_list, claude TodoWrite/Task).
+        Returns None for harnesses without a progress source (pi, kimi)."""
+        return self._run_progress.get(run_id)
+
+    def _accumulate_progress(
+        self,
+        run_id: str,
+        task_id: str,
+        events: tuple[dict[str, Any], ...],
+    ) -> None:
+        parsed = parsing.progress_from_events(events)
+        if parsed is None:
+            return
+        self._run_progress[run_id] = self._merge_progress(run_id, task_id, parsed)
+
+    def _merge_progress(
+        self,
+        run_id: str,
+        task_id: str,
+        parsed: dict[str, Any],
+    ) -> RunProgressSnapshot:
+        prior = self._run_progress.get(run_id)
+        items: list[ProgressItem]
+        if parsed["items"] is not None:
+            items = [
+                ProgressItem(label=entry["label"], state=entry["state"])
+                for entry in parsed["items"]
+            ]
+            # Promote the first pending entry only when nothing is in progress.
+            if not any(entry.state == "in_progress" for entry in items):
+                for index, entry in enumerate(items):
+                    if entry.state == "pending":
+                        items[index] = ProgressItem(
+                            label=entry.label,
+                            state="in_progress",
+                            note=entry.note,
+                        )
+                        break
+        elif prior is not None:
+            items = list(prior.items)
+        else:
+            items = []
+
+        agents = list(prior.agents) if prior is not None else []
+        for update in parsed["agents"]:
+            label = update["label"] or next(
+                (agent.label for agent in agents if agent.id == update["id"]),
+                "",
+            )
+            parent_id = update["parent_id"] or next(
+                (agent.parent_id for agent in agents if agent.id == update["id"]),
+                None,
+            )
+            agents = [agent for agent in agents if agent.id != update["id"]]
+            agents.append(
+                SubAgentStatus(
+                    id=update["id"],
+                    label=label,
+                    state=update["state"],
+                    parent_id=parent_id,
+                )
+            )
+
+        summary = next((item.label for item in items if item.state == "in_progress"), "")
+        return RunProgressSnapshot(
+            run_id=run_id,
+            task_id=task_id,
+            updated_at=datetime.now(UTC),
+            summary=summary,
+            items=tuple(items),
+            agents=tuple(agents),
+        )
+
+    def harness_capabilities(self) -> HarnessCapabilities:
+        return self._capabilities
+
+    def session_of_run(self, run_id: str) -> str | None:
+        """The CLI-native session id bound to a run, when known."""
+        return self._run_sessions.get(run_id)
+
+    def _bind_session(self, run_id: str, events: tuple[dict[str, Any], ...]) -> None:
+        session_id = parsing.session_id_from_events(events)
+        if session_id:
+            self._run_sessions[run_id] = session_id
+
+    async def delegate(
+        self,
+        task_id: str,
+        agent_id: str,
+        capability: str,
+        input: dict[str, Any],
+        parent_run: str | None = None,
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> str:
+        request = {
+            "operation": "delegate",
+            "task_id": task_id,
+            "agent_id": agent_id,
+            "capability": capability,
+            "input": input,
+            "parent_run": parent_run,
+            "correlation_id": task_id,
+        }
+        if operation_context is not None:
+            request["operation_context"] = to_wire(operation_context)
+        payload = await self._execute("delegate", request)
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, task_id, self.name, "delegate")
+        run_id = str(
+            payload.get("run_id") or parsing.codex_run_id_from_events(events) or self._next_run_id()
+        )
+        self._runs[run_id] = AgentRunHandle(
+            run_id=run_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            correlation_id=task_id,
+            capability=capability,
+            parent_run=parent_run,
+        )
+        self.process_results[run_id] = payload
+        self._queue_harness_events(run_id, events)
+        self._bind_session(run_id, events)
+        self._accumulate_progress(run_id, task_id, events)
+        self.calls.append(
+            (
+                "delegate",
+                {
+                    "run_id": run_id,
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "capability": capability,
+                    "input": input,
+                    "parent_run": parent_run,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
+        return run_id
+
+    async def block(
+        self,
+        run_id: str,
+        checkpoint_id: str,
+        reason: str,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "block", context=context)
+        payload = await self._execute(
+            "block",
+            {
+                "operation": "block",
+                "run_id": run_id,
+                "checkpoint_id": checkpoint_id,
+                "reason": reason,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, handle.correlation_id, self.name, "block")
+        self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
+        await RunRegistryAdapter.block(self, run_id, checkpoint_id, reason, context=context)
+
+    async def resume(
+        self,
+        run_id: str,
+        resolution: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "resume", context=context)
+        payload = await self._execute(
+            "resume",
+            {
+                "operation": "resume",
+                "run_id": run_id,
+                "resolution": resolution,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, handle.correlation_id, self.name, "resume")
+        self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
+        await RunRegistryAdapter.resume(self, run_id, resolution, context=context)
+
+    async def steer(
+        self,
+        run_id: str,
+        amendment: Any,
+        *,
+        context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "steer", context=context)
+        amendment_payload = util.adapter_payload(amendment)
+        payload = await self._execute(
+            "steer",
+            {
+                "operation": "steer",
+                "run_id": run_id,
+                "amendment": amendment_payload,
+                "correlation_id": handle.correlation_id,
+                "operation_context": to_wire(context) if context is not None else None,
+            },
+        )
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, handle.correlation_id, self.name, "steer")
+        self.process_results[run_id] = payload
+        self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
+        await RunRegistryAdapter.steer(self, run_id, amendment_payload, context=context)
+
+    async def handoff(
+        self,
+        run_id: str,
+        to_agent: str,
+        context: dict[str, Any],
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> str:
+        current = self._require_run(run_id, "handoff", context=operation_context)
+        payload = await self._execute(
+            "handoff",
+            {
+                "operation": "handoff",
+                "run_id": run_id,
+                "to_agent": to_agent,
+                "context": context,
+                "correlation_id": current.correlation_id,
+                **(
+                    {"operation_context": to_wire(operation_context)}
+                    if operation_context is not None
+                    else {}
+                ),
+            },
+        )
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, current.correlation_id, self.name, "handoff")
+        new_run_id = str(
+            payload.get("run_id")
+            or payload.get("to_run")
+            or parsing.codex_run_id_from_events(events)
+            or self._next_run_id()
+        )
+        self._runs[new_run_id] = AgentRunHandle(
+            run_id=new_run_id,
+            task_id=current.task_id,
+            agent_id=to_agent,
+            correlation_id=current.correlation_id,
+            capability=current.capability,
+            parent_run=run_id,
+        )
+        self.process_results[new_run_id] = payload
+        self._queue_harness_events(new_run_id, events)
+        self._bind_session(new_run_id, events)
+        self._accumulate_progress(new_run_id, current.task_id, events)
+        self.calls.append(
+            (
+                "handoff",
+                {
+                    "from_run": run_id,
+                    "to_run": new_run_id,
+                    "to_agent": to_agent,
+                    "context": context,
+                    "operation_context": (
+                        to_wire(operation_context) if operation_context is not None else None
+                    ),
+                },
+            )
+        )
+        return new_run_id
+
+    async def cancel(
+        self,
+        run_id: str,
+        reason: str,
+        *,
+        operation_context: AdapterOperationContext | None = None,
+    ) -> None:
+        handle = self._require_run(run_id, "cancel", context=operation_context)
+        payload = await self._execute(
+            "cancel",
+            {
+                "operation": "cancel",
+                "run_id": run_id,
+                "reason": reason,
+                "correlation_id": handle.correlation_id,
+                **(
+                    {"operation_context": to_wire(operation_context)}
+                    if operation_context is not None
+                    else {}
+                ),
+            },
+        )
+        events = parsing.pop_codex_events(payload)
+        util.validate_correlation(payload, handle.correlation_id, self.name, "cancel")
+        self._queue_harness_events(run_id, events)
+        self._accumulate_progress(run_id, handle.task_id, events)
+        await RunRegistryAdapter.cancel(
+            self,
+            run_id,
+            reason,
+            operation_context=operation_context,
+        )
+
+    async def observe(self, run_id: str) -> tuple[HarnessEvent, ...]:
+        deliveries = await self.peek_events(run_id)
+        if deliveries:
+            await self.ack_events(run_id, through=deliveries[-1].cursor)
+        events = tuple(delivery.event for delivery in deliveries)
+        self.calls.append(
+            (
+                "observe",
+                {
+                    "run_id": run_id,
+                    "events": len(events),
+                },
+            )
+        )
+        return events
+
+    async def peek_events(
+        self,
+        run_id: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> tuple[HarnessEventDelivery, ...]:
+        handle = self._require_run(run_id, "peek_events")
+        raw_events = self._harness_events.get(run_id, [])
+        start = 0
+        if cursor is not None:
+            for index, raw in enumerate(raw_events):
+                if parsing.codex_event_id(raw) == cursor:
+                    start = index + 1
+                    break
+            else:
+                raise AgentAdapterError(
+                    self.name,
+                    "peek_events",
+                    "unknown event cursor",
+                    details={"run_id": run_id, "cursor": cursor},
+                )
+        projected: list[HarnessEventDelivery] = []
+        for raw in raw_events[start:]:
+            event = parsing.codex_event_to_harness_event(raw, handle)
+            if event is None:
+                continue
+            projected.append(
+                HarnessEventDelivery(
+                    cursor=parsing.codex_event_id(raw) or "",
+                    event=event,
+                )
+            )
+            if limit is not None and len(projected) >= limit:
+                break
+        self.calls.append(
+            (
+                "peek_events",
+                {
+                    "run_id": run_id,
+                    "raw_events": len(raw_events[start:]),
+                    "events": len(projected),
+                },
+            )
+        )
+        return tuple(projected)
+
+    async def ack_events(self, run_id: str, *, through: str) -> None:
+        self._require_run(run_id, "ack_events")
+        events = self._harness_events.get(run_id, [])
+        for index, raw in enumerate(events):
+            if parsing.codex_event_id(raw) == through:
+                del events[: index + 1]
+                if not events:
+                    self._harness_events.pop(run_id, None)
+                self.calls.append(("ack_events", {"run_id": run_id, "through": through}))
+                return
+        raise AgentAdapterError(
+            self.name,
+            "ack_events",
+            "unknown event cursor",
+            details={"run_id": run_id, "through": through},
+        )
+
+    async def _execute(self, operation: str, request: dict[str, Any]) -> dict[str, Any]:
+        prompt = prompt_for_adapter_operation(request, mode=self.prompt_mode)
+        command = self._command_for_prompt(operation, request, prompt)
+        try:
+            result = self.runner(command, request, self.timeout)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process runner raised an exception",
+                details={
+                    "command": command,
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc),
+                },
+            ) from exc
+        if result.exit_code != 0:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process command failed",
+                details={
+                    "command": command,
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                },
+            )
+        if not result.stdout.strip():
+            return {}
+        try:
+            payload, events = parsing.parse_codex_stdout(result.stdout)
+            parsing.validate_codex_event_correlations(
+                events,
+                str(request.get("correlation_id") or ""),
+                self.name,
+                operation,
+            )
+        except ValueError as exc:
+            raise AgentAdapterError(
+                self.name,
+                operation,
+                "process stdout did not contain Codex JSON events",
+                details={"stdout": result.stdout, "stderr": result.stderr},
+            ) from exc
+        # Schema-less CLIs may omit the echo; the adapter binds correlation locally.
+        # Present-but-different values were already rejected above.
+        expected_correlation = str(request.get("correlation_id") or "")
+        if expected_correlation and "correlation_id" not in payload:
+            payload["correlation_id"] = expected_correlation
+        payload[parsing.CODEX_EVENTS_KEY] = events
+        return payload
+
+    _RESUME_OPS = frozenset({"block", "resume", "steer", "cancel"})
+
+    def _command_for_prompt(
+        self,
+        operation: str,
+        request: dict[str, Any],
+        prompt: str,
+    ) -> tuple[str, ...]:
+        """One-shot command, or the CLI's session-resume command for follow-up ops.
+
+        Continuity means "a new turn in the same native session" — the strongest
+        form these CLIs offer today, not frozen-process resumption. Handoff forks
+        the native session when the CLI supports it, so the receiving agent
+        inherits the full context; otherwise it falls back to one-shot.
+        """
+        if self._session_continuity:
+            session_id = self._run_sessions.get(str(request.get("run_id") or ""))
+            if session_id:
+                if operation == "handoff":
+                    fork = self._fork_command(session_id, prompt)
+                    if fork is not None:
+                        return fork
+                elif operation in self._RESUME_OPS:
+                    return self._resume_command(session_id, prompt)
+        return (*self.command, prompt)
+
+    def _fork_command(self, session_id: str, prompt: str) -> tuple[str, ...] | None:
+        """Native session-fork command for handoff, or None when the CLI cannot fork."""
+        return None
+
+    def _resume_command(self, session_id: str, prompt: str) -> tuple[str, ...]:
+        """Native session-resume command for follow-up ops; each CLI defines its own."""
+        raise NotImplementedError
+
+    def _queue_harness_events(
+        self,
+        fallback_run_id: str,
+        events: tuple[dict[str, Any], ...],
+    ) -> None:
+        seen_signatures: set[str] = set()
+        for event in events:
+            if not parsing.codex_event_may_project(event):
+                continue
+            # Drop transport-level duplicates within one batch (e.g. Claude
+            # Code's result envelope repeats the final assistant text).
+            signature = parsing.codex_event_signature(event)
+            if signature is not None:
+                if signature in seen_signatures:
+                    continue
+                seen_signatures.add(signature)
+            event = dict(event)
+            if parsing.codex_event_id(event) is None:
+                self._codex_event_counter += 1
+                event["_hlp_event_id"] = f"evt_{self._codex_event_counter:06d}"
+            run_id = parsing.codex_event_run_id(event) or fallback_run_id
+            self._harness_events.setdefault(run_id, []).append(event)

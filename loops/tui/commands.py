@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import re
 import shlex
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ class CommandDefinition:
     summary: str
     kind: CommandKind
     covered: bool = True
+    group: str = "other"
 
 
 class CommandParseError(ValueError):
@@ -32,41 +34,77 @@ class CommandParseError(ValueError):
 
 
 COMMANDS: dict[str, CommandDefinition] = {
-    "help": CommandDefinition("help", "Show command help.", "direct"),
-    "new": CommandDefinition("new", "Start a new TUI session.", "direct"),
-    "clear": CommandDefinition("clear", "Clear visible transcript.", "direct"),
-    "resume": CommandDefinition("resume", "Resume a saved session.", "direct"),
-    "fork": CommandDefinition("fork", "Fork current session metadata and transcript.", "direct"),
-    "archive": CommandDefinition("archive", "Archive current session.", "direct"),
-    "delete": CommandDefinition("delete", "Delete current session after confirmation.", "direct"),
-    "permissions": CommandDefinition("permissions", "Set autonomy and permission mode.", "hlp"),
-    "inbox": CommandDefinition("inbox", "Show HLP human inbox.", "hlp"),
-    "approve": CommandDefinition("approve", "Approve current checkpoint.", "hlp"),
-    "reject": CommandDefinition("reject", "Reject current checkpoint.", "hlp"),
-    "choose": CommandDefinition("choose", "Resolve a choice checkpoint.", "hlp"),
-    "input": CommandDefinition("input", "Provide text to an input checkpoint.", "hlp"),
-    "amend": CommandDefinition("amend", "Append HLP steering amendment.", "hlp"),
+    "help": CommandDefinition("help", "Show command help.", "direct", group="session"),
+    "new": CommandDefinition("new", "Start a new TUI session.", "direct", group="session"),
+    "clear": CommandDefinition("clear", "Clear visible transcript.", "direct", group="session"),
+    "resume": CommandDefinition("resume", "Resume a saved session.", "direct", group="session"),
+    "fork": CommandDefinition(
+        "fork", "Fork current session metadata and transcript.", "direct", group="session"
+    ),
+    "archive": CommandDefinition("archive", "Archive current session.", "direct", group="session"),
+    "delete": CommandDefinition(
+        "delete", "Delete current session after confirmation.", "direct", group="session"
+    ),
+    "tasks": CommandDefinition("tasks", "List HLP tasks with states.", "hlp", group="work"),
+    "use": CommandDefinition("use", "Switch the active task: /use <task_id>.", "hlp", group="work"),
+    "handoff": CommandDefinition(
+        "handoff", "Transfer the active task to another agent.", "hlp", group="work"
+    ),
+    "artifacts": CommandDefinition(
+        "artifacts", "List artifacts of the active task.", "hlp", group="work"
+    ),
+    "show": CommandDefinition(
+        "show", "Show artifact details: /show <artifact_id>.", "hlp", group="work"
+    ),
+    "permissions": CommandDefinition(
+        "permissions", "Set autonomy and permission mode.", "hlp", group="hlp"
+    ),
+    "inbox": CommandDefinition("inbox", "Show HLP human inbox.", "hlp", group="hlp"),
+    "approve": CommandDefinition("approve", "Approve current checkpoint.", "hlp", group="hlp"),
+    "reject": CommandDefinition("reject", "Reject current checkpoint.", "hlp", group="hlp"),
+    "choose": CommandDefinition("choose", "Resolve a choice checkpoint.", "hlp", group="hlp"),
+    "input": CommandDefinition("input", "Provide text to an input checkpoint.", "hlp", group="hlp"),
+    "amend": CommandDefinition("amend", "Append HLP steering amendment.", "hlp", group="hlp"),
     "soft": CommandDefinition(
         "soft",
         "Buffer soft control: /soft <text> | list | pop | clear.",
         "hlp",
+        group="control",
     ),
-    "softs": CommandDefinition("softs", "List buffered soft controls.", "hlp"),
+    "softs": CommandDefinition("softs", "List buffered soft controls.", "hlp", group="control"),
     "promote": CommandDefinition(
         "promote",
         "Merge soft buffer (or one-shot text) into task.amend.",
         "hlp",
+        group="control",
     ),
-    "interrupt": CommandDefinition("interrupt", "Raise a human interrupt checkpoint.", "hlp"),
-    "review": CommandDefinition("review", "Submit artifact review.", "hlp"),
-    "audit": CommandDefinition("audit", "Replay HLP audit.", "hlp"),
-    "diff": CommandDefinition("diff", "Show diff summary.", "direct"),
-    "model": CommandDefinition("model", "Record preferred model metadata.", "compat"),
-    "mcp": CommandDefinition("mcp", "Explain harness-owned MCP surface.", "compat"),
-    "statusline": CommandDefinition("statusline", "Show status line fields.", "direct"),
-    "theme": CommandDefinition("theme", "Record theme metadata.", "direct"),
-    "vim": CommandDefinition("vim", "Record composer mode metadata.", "compat"),
-    "compact": CommandDefinition("compact", "Record transcript summary event.", "compat"),
+    "interrupt": CommandDefinition(
+        "interrupt", "Raise a human interrupt checkpoint.", "hlp", group="control"
+    ),
+    "review": CommandDefinition("review", "Submit artifact review.", "hlp", group="hlp"),
+    "audit": CommandDefinition("audit", "Replay HLP audit.", "hlp", group="hlp"),
+    "progress": CommandDefinition(
+        "progress", "Show harness todo checklist and sub-agent status.", "hlp", group="work"
+    ),
+    "diff": CommandDefinition("diff", "Show diff summary.", "direct", group="other"),
+    "model": CommandDefinition(
+        "model", "Set adapter model (rebuilds client).", "compat", group="session"
+    ),
+    "adapter": CommandDefinition(
+        "adapter",
+        "Switch harness adapter at runtime: /adapter <codex|pi|claude|kimi|fake>.",
+        "hlp",
+        group="session",
+    ),
+    "mcp": CommandDefinition("mcp", "Explain harness-owned MCP surface.", "compat", group="other"),
+    "statusline": CommandDefinition(
+        "statusline", "Show status line fields.", "direct", group="session"
+    ),
+    "theme": CommandDefinition("theme", "Record theme metadata.", "direct", group="other"),
+    "vim": CommandDefinition("vim", "Record composer mode metadata.", "compat", group="other"),
+    "compact": CommandDefinition(
+        "compact", "Record transcript summary event.", "compat", group="other"
+    ),
 }
 
 
@@ -98,7 +136,11 @@ def _parse_command(value: str) -> InputIntent:
     command_token = parts[0]
     name = command_token[1:]
     if not name or name not in COMMANDS:
-        raise CommandParseError(f"unknown command: {command_token}")
+        message = f"unknown command: {command_token}"
+        suggestions = difflib.get_close_matches(name, COMMANDS.keys(), n=1, cutoff=0.6)
+        if suggestions:
+            message += f" (did you mean /{suggestions[0]}?)"
+        raise CommandParseError(message)
     args = parts[1:]
     return InputIntent(
         kind="command",

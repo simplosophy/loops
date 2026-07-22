@@ -142,11 +142,19 @@ def test_render_help_status_and_transcript_are_stable(tmp_path):
 
     lines = help_text.splitlines()
     assert lines[0] == "HLP TUI commands:"
-    command_lines = lines[1:]
-    assert command_lines == sorted(command_lines)
-    assert "/amend        hlp    Append HLP steering amendment." in command_lines
-    assert "/audit        hlp    Replay HLP audit." in command_lines
-    assert "/help         direct Show command help." in command_lines
+    for title in (
+        "Session:",
+        "Tasks & artifacts:",
+        "Human-loop decisions:",
+        "Continuous control:",
+        "Other:",
+    ):
+        assert title in lines
+    assert "/handoff" in help_text
+    assert "/tasks" in help_text
+    assert "/amend        Append HLP steering amendment." in help_text
+    assert "/audit        Replay HLP audit." in help_text
+    assert "/help         Show command help." in help_text
     assert (
         status
         == "session="
@@ -968,14 +976,10 @@ def test_build_client_uses_harness_capable_codex_and_pi():
     assert codex.adapter.command[:3] == ("codex", "exec", "--json")
     assert isinstance(pi.adapter, PiHarnessAdapter)
     assert pi.adapter.timeout == 12.0
-    assert pi.adapter.command[:6] == (
-        "pi",
-        "--mode",
-        "json",
-        "-p",
-        "--no-session",
-        "--no-tools",
-    )
+    # Session continuity (default) strips --no-session so runs are resumable.
+    assert "--no-session" not in pi.adapter.command
+    assert pi.adapter.command[:4] == ("pi", "--mode", "json", "-p")
+    assert "--no-tools" in pi.adapter.command
     assert isinstance(fake.adapter, FakeAgentAdapter)
 
 
@@ -1727,3 +1731,240 @@ def test_build_client_supports_claude_and_kimi():
     assert isinstance(kimi.adapter, KimiHarnessAdapter)
     assert kimi.adapter.prompt_mode == "chat"
     assert kimi.adapter.command[:4] == ("kimi", "--output-format", "stream-json", "-p")
+
+
+def test_tasks_use_handoff_artifacts_show_commands(tmp_path):
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    session, active = _start_hlp_tui_session(store, controller)
+    task_id = active.active_task_id
+
+    result = run(controller.handle(session.id, "/tasks"))
+    assert task_id in result.output
+    assert result.output.splitlines()[1].startswith("*")
+
+    result = run(controller.handle(session.id, f"/use {task_id}"))
+    assert "active task" in result.output
+
+    terminal = run(client.create_task(principal="user_alice", goal="done"))
+    run(client.operations.task_cancel(terminal.id, by="user_alice"))
+    result = run(controller.handle(session.id, f"/use {terminal.id}"))
+    assert "terminal" in result.output
+
+    result = run(controller.handle(session.id, "/handoff agent_review"))
+    assert "handed off task" in result.output
+    assert "agent_review" in result.output
+    assert store.resume(session.id).active_task_id == task_id
+
+    artifact = run(
+        client.commit_artifact(
+            task_id=task_id,
+            type="report",
+            payload=ArtifactPayload(kind="inline", uri="mem://v1", checksum="sha256:v1"),
+            produced_by="agent_review",
+        )
+    )
+    result = run(controller.handle(session.id, "/artifacts"))
+    assert artifact.id in result.output
+    assert "mem://v1" in result.output
+    result = run(controller.handle(session.id, f"/show {artifact.id}"))
+    assert "mem://v1" in result.output
+    assert "sha256:v1" in result.output
+
+
+def test_interrupt_active_ctrl_c_semantics(tmp_path):
+    from loops.tui.app import _interrupt_active
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    session, active = _start_hlp_tui_session(store, controller)
+
+    result = run(_interrupt_active(controller, session.id, active.principal))
+    assert "interrupted: checkpoint" in result
+    assert "blocked" in result
+    task = run(client.get_task(active.active_task_id))
+    assert task.state == "blocked"
+
+    empty = store.create(cwd="/repo", adapter="fake")
+    result = run(_interrupt_active(controller, empty.id, "user_local"))
+    assert "no active task" in result
+
+
+def test_build_client_passes_model_to_cli_commands():
+    from loops.tui.app import build_client
+
+    assert build_client("codex", stream=False, model="gpt-x").adapter.command[-2:] == (
+        "-m",
+        "gpt-x",
+    )
+    assert build_client("pi", stream=False, model="p1").adapter.command[-2:] == ("--model", "p1")
+    claude_cmd = build_client("claude", stream=False, model="sonnet").adapter.command
+    assert claude_cmd[-2:] == ("--model", "sonnet")
+    assert build_client("kimi", stream=False, model="k2").adapter.command[-2:] == ("-m", "k2")
+    assert "--model" not in build_client("pi", stream=False).adapter.command
+
+
+def test_adapter_switch_rebuilds_client_and_hands_off_active_task(tmp_path):
+    builds = []
+
+    def builder(name, model, store):
+        builds.append((name, model, store))
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    adapter = FakeAgentAdapter()
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store, adapter_builder=builder)
+    session, active = _start_hlp_tui_session(store, controller)
+    original_store = client.store
+
+    result = run(controller.handle(session.id, "/adapter codex"))
+
+    assert result.output.startswith("adapter=codex")
+    assert "handed off" in result.output
+    assert builds and builds[-1][0] == "codex"
+    # Shared store: task history survives the switch.
+    assert builds[-1][2] is original_store
+    assert store.resume(session.id).adapter == "codex"
+    # Active task got a fresh run on the new adapter.
+    assert store.resume(session.id).active_run_id
+
+
+def test_adapter_switch_validation_and_missing_builder(tmp_path):
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    session, _active = _start_hlp_tui_session(store, controller)
+
+    result = run(controller.handle(session.id, "/adapter nope"))
+    assert "unsupported adapter" in result.output
+    result = run(controller.handle(session.id, "/adapter codex"))
+    assert "not configured" in result.output
+
+
+def test_model_command_rebuilds_live_adapter_and_records_for_fake(tmp_path):
+    builds = []
+
+    def builder(name, model, store):
+        builds.append((name, model, store))
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(
+        client=HLPClient(adapter=FakeAgentAdapter()),
+        sessions=store,
+        adapter_builder=builder,
+    )
+
+    result = run(controller.handle(session.id, "/model kimi-k2"))
+    assert "model=kimi-k2" in result.output
+    assert "client rebuilt" in result.output
+    assert builds == [("pi", "kimi-k2", controller.client.store)]
+    assert store.resume(session.id).model == "kimi-k2"
+
+    fake_session = store.create(cwd="/repo", adapter="fake", principal="user_local")
+    builds.clear()
+    result = run(controller.handle(fake_session.id, "/model none"))
+    assert "client rebuilt" not in result.output
+    assert builds == []
+
+
+def test_cross_adapter_switch_briefs_new_agent_via_steer(tmp_path):
+    def builder(name, model, store):
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(
+        client=HLPClient(adapter=FakeAgentAdapter()),
+        sessions=store,
+        adapter_builder=builder,
+    )
+    run(controller.handle(session.id, "remember code 123bcd"))
+
+    result = run(controller.handle(session.id, "/adapter codex"))
+
+    assert "transcript briefing" in result.output
+    assert "pi -> codex" in result.output or "pi" in result.output
+    task = run(controller.client.get_task(store.resume(session.id).active_task_id))
+    briefings = [entry.text for entry in task.steering_log]
+    assert any("no shared session history" in text for text in briefings)
+    assert any("remember code 123bcd" in text for text in briefings)
+
+
+def test_same_adapter_switch_uses_native_session_without_briefing(tmp_path):
+    def builder(name, model, store):
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(
+        client=HLPClient(adapter=FakeAgentAdapter()),
+        sessions=store,
+        adapter_builder=builder,
+    )
+    run(controller.handle(session.id, "some work"))
+
+    result = run(controller.handle(session.id, "/adapter pi"))
+
+    assert "native session" in result.output
+    assert "transcript briefing" not in result.output
+
+
+def test_progress_command_renders_snapshot_and_none_message(tmp_path):
+    from loops.hlp.adapters.process import ProcessResult
+
+    async def runner(command, request, timeout):
+        envelope = json.dumps(
+            {
+                "run_id": "run_1",
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+            }
+        )
+        stdout = "\n".join(
+            (
+                json.dumps({"type": "thread.started", "thread_id": "t1"}),
+                json.dumps(
+                    {
+                        "type": "item.started",
+                        "item": {
+                            "id": "i1",
+                            "type": "todo_list",
+                            "items": [
+                                {"text": "define cases", "completed": True},
+                                {"text": "execute cases", "completed": False},
+                            ],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"id": "i0", "type": "agent_message", "text": envelope},
+                    }
+                ),
+            )
+        )
+        return ProcessResult(exit_code=0, stdout=stdout, stderr="")
+
+    from loops.hlp import CodexHarnessAdapter
+
+    store = SessionStore(tmp_path / "sessions.json")
+    client = HLPClient(adapter=CodexHarnessAdapter(runner=runner))
+    controller = TUIController(client=client, sessions=store)
+    session = store.create(cwd="/repo", adapter="codex", principal="user_local")
+    run(controller.handle(session.id, "plan the work"))
+
+    result = run(controller.handle(session.id, "/progress"))
+    assert "✓ define cases" in result.output
+    assert "◐ execute cases" in result.output
+
+    empty = store.create(cwd="/repo", adapter="fake", principal="user_local")
+    result = run(controller.handle(empty.id, "/progress"))
+    assert "no active run" in result.output

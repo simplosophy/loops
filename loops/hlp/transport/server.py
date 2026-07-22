@@ -39,6 +39,7 @@ from ..objects import (
     InputRef,
     ProposedAction,
     ReviewComment,
+    ReviewPolicy,
 )
 from ..operations import HumanLoopOperations
 from ..schema import to_wire
@@ -133,6 +134,14 @@ def _comment(value: Any) -> ReviewComment:
     return ReviewComment(**value)
 
 
+def _review_policy(value: Any) -> ReviewPolicy | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ProtocolError("INVALID_SPEC", "review_policy must be an object")
+    return ReviewPolicy(**value)
+
+
 def _now_param(value: Any) -> Any:
     if value is None:
         return None
@@ -148,7 +157,11 @@ DispatchEntry = tuple[str, dict[str, Callable[[Any], Any]]]
 _DISPATCH: dict[str, DispatchEntry] = {
     "task.create": (
         "task_create",
-        {"acceptance_criteria": _strings, "inputs": _inputs},
+        {
+            "acceptance_criteria": _strings,
+            "inputs": _inputs,
+            "review_policy": _review_policy,
+        },
     ),
     "task.assign": ("task_assign", {}),
     "task.start": ("task_start", {}),

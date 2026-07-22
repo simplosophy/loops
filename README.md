@@ -27,7 +27,9 @@ optional host/channel demo, not part of the protocol core.
 
 - `Task`: the bounded unit of human-agent work.
 - `Checkpoint`: the point where an agent needs a human decision.
-- `Artifact` and `Review`: delivery and acceptance records.
+- `Artifact` and `Review`: delivery and acceptance records. Multi-reviewer
+  verdicts aggregate deterministically per artifact version when a task sets a
+  `review_policy` (veto > quorum-approve > changes_requested > pending).
 - `Ledger` and `Audit`: append-only project state and replayable history.
 - Continuous control values: `task.amend`, `task.interrupt`,
   `steering_log`, `PermissionGrant`, and checkpoint `proposed_actions`.
@@ -70,13 +72,50 @@ Run the full local CLI lifecycle test against installed Codex, Kimi, and Claude 
 uv run loops-hlp-local-cli-demo --adapters codex,kimi,claude
 ```
 
-Run the line-oriented HLP TUI channel:
+Run the standalone HLP harness host (line-oriented TUI):
 
 ```bash
 uv run loops-hlp-tui --adapter codex
-uv run loops-hlp-tui --adapter pi
+uv run loops-hlp-tui --adapter pi --model <model-name>
+uv run loops-hlp-tui --adapter claude
+uv run loops-hlp-tui --adapter kimi
 uv run loops-hlp-tui --adapter fake   # offline, no external CLI
+uv run loops-hlp-tui --resume <session_id>
 ```
+
+The TUI is a complete harness host over all four first-class CLI adapters
+(codex/pi/claude/kimi — projection, native structured output, session-resume
+continuity, fork-on-handoff, all live-verified):
+
+- **Full decision surface**: `/inbox` `/approve` `/reject` `/choose` `/input`
+  `/review` `/audit`, plus `/tasks` `/use` `/handoff` `/artifacts` `/show`
+  for multi-task and delivery work.
+- **Runtime adapter switching**: `/adapter <codex|pi|claude|kimi|fake>`
+  rebuilds the client over the shared store (task history survives) and
+  hands the active task off to the new adapter; `/model <name>` rebuilds
+  with a different model. Context inheritance on handoff follows the fork
+  matrix (pi/claude inherit; codex/kimi resume without history).
+- **Harness progress projection**: `/progress` shows the agent's own todo
+  checklist and sub-agent status for the active run (codex `todo_list`,
+  claude `TodoWrite`/`Task` blocks). Snapshots are ephemeral display
+  projections (appendix C §C.2) — never audited, never responsibility
+  records; pi/kimi wires carry no progress events yet and return none.
+- **Industrial input layer**: readline editing and persistent history, tab
+  completion for commands and adapter names, minimal role-colored output
+  (`--no-color` / `NO_COLOR` / non-TTY aware), and a per-turn status line
+  (adapter, task state, open inbox).
+- **Actionable error UX**: unknown commands get did-you-mean suggestions,
+  and every error family (adapter, timeout, NOT_FOUND, precondition,
+  unauthorized, usage) renders a concrete recovery hint.
+- **Ctrl+C seizes control**: it does not kill the session — it raises
+  `task.interrupt`, blocking the task for human resolution.
+- **Session continuity and true handoff**: follow-up ops resume the CLI's
+  native session; `/handoff <agent>` forks it (pi/claude), so the receiving
+  agent inherits full context — proven live by the codeword probe.
+- **Streaming chat mode**: live `⋯ agent: …` text deltas and status
+  milestones while the CLI runs; `--timeout` bounds each wait.
+- **Resume where you left off**: startup shows the open inbox;
+  `--resume <id>` jumps straight into a saved session.
 
 Live adapters (`codex` / `pi`) use **harness-capable** adapters
 (`CodexHarnessAdapter` / `PiHarnessAdapter`) in **chat prompt mode**: free-text

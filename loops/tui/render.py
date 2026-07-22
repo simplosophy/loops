@@ -6,11 +6,105 @@ from typing import Any
 from .commands import COMMANDS
 from .session import TUISession
 
+_GROUP_ORDER = ("session", "work", "hlp", "control", "other")
+_GROUP_TITLES = {
+    "session": "Session",
+    "work": "Tasks & artifacts",
+    "hlp": "Human-loop decisions",
+    "control": "Continuous control",
+    "other": "Other",
+}
+
 
 def render_help() -> str:
     lines = ["HLP TUI commands:"]
-    for name, command in sorted(COMMANDS.items()):
-        lines.append(f"/{name:<12} {command.kind:<6} {command.summary}")
+    for group in _GROUP_ORDER:
+        members = sorted(
+            (command for command in COMMANDS.values() if command.group == group),
+            key=lambda command: command.name,
+        )
+        if not members:
+            continue
+        lines.append(f"\n{_GROUP_TITLES[group]}:")
+        for command in members:
+            lines.append(f"/{command.name:<12} {command.summary}")
+    return "\n".join(lines)
+
+
+def render_tasks(tasks: Iterable[Any], *, active_task_id: str) -> str:
+    rows = []
+    for task in tasks:
+        marker = "*" if task.id == active_task_id else " "
+        goal = (task.spec.goal or "")[:48]
+        rows.append(f"{marker} {task.id}  {task.state:<12} {goal}")
+    return render_lines("tasks (* = active):", rows)
+
+
+def render_artifacts(artifacts: Iterable[Any]) -> str:
+    rows = []
+    for artifact in artifacts:
+        payload = artifact.payload
+        uri = payload.uri if payload else ""
+        rows.append(f"{artifact.id}  {artifact.version:<5} {artifact.type:<12} {uri}")
+    return render_lines("artifacts:", rows)
+
+
+_STATE_MARKS = {
+    "done": "✓",
+    "in_progress": "◐",
+    "pending": "○",
+    "blocked": "✗",
+    "skipped": "—",
+}
+
+
+def render_progress(snapshot: Any) -> str:
+    """Render a run's ephemeral progress projection (checklist + agent tree)."""
+    header = f"progress: run {snapshot.run_id}"
+    if snapshot.summary:
+        header += f" — {snapshot.summary}"
+    lines = [header]
+    for item in snapshot.items:
+        lines.append(f"  {_STATE_MARKS.get(item.state, '?')} {item.label}")
+    for agent in snapshot.agents:
+        indent = "    " if agent.parent_id else "  "
+        lines.append(f"{indent}▸ {agent.label or agent.id} ({agent.state})")
+    if not snapshot.items and not snapshot.agents:
+        lines.append("  (no progress events yet)")
+    return "\n".join(lines)
+
+
+def progress_summary_line(snapshot: Any) -> str:
+    """One compact progress line for post-prompt display."""
+    done = sum(1 for item in snapshot.items if item.state == "done")
+    running = sum(1 for agent in snapshot.agents if agent.state == "running")
+    parts = []
+    if snapshot.items:
+        parts.append(f"{done}/{len(snapshot.items)} todos")
+    if snapshot.agents:
+        parts.append(f"{running} agents running")
+    if not parts and snapshot.summary:
+        parts.append(snapshot.summary)
+    return "progress " + " · ".join(parts) if parts else ""
+
+
+def render_artifact_detail(artifact: Any) -> str:
+    lines = [f"artifact {artifact.id}  version={artifact.version}"]
+    if artifact.parent_version:
+        lines.append(f"parent_version={artifact.parent_version}")
+    if artifact.provenance is not None:
+        lines.append(
+            f"produced_by={artifact.provenance.produced_by} at={artifact.provenance.produced_at}"
+        )
+    payload = artifact.payload
+    if payload is not None:
+        lines.append(
+            f"payload: kind={payload.kind} uri={payload.uri} "
+            f"checksum={payload.checksum} size={payload.size}"
+        )
+    if artifact.references:
+        refs = ", ".join(f"{ref.task_id}({ref.as_})" for ref in artifact.references)
+        lines.append(f"referenced_by: {refs}")
     return "\n".join(lines)
 
 
@@ -40,6 +134,32 @@ def render_lines(title: str, rows: Iterable[str]) -> str:
     return "\n".join((title, *body))
 
 
+def _error_hint(error: Exception) -> str:
+    """One actionable recovery line per error family (industrial UX)."""
+    name = error.__class__.__name__
+    if name == "AgentAdapterError":
+        return (
+            "hint: check the CLI binary on PATH and its auth, or /adapter to "
+            "switch harness; /interrupt pauses the task instead"
+        )
+    if name in {"TimeoutError", "TimeoutExpiredError"}:
+        return "hint: the harness is slow — raise --timeout, or /interrupt to pause"
+    code = getattr(error, "code", "")
+    if code == "DEADLINE_EXCEEDED":
+        return "hint: the harness is slow — raise --timeout, or /interrupt to pause"
+    if code == "NOT_FOUND":
+        return "hint: unknown object — list tasks with /tasks, sessions with /resume <id>"
+    if code == "PRECONDITION_FAILED":
+        return "hint: state conflict — /statusline and /inbox show what is actionable now"
+    if code == "UNAUTHORIZED":
+        return "hint: this action needs the task principal or a policy member"
+    if name == "TUIUsageError":
+        return "hint: usage — /help lists commands with forms"
+    if name == "CommandParseError":
+        return "hint: /help lists commands; typos get did-you-mean suggestions"
+    return ""
+
+
 def render_error(error: Exception) -> str:
     lines = [f"error: {error.__class__.__name__}: {error}"]
     details = getattr(error, "details", None)
@@ -64,6 +184,9 @@ def render_error(error: Exception) -> str:
         if stdout and not stderr:
             tail = stdout if len(stdout) <= 400 else stdout[-400:]
             lines.append(f"stdout: {tail}")
+    hint = _error_hint(error)
+    if hint:
+        lines.append(hint)
     return "\n".join(lines)
 
 
