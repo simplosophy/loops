@@ -8,7 +8,7 @@ import pytest
 
 from loops.hlp import FakeAgentAdapter, HLPClient
 from loops.tui.app import _status_snapshot
-from loops.tui.console import Console, adapter_completions
+from loops.tui.console import Console, adapter_completions, completion_candidates
 from loops.tui.controller import TUIController
 from loops.tui.session import SessionStore
 
@@ -22,48 +22,22 @@ def _console(**kwargs) -> Console:
     return Console(**kwargs)
 
 
-def _with_buffer(monkeypatch, buffer: str) -> None:
-    import readline as _readline
-
-    monkeypatch.setattr(_readline, "get_line_buffer", lambda: buffer)
-
-
-def test_completer_matches_slash_commands(monkeypatch):
-    import readline as _readline
-
-    console = _console()
-    _readline.set_completer(console._complete)
-    _readline.set_completer_delims(" ")
-
-    _with_buffer(monkeypatch, "/prog")
-    assert console._complete("/prog", 0) == "/progress"
-
-    _with_buffer(monkeypatch, "/sof")
-    first = console._complete("/sof", 0)
+def test_completer_matches_slash_commands():
+    assert completion_candidates("/prog") == ["/progress"]
+    first = completion_candidates("/sof")[0]
     assert first in {"/soft", "/softs"}
 
 
-def test_completer_matches_adapter_names_after_adapter_command(monkeypatch):
-    import readline as _readline
-
-    console = _console(
-        completer_extra=lambda command: adapter_completions() if command == "adapter" else []
+def test_completer_matches_adapter_names_after_adapter_command():
+    candidates = completion_candidates(
+        "/adapter p",
+        completer_extra=lambda command: adapter_completions() if command == "adapter" else [],
     )
-    _readline.set_completer(console._complete)
-    _readline.set_completer_delims(" ")
-
-    _with_buffer(monkeypatch, "/adapter p")
-    assert console._complete("p", 0) == "pi"
+    assert candidates == ["pi"]
 
 
-def test_completer_ignores_plain_text(monkeypatch):
-    import readline as _readline
-
-    console = _console()
-    _readline.set_completer(console._complete)
-    _readline.set_completer_delims(" ")
-    _with_buffer(monkeypatch, "hello")
-    assert console._complete("hello", 0) is None
+def test_completer_ignores_plain_text():
+    assert completion_candidates("hello") == []
 
 
 def test_color_disabled_by_no_color_env(monkeypatch):

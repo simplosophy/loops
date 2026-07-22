@@ -83,16 +83,10 @@ class Console:
     def _complete(self, text: str, state: int) -> str | None:
         assert _readline is not None
         buffer = _readline.get_line_buffer()
-        if buffer.startswith("/"):
-            head, _, arg = buffer[1:].partition(" ")
-            if not arg:
-                candidates = [f"/{name}" for name in COMMANDS if name.startswith(head)]
-            else:
-                command, _, partial = buffer[1:].partition(" ")
-                extra = self._completer_extra(command) if self._completer_extra else []
-                candidates = [word for word in extra if word.startswith(partial)]
-        else:
-            candidates = []
+        candidates = completion_candidates(
+            buffer,
+            completer_extra=self._completer_extra,
+        )
         try:
             return candidates[state] if state < len(candidates) else None
         except IndexError:
@@ -118,6 +112,21 @@ class Console:
 
     def print(self, text: str, *, role: str | None = None, end: str = "\n") -> None:
         print(self.style(text, role) if role else text, end=end, flush=True)
+
+
+def completion_candidates(
+    buffer: str,
+    *,
+    completer_extra: Callable[[str], list[str]] | None = None,
+) -> list[str]:
+    """Pure completion logic (platform-independent, testable everywhere)."""
+    if not buffer.startswith("/"):
+        return []
+    head, _, arg = buffer[1:].partition(" ")
+    if not arg:
+        return [f"/{name}" for name in COMMANDS if name.startswith(head)]
+    extra = completer_extra(head) if completer_extra else []
+    return [word for word in extra if word.startswith(arg)]
 
 
 def adapter_completions(prefix: str = "") -> list[str]:
