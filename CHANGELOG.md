@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- TUI terminal UX hardening: animated braille spinner on TTY (heartbeat
+  fallback otherwise), dim thinking / red error stream styling, multi-line
+  input via `\` continuation, and an inline approval card — when the active
+  task has a pending checkpoint the TUI shows `⚠ checkpoint pending` with
+  bare `y`/`n` quick keys to approve/reject (plain prompt semantics kept
+  when nothing is pending). Prompt output now renders the full progress
+  panel (todo checklist + sub-agent tree) whenever the run projects one.
+- `/broadcast <text>`: fans one prompt out to every CLI harness
+  (claude/codex/kimi/pi) as independent HLP tasks over the shared store
+  (task.assign requires `created`, so one task each — full per-harness audit
+  trail), then renders a side-by-side comparison block. Per-adapter failures
+  are isolated and rendered inline; the active task is not disturbed.
+- Stream envelope suppression: `StreamPrinter` holds back text starting
+  with `{` until it parses — HLP result envelopes (including delta-streamed
+  ones, e.g. kimi) render as their `summary` only, never raw JSON.
+  `run_prompt_process_streaming` / `make_streaming_prompt_runner` gained an
+  `on_close` hook so streamed text is properly terminated before the result
+  line prints.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added

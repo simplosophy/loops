@@ -69,6 +69,7 @@ def build_client(
     stream_printer: Callable[..., None] = print,
     model: str = "",
     store: HumanLoopStore | None = None,
+    style: Callable[[str, str], str] | None = None,
 ) -> HLPClient:
     _validate_adapter_name(adapter_name)
     if timeout <= 0:
@@ -79,12 +80,12 @@ def build_client(
 
     runner = None
     if stream:
-        printer = StreamPrinter(printer=stream_printer)
+        printer = StreamPrinter(printer=stream_printer, style=style)
 
         def on_chunk(chunk: StreamChunk) -> None:
             printer(chunk)
 
-        runner = make_streaming_prompt_runner(on_chunk=on_chunk)
+        runner = make_streaming_prompt_runner(on_chunk=on_chunk, on_close=printer.close)
 
     if adapter_name == "codex":
         # Harness-capable path so JSONL human events project into checkpoints/artifacts.
@@ -184,14 +185,28 @@ async def run_with_progress[T](
     every: float = _PROGRESS_EVERY_S,
     printer: Callable[..., None] = print,
     quiet_after_stream: bool = True,
+    animate: bool | None = None,
 ) -> T:
-    """Await work while printing heartbeat lines for interactive TUI use.
-
-    When harness streaming is active, heartbeats are less frequent once the
-    first few seconds pass so stream chunks stay readable.
-    """
+    """Await work with an animated spinner on TTY, heartbeat lines otherwise."""
+    if animate is None:
+        animate = sys.stdout.isatty() and printer is print
     task = asyncio.ensure_future(awaitable)
     started = time.monotonic()
+    if animate:
+        frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        ticks = 0
+        try:
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=0.1)
+                if done:
+                    break
+                ticks += 1
+                elapsed = time.monotonic() - started
+                frame = frames[ticks % len(frames)]
+                printer(f"\r{frame} {label} ({elapsed:.0f}s)", end="", flush=True)
+        finally:
+            printer("\r" + " " * (len(label) + 14) + "\r", end="", flush=True)
+        return task.result()
     printer(f"… {label} (timeout {timeout:.0f}s)", flush=True)
     ticks = 0
     while True:
@@ -243,7 +258,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
 
-    client = build_client(args.adapter, timeout=args.timeout, model=args.model)
+    console = Console(
+        history_path=f"{args.session_path}.history",
+        color=not args.no_color,
+        completer_extra=lambda command: adapter_completions() if command == "adapter" else [],
+    )
+    client = build_client(
+        args.adapter,
+        timeout=args.timeout,
+        model=args.model,
+        style=console.style,
+    )
     sessions = SessionStore(args.session_path)
     if args.resume:
         try:
@@ -268,11 +293,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     active_session_id = session.id
     adapter_timeout = float(getattr(client.adapter, "timeout", args.timeout) or args.timeout)
-    console = Console(
-        history_path=f"{args.session_path}.history",
-        color=not args.no_color,
-        completer_extra=lambda command: adapter_completions() if command == "adapter" else [],
-    )
 
     inbox_count = len(asyncio.run(client.human_inbox(session.principal)))
     console.print(

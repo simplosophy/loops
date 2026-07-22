@@ -214,13 +214,8 @@ def render_audit(events: Iterable[Any]) -> str:
     return render_lines("Audit:", rows)
 
 
-def render_agent_reply(payload: dict[str, Any] | None) -> str:
-    """Surface harness/process payload text for host channels.
-
-    HLP human events (checkpoints/artifacts) are separate; coding harnesses often
-    only return a summary/status JSON after a one-shot prompt. The TUI must still
-    show that reply or the session looks empty after "started task".
-    """
+def agent_reply_text(payload: dict[str, Any] | None) -> str:
+    """Extract reply text from a harness/process payload (no host prefix)."""
     if not payload:
         return ""
     for key in (
@@ -234,22 +229,36 @@ def render_agent_reply(payload: dict[str, Any] | None) -> str:
     ):
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
-            return f"agent: {value.strip()}"
+            return value.strip()
         if isinstance(value, dict):
-            nested = render_agent_reply(value)
+            nested = agent_reply_text(value)
             if nested:
                 return nested
         if isinstance(value, list):
             for item in reversed(value):
                 if isinstance(item, dict):
-                    nested = render_agent_reply(item)
+                    nested = agent_reply_text(item)
                     if nested:
                         return nested
                 elif isinstance(item, str) and item.strip():
-                    return f"agent: {item.strip()}"
-    status = payload.get("status")
-    if status is not None and str(status).strip():
-        return f"agent status: {status}"
+                    return item.strip()
+    return ""
+
+
+def render_agent_reply(payload: dict[str, Any] | None) -> str:
+    """Surface harness/process payload text for host channels.
+
+    HLP human events (checkpoints/artifacts) are separate; coding harnesses often
+    only return a summary/status JSON after a one-shot prompt. The TUI must still
+    show that reply or the session looks empty after "started task".
+    """
+    text = agent_reply_text(payload)
+    if text:
+        return f"agent: {text}"
+    if payload:
+        status = payload.get("status")
+        if status is not None and str(status).strip():
+            return f"agent status: {status}"
     return ""
 
 
@@ -280,4 +289,22 @@ def render_human_loop(
     ]
     if pending:
         lines.append(f"inbox: {len(pending)} item(s) — use /inbox, /approve, /reject, /review")
+    return "\n".join(lines)
+
+
+_BROADCAST_REPLY_LIMIT = 600
+
+
+def render_broadcast(rows: Iterable[dict[str, str]]) -> str:
+    """Side-by-side comparison of one prompt fanned out to every harness."""
+    lines = ["broadcast results:"]
+    for row in rows:
+        task = row.get("task") or "n/a"
+        run = row.get("run") or "n/a"
+        lines.append(f"\n── {row['adapter']} ── task={task} run={run}")
+        reply = row.get("reply", "")
+        if len(reply) > _BROADCAST_REPLY_LIMIT:
+            reply = reply[: _BROADCAST_REPLY_LIMIT - 3] + "..."
+        body = reply.splitlines() if reply else ["(no reply)"]
+        lines.extend(f"  {line}" for line in body)
     return "\n".join(lines)

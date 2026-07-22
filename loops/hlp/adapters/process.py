@@ -264,11 +264,14 @@ async def run_prompt_process_streaming(
     on_chunk: StreamChunkCallback | None = None,
     on_line: StreamLineCallback | None = None,
     on_stderr_line: StreamLineCallback | None = None,
+    on_close: Callable[[], None] | None = None,
 ) -> ProcessResult:
     """Run a prompt CLI while streaming stdout/stderr lines to host callbacks.
 
     Collects full stdout/stderr for the usual parse path so adapters keep
-    identical post-run semantics (process_results / projection).
+    identical post-run semantics (process_results / projection). on_close
+    fires once the process ends (success or timeout) so hosts can finalize
+    any half-written terminal output.
     """
     process = await asyncio.create_subprocess_exec(
         *command,
@@ -329,16 +332,20 @@ async def run_prompt_process_streaming(
             rest = await process.stderr.read()
             if rest:
                 stderr_parts.append(rest.decode(errors="replace"))
-        return ProcessResult(
+        result = ProcessResult(
             exit_code=124,
             stdout="".join(stdout_parts),
             stderr=("".join(stderr_parts) + "\nprocess timed out").strip(),
         )
-    return ProcessResult(
-        exit_code=process.returncode or 0,
-        stdout="".join(stdout_parts),
-        stderr="".join(stderr_parts),
-    )
+    else:
+        result = ProcessResult(
+            exit_code=process.returncode or 0,
+            stdout="".join(stdout_parts),
+            stderr="".join(stderr_parts),
+        )
+    if on_close is not None:
+        on_close()
+    return result
 
 
 def make_streaming_prompt_runner(
@@ -346,6 +353,7 @@ def make_streaming_prompt_runner(
     on_chunk: StreamChunkCallback | None = None,
     on_line: StreamLineCallback | None = None,
     on_stderr_line: StreamLineCallback | None = None,
+    on_close: Callable[[], None] | None = None,
 ) -> ProcessRunner:
     """Build a ProcessRunner that streams harness output to host callbacks."""
 
@@ -361,6 +369,7 @@ def make_streaming_prompt_runner(
             on_chunk=on_chunk,
             on_line=on_line,
             on_stderr_line=on_stderr_line,
+            on_close=on_close,
         )
 
     return runner

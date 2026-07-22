@@ -7,6 +7,7 @@ from typing import Any
 from loops.hlp import (
     AgentAdapterError,
     AutonomyTier,
+    CheckpointResolutionAction,
     Constraints,
     HLPClient,
     HumanLoopStore,
@@ -15,10 +16,13 @@ from loops.hlp import (
 
 from .commands import CommandParseError, InputIntent, parse_user_input
 from .render import (
+    agent_reply_text,
     progress_summary_line,
     render_agent_reply,
+    render_broadcast,
     render_error,
     render_human_loop,
+    render_progress,
 )
 from .session import SessionStore, TranscriptEvent, TUISession
 
@@ -59,6 +63,11 @@ class _ControllerBase:
 
     async def handle(self, session_id: str, raw: str) -> TUIResult:
         try:
+            quick = raw.strip().lower()
+            if quick in {"y", "n"}:
+                resolved = await self._quick_resolve(session_id, quick)
+                if resolved is not None:
+                    return resolved
             intent = parse_user_input(raw)
             if intent.kind == "prompt":
                 return await self._handle_prompt(session_id, intent)
@@ -74,6 +83,31 @@ class _ControllerBase:
         ) as exc:
             self._record_error_if_possible(session_id, str(exc))
             return TUIResult(render_error(exc))
+
+    async def _quick_resolve(self, session_id: str, key: str) -> TUIResult | None:
+        """Claude-Code-style quick keys: bare y/n resolves the pending checkpoint."""
+        session = self._require_session(session_id)
+        if not session.active_task_id:
+            return None
+        inbox = await self.client.human_inbox(session.principal)
+        pending = next(
+            (
+                item
+                for item in inbox
+                if item.task_id == session.active_task_id and item.kind == "checkpoint"
+            ),
+            None,
+        )
+        if pending is None:
+            return None
+        action: CheckpointResolutionAction = "approve" if key == "y" else "reject"
+        await self.client.resolve_checkpoint(
+            pending.subject_id, by=session.principal, action=action
+        )
+        verdict = "approved" if action == "approve" else "rejected"
+        text = f"checkpoint {verdict} ({pending.subject_id})"
+        self._append(session_id, kind="task", text=text, ref=pending.subject_id)
+        return await self._finish_with_harness_output(session_id, text)
 
     async def _handle_prompt(self, session_id: str, intent: InputIntent) -> TUIResult:
         session = self._require_session(session_id)
@@ -186,6 +220,54 @@ class _ControllerBase:
         )
         return TUIResult(f"adapter={updated.adapter}{note}")
 
+    async def _broadcast(self, session_id: str, intent: InputIntent) -> TUIResult:
+        """Fan out one prompt to every CLI harness and render a comparison.
+
+        task.assign requires state=created, so each adapter gets its own task
+        over the shared store (full per-harness audit trail). Serial v1: one
+        slow harness must not lose the others' replies, so failures are caught
+        per adapter and rendered inline.
+        """
+        text = _required_text(intent, "/broadcast requires a message")
+        if self._adapter_builder is None:
+            raise TUIUsageError("broadcast is not configured for this host")
+        session = self._require_session(session_id)
+        rows: list[dict[str, str]] = []
+        for name in sorted(_SWITCHABLE_ADAPTERS - {"fake"}):
+            try:
+                client = self._adapter_builder(name, session.model, self.client.store)
+                task = await client.create_task(
+                    principal=session.principal,
+                    goal=text,
+                    type="tui-broadcast",
+                    constraints=Constraints(autonomy=_autonomy(session.permission_mode)),
+                )
+                run = await client.delegate(
+                    task.id,
+                    f"agent_{name}",
+                    capability=self.capability,
+                    input={
+                        "goal": text,
+                        "permission_mode": session.permission_mode,
+                        "model": session.model,
+                    },
+                )
+                await client.start(task.id)
+                payload = _process_payload(client, run.run_id)
+                reply = agent_reply_text(payload) or f"(no reply; run {run.run_id})"
+                rows.append({"adapter": name, "task": task.id, "run": run.run_id, "reply": reply})
+            except (
+                AgentAdapterError,
+                ProtocolError,
+                RuntimeError,
+                TimeoutError,
+                OSError,
+            ) as exc:
+                rows.append({"adapter": name, "task": "", "run": "", "reply": f"error: {exc}"})
+        block = render_broadcast(rows)
+        self._append(session_id, kind="agent", text=block)
+        return TUIResult(block)
+
     async def _finish_with_harness_output(
         self,
         session_id: str,
@@ -204,26 +286,56 @@ class _ControllerBase:
         progress_line = await self._progress_line(session_id)
         if progress_line:
             parts.append(progress_line)
+        card = await self._approval_card(session_id)
+        if card:
+            parts.append(card)
         return TUIResult("\n".join(parts))
 
     async def _progress_line(self, session_id: str) -> str:
-        """Compact progress summary when the adapter projects harness progress."""
+        """Progress panel when the adapter projects harness progress.
+
+        Full checklist/agent tree when the snapshot carries structured items;
+        one compact summary line otherwise.
+        """
         session = self._require_session(session_id)
         if not session.active_run_id:
             return ""
         snapshot = await self.client.run_progress(session.active_run_id)
         if snapshot is None:
             return ""
+        if snapshot.items or snapshot.agents:
+            return render_progress(snapshot)
         return progress_summary_line(snapshot)
 
+    async def _approval_card(self, session_id: str) -> str:
+        """Inline approval card when the active task has a pending checkpoint.
+
+        Pairs with the bare y/n quick keys: the card tells the human what is
+        pending and which keys resolve it.
+        """
+        session = self._require_session(session_id)
+        if not session.active_task_id:
+            return ""
+        inbox = await self.client.human_inbox(session.principal)
+        pending = next(
+            (
+                item
+                for item in inbox
+                if item.task_id == session.active_task_id and item.kind == "checkpoint"
+            ),
+            None,
+        )
+        if pending is None:
+            return ""
+        card = (
+            f"⚠ checkpoint pending: {pending.title}\n"
+            "  [y] approve · [n] reject · /choose <option> · /input <text>"
+        )
+        self._append(session_id, kind="human", text=card, ref=pending.subject_id)
+        return card
+
     def _adapter_process_payload(self, run_id: str) -> dict[str, Any] | None:
-        if not run_id:
-            return None
-        results = getattr(self.client.adapter, "process_results", None)
-        if not isinstance(results, dict):
-            return None
-        payload = results.get(run_id)
-        return payload if isinstance(payload, dict) else None
+        return _process_payload(self.client, run_id)
 
     async def _sync_harness_human_loop(self, session_id: str) -> str:
         """Project harness human-facing events into HLP and summarize for the host."""
@@ -315,6 +427,17 @@ def _adapter_can_project(adapter: object) -> bool:
     return callable(getattr(adapter, "observe", None)) or callable(
         getattr(adapter, "peek_events", None)
     )
+
+
+def _process_payload(client: HLPClient, run_id: str) -> dict[str, Any] | None:
+    """Latest process payload a run produced (adapters that collect them)."""
+    if not run_id:
+        return None
+    results = getattr(client.adapter, "process_results", None)
+    if not isinstance(results, dict):
+        return None
+    payload = results.get(run_id)
+    return payload if isinstance(payload, dict) else None
 
 
 def _join_output(primary: str, secondary: str) -> str:

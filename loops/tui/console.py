@@ -71,14 +71,29 @@ class Console:
     # ── input ──
 
     def input(self, prompt: str = "> ") -> str:
-        if _readline is not None and sys.stdin.isatty():
-            return input(prompt)
-        # Non-interactive (piped stdin): plain line reads without echoing
-        # readline control sequences into the transcript.
-        line = sys.stdin.readline()
-        if not line:
-            raise EOFError
-        return line.rstrip("\n")
+        """Read one logical input; a trailing backslash continues onto the
+        next line (multi-line prompts), joined with real newlines."""
+        interactive = _readline is not None and sys.stdin.isatty()
+        if interactive:
+            first = input(prompt)
+        else:
+            # Non-interactive (piped stdin): plain line reads without echoing
+            # readline control sequences into the transcript.
+            raw = sys.stdin.readline()
+            if not raw:
+                raise EOFError
+            first = raw.rstrip("\n")
+        lines = [first]
+        while lines[-1].endswith("\\"):
+            lines[-1] = lines[-1][:-1]
+            if interactive:
+                lines.append(input("... "))
+                continue
+            raw = sys.stdin.readline()
+            if not raw:
+                break
+            lines.append(raw.rstrip("\n"))
+        return "\n".join(lines)
 
     def _complete(self, text: str, state: int) -> str | None:
         assert _readline is not None

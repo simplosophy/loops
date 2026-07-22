@@ -60,6 +60,8 @@ class SessionCmds(_ControllerBase):
             return TUIResult(f"model={updated.model}{rebuilt}")
         if name == "adapter":
             return await self._switch_adapter(session_id, intent)
+        if name == "broadcast":
+            return await self._broadcast(session_id, intent)
         if name == "theme":
             self._require_session(session_id)
             value = _required_arg(intent, "/theme requires a theme name")

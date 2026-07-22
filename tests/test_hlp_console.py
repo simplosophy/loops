@@ -90,3 +90,15 @@ def test_render_error_includes_actionable_hints():
 
     text = render_error(ProtocolError("PRECONDITION_FAILED", "illegal transition"))
     assert "/statusline" in text
+
+
+def test_console_input_backslash_continues_onto_next_line(monkeypatch):
+    import io
+    import sys
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("first \\\nsecond\n"))
+    assert _console().input() == "first \nsecond"
+
+    # EOF mid-continuation returns what was buffered.
+    monkeypatch.setattr(sys, "stdin", io.StringIO("only \\\n"))
+    assert _console().input() == "only "

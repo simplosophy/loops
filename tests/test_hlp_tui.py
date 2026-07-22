@@ -1619,6 +1619,23 @@ def test_run_prompt_process_streaming_invokes_chunk_callback():
     assert "agent_start" in result.stdout
 
 
+def test_run_prompt_process_streaming_invokes_on_close():
+    from loops.hlp.adapters import run_prompt_process_streaming
+
+    closed: list[bool] = []
+    script = 'print(\'{"type":"agent_start"}\', flush=True)\n'
+    result = run(
+        run_prompt_process_streaming(
+            (sys.executable, "-c", script),
+            {"operation": "delegate", "correlation_id": "task_x"},
+            5.0,
+            on_close=lambda: closed.append(True),
+        )
+    )
+    assert result.exit_code == 0
+    assert closed == [True]
+
+
 def test_format_harness_stream_line_maps_kimi_shapes():
     from loops.hlp.adapters import format_harness_stream_line
 
@@ -1968,3 +1985,308 @@ def test_progress_command_renders_snapshot_and_none_message(tmp_path):
     empty = store.create(cwd="/repo", adapter="fake", principal="user_local")
     result = run(controller.handle(empty.id, "/progress"))
     assert "no active run" in result.output
+
+
+async def _pi_approval_runner(command, request, timeout):
+    """Pi chat-mode runner that raises needs_approval during delegate."""
+    correlation = request["correlation_id"]
+    if request["operation"] == "delegate":
+        return ProcessResult(
+            exit_code=0,
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "pi.event",
+                            "run_id": "pi_qk",
+                            "correlation_id": correlation,
+                            "pi": {
+                                "kind": "needs_approval",
+                                "agent_id": "agent_tui",
+                                "prompt": "Ship it?",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "turn.completed",
+                            "run_id": "pi_qk",
+                            "correlation_id": correlation,
+                            "status": "ok",
+                            "summary": "waiting on approval",
+                        }
+                    ),
+                )
+            ),
+            stderr="",
+        )
+    return ProcessResult(
+        exit_code=0,
+        stdout=json.dumps(
+            {
+                "type": "turn.completed",
+                "run_id": request.get("run_id") or "pi_qk",
+                "correlation_id": correlation,
+                "status": "ok",
+            }
+        ),
+        stderr="",
+    )
+
+
+def _pi_approval_controller(tmp_path):
+    adapter = PiHarnessAdapter(runner=_pi_approval_runner, timeout=9.0, prompt_mode="chat")
+    client = HLPClient(adapter=adapter)
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="pi", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+    return client, store, session, controller
+
+
+def test_approval_card_shows_pending_checkpoint_with_quick_keys(tmp_path):
+    _client, _store, session, controller = _pi_approval_controller(tmp_path)
+
+    started = run(controller.handle(session.id, "do the work"))
+
+    assert "⚠ checkpoint pending: Ship it?" in started.output
+    assert "[y] approve · [n] reject" in started.output
+
+
+def test_quick_keys_approve_and_reject_pending_checkpoint(tmp_path):
+    client, store, session, controller = _pi_approval_controller(tmp_path)
+
+    run(controller.handle(session.id, "do the work"))
+    approved = run(controller.handle(session.id, "y"))
+    assert "checkpoint approved" in approved.output
+    inbox = run(client.human_inbox("user_local"))
+    assert not [item for item in inbox if item.kind == "checkpoint"]
+
+    run(
+        client.raise_checkpoint(
+            task_id=store.resume(session.id).active_task_id,
+            kind="approval",
+            prompt="Second gate",
+            raised_by="agent_tui",
+        )
+    )
+    rejected = run(controller.handle(session.id, "n"))
+    assert "checkpoint rejected" in rejected.output
+
+
+def test_quick_key_without_pending_checkpoint_is_plain_prompt(tmp_path):
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    session = store.create(cwd="/repo", adapter="fake", principal="user_local")
+    controller = TUIController(client=client, sessions=store)
+
+    result = run(controller.handle(session.id, "y"))
+    assert "started task" in result.output
+
+
+def test_stream_printer_suppresses_envelope_and_styles_thinking():
+    from loops.hlp.adapters import StreamChunk
+    from loops.tui.stream import StreamPrinter
+
+    lines: list[str] = []
+
+    def printer(*args, **kwargs):
+        text = args[0] if args else ""
+        end = kwargs.get("end", "\n")
+        lines.append(text + ("" if end == "" else "\n"))
+
+    sp = StreamPrinter(
+        printer=printer,
+        style=lambda text, role: f"[{role}]{text}[/]",
+    )
+    envelope = json.dumps(
+        {
+            "run_id": "run_x",
+            "correlation_id": "task_x",
+            "status": "ok",
+            "summary": "the passphrase is 123bcd",
+        }
+    )
+    sp(StreamChunk(kind="text", text=envelope, newline=False))
+    sp(StreamChunk(kind="thinking", text="thinking…"))
+    sp(StreamChunk(kind="error", text="boom"))
+    sp.close()
+    joined = "".join(lines)
+    assert "the passphrase is 123bcd" in joined
+    assert "correlation_id" not in joined
+    assert "[dim]⋯ thinking…[/]" in joined
+    assert "[error]⋯ error: boom[/]" in joined
+
+    # Non-envelope text passes through untouched.
+    lines.clear()
+    plain = StreamPrinter(printer=printer)
+    plain(StreamChunk(kind="text", text='{"partial": true', newline=False))
+    plain.close()
+    assert '{"partial": true' in "".join(lines)
+
+
+def test_stream_printer_suppresses_delta_streamed_envelope():
+    from loops.hlp.adapters import StreamChunk
+    from loops.tui.stream import StreamPrinter
+
+    lines: list[str] = []
+
+    def printer(*args, **kwargs):
+        text = args[0] if args else ""
+        end = kwargs.get("end", "\n")
+        lines.append(text + ("" if end == "" else "\n"))
+
+    sp = StreamPrinter(printer=printer)
+    envelope = json.dumps(
+        {
+            "run_id": "run_k",
+            "correlation_id": "task_k",
+            "status": "ok",
+            "summary": "2",
+        }
+    )
+    # kimi-style: the envelope arrives as small text deltas.
+    for piece in (envelope[:20], envelope[20:45], envelope[45:]):
+        sp(StreamChunk(kind="text", text=piece, newline=False))
+    sp(StreamChunk(kind="status", text="text complete"))
+    sp.close()
+    joined = "".join(lines)
+    assert "⋯ agent: 2" in joined
+    assert "correlation_id" not in joined
+
+    # Complete but non-envelope JSON still prints raw once parseable.
+    lines.clear()
+    plain = StreamPrinter(printer=printer)
+    plain(StreamChunk(kind="text", text='{"foo": ', newline=False))
+    plain(StreamChunk(kind="text", text="1}", newline=False))
+    plain.close()
+    assert '{"foo": 1}' in "".join(lines)
+
+
+def test_run_with_progress_animates_spinner_frames_when_enabled():
+    from loops.tui.app import run_with_progress
+
+    writes: list[str] = []
+
+    def printer(*args, **kwargs):
+        writes.append(args[0] if args else "")
+
+    async def slow():
+        await asyncio.sleep(0.25)
+        return "done"
+
+    result = run(
+        run_with_progress(
+            slow(),
+            label="codex adapter",
+            timeout=1.0,
+            printer=printer,
+            animate=True,
+        )
+    )
+
+    assert result == "done"
+    frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    assert any("\r" in w and any(frame in w for frame in frames) for w in writes)
+    # Spinner line is erased once the awaitable completes.
+    assert writes[-1].startswith("\r") and writes[-1].endswith("\r")
+
+
+def test_prompt_output_renders_full_progress_panel(tmp_path):
+    async def runner(command, request, timeout):
+        envelope = json.dumps(
+            {
+                "run_id": "run_1",
+                "correlation_id": request["correlation_id"],
+                "status": "ok",
+            }
+        )
+        stdout = "\n".join(
+            (
+                json.dumps({"type": "thread.started", "thread_id": "t1"}),
+                json.dumps(
+                    {
+                        "type": "item.started",
+                        "item": {
+                            "id": "i1",
+                            "type": "todo_list",
+                            "items": [
+                                {"text": "define cases", "completed": True},
+                                {"text": "execute cases", "completed": False},
+                            ],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"id": "i0", "type": "agent_message", "text": envelope},
+                    }
+                ),
+            )
+        )
+        return ProcessResult(exit_code=0, stdout=stdout, stderr="")
+
+    store = SessionStore(tmp_path / "sessions.json")
+    client = HLPClient(adapter=CodexHarnessAdapter(runner=runner))
+    controller = TUIController(client=client, sessions=store)
+    session = store.create(cwd="/repo", adapter="codex", principal="user_local")
+
+    started = run(controller.handle(session.id, "plan the work"))
+    assert "✓ define cases" in started.output
+    assert "◐ execute cases" in started.output
+
+
+def test_broadcast_fans_out_to_all_adapters_over_shared_store(tmp_path):
+    builds = []
+
+    def builder(name, model, store):
+        builds.append(name)
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store, adapter_builder=builder)
+    session, active = _start_hlp_tui_session(store, controller)
+    original_store = client.store
+
+    result = run(controller.handle(session.id, "/broadcast say hi"))
+
+    assert "broadcast results:" in result.output
+    order = [result.output.index(f"── {name}") for name in ("claude", "codex", "kimi", "pi")]
+    assert order == sorted(order)
+    assert builds == ["claude", "codex", "kimi", "pi"]
+    broadcast_tasks = [task for task in original_store.list_tasks() if task.type == "tui-broadcast"]
+    assert len(broadcast_tasks) == 4
+    # Broadcast is a side inquiry: the active task does not move.
+    assert store.resume(session.id).active_task_id == active.active_task_id
+
+
+def test_broadcast_isolates_per_adapter_failures(tmp_path):
+    def builder(name, model, store):
+        if name == "kimi":
+            raise OSError("kimi binary missing")
+        return HLPClient(store=store, adapter=FakeAgentAdapter())
+
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store, adapter_builder=builder)
+    session, _active = _start_hlp_tui_session(store, controller)
+
+    result = run(controller.handle(session.id, "/broadcast ping"))
+
+    assert "── kimi" in result.output
+    assert "error: kimi binary missing" in result.output
+    # Adapters after the failure still ran.
+    assert "── pi" in result.output
+
+
+def test_broadcast_requires_message_and_builder(tmp_path):
+    client = HLPClient(adapter=FakeAgentAdapter())
+    store = SessionStore(tmp_path / "sessions.json")
+    controller = TUIController(client=client, sessions=store)
+    session, _active = _start_hlp_tui_session(store, controller)
+
+    result = run(controller.handle(session.id, "/broadcast"))
+    assert "/broadcast requires a message" in result.output
+    result = run(controller.handle(session.id, "/broadcast hi"))
+    assert "not configured" in result.output

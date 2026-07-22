@@ -86,6 +86,12 @@ COMMANDS: dict[str, CommandDefinition] = {
     "progress": CommandDefinition(
         "progress", "Show harness todo checklist and sub-agent status.", "hlp", group="work"
     ),
+    "broadcast": CommandDefinition(
+        "broadcast",
+        "Fan out one prompt to every harness adapter and compare replies.",
+        "hlp",
+        group="work",
+    ),
     "diff": CommandDefinition("diff", "Show diff summary.", "direct", group="other"),
     "model": CommandDefinition(
         "model", "Set adapter model (rebuilds client).", "compat", group="session"
