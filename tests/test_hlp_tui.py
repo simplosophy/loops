@@ -2265,6 +2265,13 @@ def test_broadcast_isolates_per_adapter_failures(tmp_path):
     def builder(name, model, store):
         if name == "kimi":
             raise OSError("kimi binary missing")
+        if name == "codex":
+            raise AgentAdapterError(
+                "codex",
+                "delegate",
+                "process command failed",
+                details={"exit_code": 1, "stderr": "auth token expired"},
+            )
         return HLPClient(store=store, adapter=FakeAgentAdapter())
 
     client = HLPClient(adapter=FakeAgentAdapter())
@@ -2275,8 +2282,12 @@ def test_broadcast_isolates_per_adapter_failures(tmp_path):
     result = run(controller.handle(session.id, "/broadcast ping"))
 
     assert "── kimi" in result.output
-    assert "error: kimi binary missing" in result.output
-    # Adapters after the failure still ran.
+    assert "kimi binary missing" in result.output
+    # Diagnostics surface in the comparison block, not just str(exc).
+    assert "── codex" in result.output
+    assert "exit_code: 1" in result.output
+    assert "auth token expired" in result.output
+    # Adapters after the failures still ran.
     assert "── pi" in result.output
 
 

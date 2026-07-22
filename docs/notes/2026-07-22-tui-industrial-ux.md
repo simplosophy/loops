@@ -64,3 +64,13 @@ harness 能力。零新依赖（stdlib only）是硬约束。
   才输出（正确性优先于逐字流感）。
 - `/broadcast` v1 串行；并行 fan-out 需要各家 timeout 叠加之外的并发控制，
   留待后续。
+
+## 追加：广播错误诊断（同日）
+
+初版广播行内错误只有 `error: {exc}`，把 `AgentAdapterError.details`
+（exit_code / command / stderr）全丢了，用户无法区分"CLI 挂了"和"超时"。
+改为行内直接复用 `render_error`（含 stderr 尾部与恢复 hint），错误行不受
+600 字符截断限制（诊断文本已被 render_error 自身 400 字符 stderr 尾部约束）。
+直播探针证实：kimi 偶发超过 30s（exit_code 124 超时），codex 为瞬时失败，
+重跑即恢复。
+

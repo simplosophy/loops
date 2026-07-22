@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (claude/codex/kimi/pi) as independent HLP tasks over the shared store
   (task.assign requires `created`, so one task each — full per-harness audit
   trail), then renders a side-by-side comparison block. Per-adapter failures
-  are isolated and rendered inline; the active task is not disturbed.
+  are isolated and rendered inline with full diagnostics (exit code, stderr
+  tail, recovery hint); the active task is not disturbed.
 - Stream envelope suppression: `StreamPrinter` holds back text starting
   with `{` until it parses — HLP result envelopes (including delta-streamed
   ones, e.g. kimi) render as their `summary` only, never raw JSON.

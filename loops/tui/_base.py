@@ -263,7 +263,9 @@ class _ControllerBase:
                 TimeoutError,
                 OSError,
             ) as exc:
-                rows.append({"adapter": name, "task": "", "run": "", "reply": f"error: {exc}"})
+                # Full diagnostics (exit_code, stderr tail, recovery hint) so a
+                # failed harness is debuggable from the comparison block alone.
+                rows.append({"adapter": name, "task": "", "run": "", "reply": render_error(exc)})
         block = render_broadcast(rows)
         self._append(session_id, kind="agent", text=block)
         return TUIResult(block)

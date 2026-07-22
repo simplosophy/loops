@@ -303,7 +303,9 @@ def render_broadcast(rows: Iterable[dict[str, str]]) -> str:
         run = row.get("run") or "n/a"
         lines.append(f"\n── {row['adapter']} ── task={task} run={run}")
         reply = row.get("reply", "")
-        if len(reply) > _BROADCAST_REPLY_LIMIT:
+        # Error rows are diagnostic output (already bounded by render_error's
+        # own stderr tail); only cap normal agent replies.
+        if not reply.startswith("error:") and len(reply) > _BROADCAST_REPLY_LIMIT:
             reply = reply[: _BROADCAST_REPLY_LIMIT - 3] + "..."
         body = reply.splitlines() if reply else ["(no reply)"]
         lines.extend(f"  {line}" for line in body)
