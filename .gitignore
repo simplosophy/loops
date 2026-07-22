@@ -45,3 +45,4 @@ docs/site/.vitepress/screenshots/
 
 # live E2E result artifacts
 hlp-soft-live-e2e-result.json
+.hlp-tui-sessions.json.history
